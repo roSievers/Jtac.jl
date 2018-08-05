@@ -11,21 +11,26 @@ function print_char(board, index)
     end
 end
 
-function print_row(board, o_row, i_row)
-    print(" ")
+function print_row(game, o_row, i_row)
     for o_col = 1:3, i_col = 1:3
-        print_char(board, combined_index(o_row, o_col, i_row, i_col))
-        print(" ")
+        cell_index = combined_index(o_row, o_col)
+        if game.focus == cell_index && i_col == 1
+            print("#")
+        else
+            print(" ")
+        end
+        print_char(game.board, combined_index(o_row, o_col, i_row, i_col))
         if i_col == 3 && o_col != 3
-            print("| ")
+            print(" |")
         end
     end
+    print(" ")
     println("")
 end
 
-function print_board(board)
+function print_board(game)
     for o_row = 1:3, i_row = 1:3
-        print_row(board, o_row, i_row)
+        print_row(game, o_row, i_row)
         if i_row == 3 && o_row != 3
             println(" ---------------------")
         end
