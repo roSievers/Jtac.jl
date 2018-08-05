@@ -56,14 +56,14 @@ function descend_to_leaf!(game :: GameState, node :: Node) :: Node
     best_i = indmax(confidence(node))
 
     best_child = node.children[best_i]
-    place!(game, node.actions[best_i])
+    place!(game, best_child.action)
 
     descend_to_leaf!(game, best_child)
 end
 
 function confidence(node) :: Array{Float64}
-    visit_total = sum(node.visit_counter)
-    node.expected_reward .+ 1.41 * node.model_policy .* sqrt( visit_total ) / (1 + node.visit_counter)
+    visit_total :: Float64 = sum(node.visit_counter)
+    node.expected_reward .+ 1.41 * node.model_policy .* sqrt( visit_total ) ./ (1 + node.visit_counter)
 end
 
 function expand_tree_by_one!(node, game, model)

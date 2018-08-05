@@ -106,3 +106,5 @@ end
 
 model = RolloutModel()
 root = Node()
+expand_tree_by_one!(root, game, model)
+expand_tree_by_one!(root, game, model)
