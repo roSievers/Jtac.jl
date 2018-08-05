@@ -1,13 +1,9 @@
-function print_char(board, index)
-    entry = board[index]
-    if entry == 0
-        print(".")
-    elseif entry == 1
-        print("X")
-    elseif entry == 2
-        print("O")
-    else
-        print("?")
+function print_board(game)
+    for o_row = 1:3, i_row = 1:3
+        print_row(game, o_row, i_row)
+        if i_row == 3 && o_row != 3
+            println(" ---------------------")
+        end
     end
 end
 
@@ -28,11 +24,15 @@ function print_row(game, o_row, i_row)
     println("")
 end
 
-function print_board(game)
-    for o_row = 1:3, i_row = 1:3
-        print_row(game, o_row, i_row)
-        if i_row == 3 && o_row != 3
-            println(" ---------------------")
-        end
+function print_char(board, index)
+    entry = board[index]
+    if entry == 0
+        print(".")
+    elseif entry == 1
+        print("X")
+    elseif entry == 2
+        print("O")
+    else
+        print("?")
     end
 end
