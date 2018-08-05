@@ -21,3 +21,10 @@ function watch_ai_game(power = 1000)
         println(" ")
     end
 end
+
+@time ai_turn!(new_game(), 1000)
+game = new_game()
+@profile ai_turn!(game)
+println("loading profile view")
+using ProfileView
+ProfileView.view()

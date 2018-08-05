@@ -14,7 +14,7 @@ mutable struct Node
     action :: Int8 # How we got here
     parent :: Nullable{Node}
     children :: Array{Node}
-    visit_counter :: Array{UInt} # Wie oft wurden die Kinder besucht?
+    visit_counter :: Array{Float64} # Wie oft wurden die Kinder besucht?
     expected_reward :: Array{Float64}
     model_policy :: Array{Float64}
 end
@@ -44,26 +44,29 @@ function expand!(node :: Node, game :: GameState, model :: Model) :: Float64
     policy[1]
 end
 
-function is_leaf(node :: Node)
+function is_leaf(node :: Node) :: Bool
     isempty(node.children)
 end
 
 function descend_to_leaf!(game :: GameState, node :: Node) :: Node
-    if is_leaf(node)
-        return node
+    while length(node.children) != 0
+        best_i = indmax(confidence(node))
+    
+        best_child = node.children[best_i]
+        place!(game, best_child.action)
+    
+        node = best_child
     end
-
-    best_i = indmax(confidence(node))
-
-    best_child = node.children[best_i]
-    place!(game, best_child.action)
-
-    descend_to_leaf!(game, best_child)
+    return node
 end
 
 function confidence(node) :: Array{Float64}
-    visit_total :: Float64 = sum(node.visit_counter)
-    node.expected_reward .+ 1.41 * node.model_policy .* sqrt( visit_total ) ./ (1 + node.visit_counter)
+    exploration_weight :: Float64 = 1.41 :: Float64 * sqrt(sum(node.visit_counter) :: Float64)
+    result = Vector{Float64}(length(node.children))
+    for i = 1:length(node.children)
+        result[i] = node.expected_reward[i] + exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
+    end
+    result
 end
 
 function expand_tree_by_one!(node, game, model)
