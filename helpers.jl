@@ -20,3 +20,5 @@ end
 function inner_index(combined)
     mod1(combined, 9)
 end
+
+second(tuple) = tuple[2]
