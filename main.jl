@@ -1,30 +1,16 @@
 println("Let's play ultimate Tic Tac Toe")
 
+include("game.jl")
 include("helpers.jl")
 include("drawing.jl")
-
-# The total board is made up of 9 single boards
-# 9 consecutive entries form a single board.
-# The single board is stored in the following shape:
-# 1 2 3
-# 4 5 6
-# 7 8 9.
-mutable struct GameState
-    board :: Array{Int8,1}
-    current_player :: Int8
-    # The focus is either 0 (no focus) or indicates the allowed board
-    focus :: Int8
-end
-
-function new_game()
-    GameState(zeros(Int8, 81), 1, 0)
-end
+include("model.jl")
+include("mc.jl")
 
 game = new_game()
 
 print_board(game)
 
-function place(game, index)
+function place!(game, index)
     if game.focus != 0 && outer_index(index) != game.focus
         error("You must place in the focused single board.")
     end
@@ -40,7 +26,7 @@ end
 random_action(game) = rand(legal_actions(game))
 
 function place_random(game)
-    place(game, random_action(game))
+    place!(game, random_action(game))
 end
 
 function simulate_game()
@@ -49,6 +35,13 @@ function simulate_game()
         place_random(game)
         # println("")
     end
+end
+
+function random_playout(game)
+    while !game_result(game)[1]
+        place_random(game)
+    end
+    game_result(game)[2]
 end
 
 function legal_actions(game :: GameState) :: Array{Int8}
@@ -109,3 +102,7 @@ end
 function check_triple(e :: Vector{Int8}) :: Bool
     e[1] == e[2] == e[3] != 0
 end
+
+
+model = RolloutModel()
+root = Node()
