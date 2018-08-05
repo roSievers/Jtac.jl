@@ -9,14 +9,15 @@ mutable struct GameState
     current_player :: Int8
     # The focus is either 0 (no focus) or indicates the allowed board
     focus :: Int8
+    result_cache :: Vector{Tuple{ Bool, Int8 }}
 end
 
 function new_game()
-    GameState(zeros(Int8, 81), 1, 0)
+    GameState(zeros(Int8, 81), 1, 0, [(false, 0) for i=1:9])
 end
 
 function Base.copy(s :: GameState) :: GameState
-    GameState(copy(s.board), s.current_player, s.focus)
+    GameState(copy(s.board), s.current_player, s.focus, copy(s.result_cache))
 end
 
 
@@ -25,6 +26,8 @@ function place!(game, index)
         error("You must place in the focused single board.")
     end
     game.board[index] = game.current_player
+    game.result_cache[outer_index(index)] = single_board_result(game, outer_index(index))
+
     game.current_player = -game.current_player
     game.focus = inner_index(index)
     if single_board_decided(game, game.focus)
@@ -65,9 +68,8 @@ function legal_actions(game :: GameState, outer_index) :: Array{Int8}
 end
 
 function game_result(game) :: Tuple{ Bool, Int8 }
-    inner_results = single_board_result.(game, 1:9)
-    is_over = all(inner_results .|> first)
-    outer_board = single_board_result.(game, 1:9) .|> second
+    is_over = all(game.result_cache .|> first)
+    outer_board = game.result_cache .|> second
     result = single_board_result(outer_board)
     if is_over
         (true, result[2])
@@ -84,7 +86,7 @@ function single_board_result(game :: GameState, outer_index) :: Tuple{ Bool, Int
     single_board_result(single_board)
 end
 
-single_board_decided(game, outer_index) = single_board_result(game, outer_index)[1]
+single_board_decided(game, outer_index) = game.result_cache[outer_index][1]
 
 function single_board_result(board :: Array{Int8}) :: Tuple{ Bool, Int8 }
     for i = 1:3
