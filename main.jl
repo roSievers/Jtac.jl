@@ -1,14 +1,16 @@
-println("Let's play ultimate Tic Tac Toe")
-
 include("game.jl")
 include("helpers.jl")
 include("drawing.jl")
 include("model.jl")
 include("mc.jl")
 
-game = new_game()
+function greeting()
+    println("Let's play ultimate Tic Tac Toe")
+    game = new_game()
+    print_board(game)
+end
 
-print_board(game)
+greeting()
 
 function place!(game, index)
     if game.focus != 0 && outer_index(index) != game.focus
@@ -25,21 +27,17 @@ end
 
 random_action(game) = rand(legal_actions(game))
 
-function place_random(game)
+function random_turn!(game :: GameState)
     place!(game, random_action(game))
 end
 
-function simulate_game()
-    game = new_game()
-    while !game_result(game)[1]
-        place_random(game)
-        # println("")
-    end
+function random_playout()
+    random_playout(new_game())
 end
 
-function random_playout(game)
+function random_playout(game :: GameState) :: Int8
     while !game_result(game)[1]
-        place_random(game)
+        random_turn!(game)
     end
     game_result(game)[2]
 end
@@ -104,7 +102,12 @@ function check_triple(e :: Vector{Int8}) :: Bool
 end
 
 
-model = RolloutModel()
-root = Node()
-expand_tree_by_one!(root, game, model)
-expand_tree_by_one!(root, game, model)
+function watch_ai_game(power = 1000)
+    game = new_game()
+    while !game_result(game)[1]
+        ai_turn!(game, power)
+        print_board(game)
+        println(" ")
+        println(" ")
+    end
+end
