@@ -9,7 +9,7 @@ end
 
 function print_row(game, o_row, i_row)
     for o_col = 1:3, i_col = 1:3
-        cell_index = combined_index(o_row, o_col)
+        cell_index = single_index(o_row, o_col)
         if game.focus == cell_index && i_col == 1
             print("#")
         else
@@ -30,7 +30,7 @@ function print_char(board, index)
         print(".")
     elseif entry == 1
         print("X")
-    elseif entry == 2
+    elseif entry == -1
         print("O")
     else
         print("?")
