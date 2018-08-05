@@ -83,3 +83,15 @@ function backpropagate!(node, value) :: Void
     parent.visit_counter[i] += 1
     backpropagate!(parent, -value)
 end
+
+function ai_turn!(game :: GameState, power = 1000)
+    model = RolloutModel()
+    root = Node()
+    for i = 1:power
+        expand_tree_by_one!(root, game, model)
+    end
+    
+    best_i = indmax(confidence(root))
+    best_child = root.children[best_i]
+    place!(game, best_child.action)
+end
