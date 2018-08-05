@@ -94,7 +94,7 @@ function ai_turn!(game :: GameState, power = 1000)
         expand_tree_by_one!(root, game, model)
     end
     
-    best_i = indmax(confidence(root))
+    best_i = indmax(root.expected_reward)
     best_child = root.children[best_i]
     place!(game, best_child.action)
 end
