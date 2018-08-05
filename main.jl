@@ -8,9 +8,17 @@ include("drawing.jl")
 # 1 2 3
 # 4 5 6
 # 7 8 9.
-board = zeros(Int8, 81)
+mutable struct GameState
+    board :: Array{Int8,1}
+    current_player :: Int8
+end
 
-board[1] = 1
-board[9] = 2
+game = GameState(zeros(Int8, 81), 1)
 
-print_board(board)
+print_board(game.board)
+
+function place(game, index)
+    game.board[index] = game.current_player
+    game.current_player = 3 - game.current_player
+    print_board(game.board)
+end
