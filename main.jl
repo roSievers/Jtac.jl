@@ -1,3 +1,5 @@
+using ProfileView
+
 include("game.jl")
 include("helpers.jl")
 include("drawing.jl")
@@ -27,7 +29,6 @@ function profile()
     game = new_game()
     @profile ai_turn!(game)
     println("loading profile view")
-    using ProfileView
     ProfileView.view()
 end
 
