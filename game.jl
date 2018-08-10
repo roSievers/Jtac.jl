@@ -43,10 +43,10 @@ function random_turn!(game :: GameState)
 end
 
 function random_playout()
-    random_playout(new_game())
+    random_playout!(new_game())
 end
 
-function random_playout(game :: GameState) :: Int8
+function random_playout!(game :: GameState) :: Int8
     while !game_result(game)[1]
         random_turn!(game)
     end

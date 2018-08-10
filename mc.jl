@@ -73,7 +73,8 @@ function expand_tree_by_one!(node, game, model)
     new_game = copy(game)
     new_node = descend_to_leaf!(new_game, node)
     state_value = expand!(new_node, new_game, model)
-    backpropagate!(new_node, state_value)
+    # We backpropagate the negative value, as the parent calculates its expected reward from it.
+    backpropagate!(new_node, -state_value)
 end
 
 function backpropagate!(node, value) :: Void

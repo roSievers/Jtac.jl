@@ -11,6 +11,7 @@ function apply(model :: DummyModel, game :: GameState) :: Tuple{Float64, Array{F
 end
 
 function apply(model :: RolloutModel, game :: GameState) :: Tuple{Float64, Array{Float64}}
-    game_result = random_playout(game)
-    ( game_result * game.current_player, ones(81)/81 )
+    current_player = game.current_player
+    game_result = random_playout!(game)
+    ( game_result * current_player, ones(81)/81 )
 end
