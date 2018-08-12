@@ -1,4 +1,3 @@
-using ProfileView
 
 include("game.jl")
 include("helpers.jl")
@@ -22,14 +21,6 @@ function watch_ai_game(power = 1000)
         println(" ")
         println(" ")
     end
-end
-
-function profile()
-    @time ai_turn!(new_game(), 1000)
-    game = new_game()
-    @profile ai_turn!(game)
-    println("loading profile view")
-    ProfileView.view()
 end
 
 function mctree_vs_random(power = 1000)
