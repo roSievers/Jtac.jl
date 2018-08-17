@@ -88,14 +88,21 @@ function backpropagate!(node, value) :: Void
     backpropagate!(parent, -value)
 end
 
-function ai_turn!(game :: GameState, power = 1000)
+function ai_turn!(game :: GameState, power = 1000) :: Node
     model = RolloutModel()
     root = Node()
     for i = 1:power
         expand_tree_by_one!(root, game, model)
     end
     
-    best_i = indmax(root.expected_reward)
+    # TODO: The paper states, that during self play we pick a move from the
+    # improved stochastic policy root.visit_counter at random.
+    # Note that visit_counter is generally prefered over expected_reward
+    # when choosing the best move in a match, as it is less susceptible to
+    # random fluctuations.
+    best_i = indmax(root.visit_counter)
     best_child = root.children[best_i]
     place!(game, best_child.action)
+    root
+end
 end
