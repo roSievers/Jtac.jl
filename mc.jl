@@ -105,4 +105,16 @@ function ai_turn!(game :: GameState, power = 1000) :: Node
     place!(game, best_child.action)
     root
 end
+
+function record_selfplay(power = 100)
+    game = new_game()
+    node_list = Vector{Tuple{GameState, Node}}()
+    while !game_result(game)[1]
+        game_copy = copy(game)
+        current_root = ai_turn!(game, power)
+        # Remove all children to save memory
+        current_root.children = []
+        push!(node_list, (game_copy, current_root))
+    end
+    node_list
 end
