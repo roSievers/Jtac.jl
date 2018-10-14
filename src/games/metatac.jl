@@ -139,7 +139,7 @@ function check_triple(e :: Vector{Int}) :: Bool
     e[1] == e[2] == e[3] != 0
 end
 
-policy_size(:: Type{MetaTac}) :: UInt = 81
+policy_length(:: Type{MetaTac}) :: UInt = 81
 
 # Data representation of the game as layered 2d image
 function representation(game :: Game) :: Array{Float32, 3}
