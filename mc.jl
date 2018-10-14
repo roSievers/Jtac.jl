@@ -42,10 +42,12 @@ function expand!(node :: Node, game :: GameState, model :: Model) :: Float64
     policy[1]
 end
 
+# Helper function whis is true, when a Node is a leaf
 function is_leaf(node :: Node) :: Bool
     isempty(node.children)
 end
 
+# Traverse the tree from top to bottom and return a root leaf
 function descend_to_leaf!(game :: GameState, node :: Node) :: Node
     while length(node.children) != 0
         best_i = findmax(confidence(node))[2]
