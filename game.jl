@@ -12,6 +12,9 @@ mutable struct GameState
     result_cache :: Vector{Tuple{ Bool, Int8 }}
 end
 
+# When using a game with broadcasting syntax, do not try to iterate over it
+Broadcast.broadcastable(game::GameState) = Ref(game)
+
 function new_game()
     GameState(zeros(Int8, 81), 1, 0, [(false, 0) for i=1:9])
 end
