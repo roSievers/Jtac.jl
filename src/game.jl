@@ -38,11 +38,11 @@ function apply_action!(:: Game, :: ActionIndex) :: Nothing
   error("unimplemented")
 end
 
-function policy_length(:: Type{Game}) :: UInt
+function policy_length(:: Type{Game}) :: Int
   error("unimplemented")
 end
 
-function policy_length(game :: G) :: UInt where G <: Game
+function policy_length(game :: G) :: Int where G <: Game
   policy_length(G)
 end
 
