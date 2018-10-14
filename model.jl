@@ -3,8 +3,8 @@ abstract type Model end
 modelweights(::Model) = Any[]
 modelstate(::Model) = Any[]
 
-function apply(model :: Model, game :: GameState)
-    apply(modelweights(model), modelstate(model), game)
+function apply(model :: M, game :: GameState) where M <: Model
+    apply(modelweights(model), modelstate(model), M, game)
 end
 
 # Dummy Model

@@ -19,6 +19,8 @@ mutable struct Node
     model_policy :: Array{Float64}
 end
 
+Broadcast.broadcastable(node :: Node) = Ref(node)
+
 function Node(action = 0, parent = nothing ) :: Node
     Node(action, parent, [], [], [], [])
 end
@@ -36,7 +38,7 @@ function expand!(node :: Node, game :: GameState, model :: Model) :: Float64
     node.visit_counter = zeros(UInt, length(node.children))
     node.expected_reward = zeros(UInt, length(node.children))
     # Filtern und renormieren
-    node.model_policy = policy[2][actions] / sum(policy[2][actions])
+    node.model_policy = policy[2:end][actions] / sum(policy[2:end][actions])
     policy[1]
 end
 
@@ -46,7 +48,7 @@ end
 
 function descend_to_leaf!(game :: GameState, node :: Node) :: Node
     while length(node.children) != 0
-        best_i = indmax(confidence(node))
+        best_i = findmax(confidence(node))[2]
     
         best_child = node.children[best_i]
         place!(game, best_child.action)
@@ -58,7 +60,7 @@ end
 
 function confidence(node) :: Array{Float64}
     exploration_weight :: Float64 = 1.41 :: Float64 * sqrt(sum(node.visit_counter) :: Float64)
-    result = Vector{Float64}(length(node.children))
+    result = zeros(Float64, length(node.children))
     for i = 1:length(node.children)
         result[i] = node.expected_reward[i] + exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
     end
@@ -73,11 +75,11 @@ function expand_tree_by_one!(node, game, model)
     backpropagate!(new_node, -state_value)
 end
 
-function backpropagate!(node, value) :: Void
-    if isnull(node.parent)
+function backpropagate!(node, value) :: Nothing
+    if node.parent == nothing
         return
     end
-    parent = get(node.parent)
+    parent = node.parent
     i = findfirst(x -> x === node, parent.children)
     parent.expected_reward[i] = (parent.expected_reward[i] * parent.visit_counter[i] + value) / (parent.visit_counter[i] + 1)
     parent.visit_counter[i] += 1
@@ -96,7 +98,7 @@ function ai_turn!(game :: GameState, power = 1000) :: Node
     # Note that visit_counter is generally prefered over expected_reward
     # when choosing the best move in a match, as it is less susceptible to
     # random fluctuations.
-    best_i = indmax(root.visit_counter)
+    best_i = findmax(root.visit_counter)[2]
     best_child = root.children[best_i]
     place!(game, best_child.action)
     root
