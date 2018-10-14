@@ -97,8 +97,16 @@ function tic_tac_toc_status(game :: MetaTac, outer_index) :: Tuple{ Bool, Int }
 end
 
 # Implements the win condition for the large board
+# We need to additionaly verify, that there are legal actions left
 function tic_tac_toc_status(board :: Vector{Status}) :: Status
-    tic_tac_toc_status(with_default.(board, 0))
+    s = tic_tac_toc_status(with_default.(board, 0))
+    if is_over(s)
+        s
+    elseif all(is_over.(board))
+        Status(0)
+    else
+        Status(nothing)
+    end
 end
 
 function tic_tac_toc_status(board :: Vector{Int})
@@ -130,3 +138,16 @@ end
 function check_triple(e :: Vector{Int}) :: Bool
     e[1] == e[2] == e[3] != 0
 end
+
+policy_size(:: Type{MetaTac}) :: UInt = 81
+
+# Data representation of the game as layered 2d image
+function representation(game :: Game) :: Array{Float32, 3}
+    data = zeros(Float32, 81, 2)
+    data[:, 1] = game.board
+    data[legal_actions(game), 2] .= 1
+    reshape(data, (9, 9, 2))
+end
+
+# Size of the data representation of the game
+Base.size(:: Game) :: Tuple{Int, Int, Int} = (9, 9, 2)
