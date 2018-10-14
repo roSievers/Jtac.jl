@@ -60,7 +60,7 @@ Base.size(:: Game) :: Tuple{Int, Int, Int} = error("unimplemented")
 
 # Convenience functions 
 random_action(game :: Game) = rand(legal_actions(game))
-random_turn!(game :: Game)  = apply_action!(random_action(game))
+random_turn!(game :: Game)  = apply_action!(game, random_action(game))
 
 function random_playout!(game :: Game) :: Game
   while !is_over(game)
