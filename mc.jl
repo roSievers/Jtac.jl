@@ -12,7 +12,7 @@
 
 mutable struct Node
     action :: Int8 # How we got here
-    parent :: Nullable{Node}
+    parent :: Union{Node, Nothing}
     children :: Array{Node}
     visit_counter :: Array{Float64} # Wie oft wurden die Kinder besucht?
     expected_reward :: Array{Float64}
@@ -20,11 +20,7 @@ mutable struct Node
 end
 
 function Node(action = 0, parent = nothing ) :: Node
-    if parent == nothing
-        Node(action, Nullable{Node}(), [], [], [], [])
-    else
-        Node(action, Nullable(parent), [], [], [], [])
-    end
+    Node(action, parent, [], [], [], [])
 end
 
 # Findet für einen Node alle zugelassenen Unterknoten und bewertet sie mit
