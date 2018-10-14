@@ -20,7 +20,7 @@ is_over(s :: Status) = s != nothing
 with_default(s :: Status, default :: Int) :: Int = is_over(s) ? s : default
 
 # The actions of a Jtacs Game are represented by canonical indices
-# from 1 to policy_size(game)
+# from 1 to policy_length(game)
 const ActionIndex = Int
 
 
@@ -38,12 +38,12 @@ function apply_action!(:: Game, :: ActionIndex) :: Nothing
   error("unimplemented")
 end
 
-function policy_size(:: Type{Game}) :: UInt
+function policy_length(:: Type{Game}) :: UInt
   error("unimplemented")
 end
 
-function policy_size(game :: G) :: UInt where G <: Game
-  policy_size(G)
+function policy_length(game :: G) :: UInt where G <: Game
+  policy_length(G)
 end
 
 # Return the game status
