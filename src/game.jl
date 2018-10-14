@@ -69,7 +69,7 @@ function random_playout!(game :: Game) :: Game
   game
 end
 
-function random_playout(game :: G = G()) :: Game where {G <: Game}
+function random_playout(game :: Game) :: Game
   random_playout!(copy(game))
 end
 
