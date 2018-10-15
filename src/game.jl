@@ -6,16 +6,18 @@ abstract type Game end
 #   nothing  : the game is not over yet
 #   1, 0, -1 : victory of player 1, draw, or victory of player 2
 # Other values lead to undefined behavior
-const Status = Union{Nothing, Int}
+#const Status = Union{Nothing, Int}
+const Status = Int
 
 # We are not sure about the concrete implementation of Status yet,
 # so we wrap it in a Status constructor that has the following properties:
-#   - is_over(Status(nothing)) must return false
+#   - is_over(Status()) must return false
 #   - is_over(Status(value)) must return true for value = 1,0,-1
 #   - Status(value) == value for value = 1,0,-1
-Status(value) = value
+Status(value :: Int) = value
+Status() = 42
 
-is_over(s :: Status) = s != nothing
+is_over(s :: Status) = s != 42
 
 with_default(s :: Status, default :: Int) :: Int = is_over(s) ? s : default
 
