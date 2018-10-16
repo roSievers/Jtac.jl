@@ -13,15 +13,18 @@ modelweights(::Model) = error("unimplemented")
 modelstate(::Model)   = error("unimplemented")
 # TODO: check if we can also leave the type of modelstate unspecified
 
+#
 # Applying a model
+#
+
 # Low level
-apply(weights, state, :: Type{Model}, :: Game) = error("unimplemented")
+# Takes raw weights and state and returns a result vector [value; policy]
+apply(weights, state, :: Type{Model}, :: Game) :: Vector{Float32} = error("unimplemented")
 
 # High level
-function apply(model :: M, game :: Game) :: Array{Float32} where M <: Model
-  apply(modelweights(model), modelstate(model), M, game)
+# Takes a complete model and returns tuple (value, policy)
+function apply(model :: M, game :: Game) :: Tuple{Float32, Vector{Float32}} where M <: Model
+  result = apply(modelweights(model), modelstate(model), M, game)
+  (result[1], result[2:end])
 end
 
-
-# Some toy models: DummyModel, RolloutModel, LinearModel
-include("models/toymodels.jl")
