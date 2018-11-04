@@ -133,7 +133,7 @@ end
 policy_length(:: Type{MetaTac}) :: UInt = 81
 
 # Data representation of the game as layered 2d image
-function representation(game :: Game) :: Array{Float32, 3}
+function representation(game :: MetaTac) :: Array{Float32, 3}
   data = zeros(Float32, 81, 2)
   data[:, 1] = game.board
   data[legal_actions(game), 2] .= 1
@@ -141,4 +141,26 @@ function representation(game :: Game) :: Array{Float32, 3}
 end
 
 # Size of the data representation of the game
-Base.size(:: Game) :: Tuple{Int, Int, Int} = (9, 9, 2)
+Base.size(:: MetaTac) :: Tuple{Int, Int, Int} = (9, 9, 2)
+
+
+function draw(game :: MetaTac) :: Nothing
+
+  board = reshape(game.board, (9,9))
+  symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
+
+  for i in 1:9
+    for j in 1:9
+      print(" $(symbols[board[j,i]])")
+      if j == 3 || j == 6 
+        print(" │") 
+      end
+    end
+    println()
+    if i == 3 || i == 6  
+      println(" $(repeat("─", 21))") 
+    end
+  end
+end
+
+
