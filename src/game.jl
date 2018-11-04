@@ -49,8 +49,19 @@ status(game :: Game) :: Status = error("unimplemented")
 legal_actions(:: Game) :: Vector{ActionIndex} = error("unimplemented")
 apply_action!(:: Game, :: ActionIndex) :: Nothing = error("unimplemented")
 
-# Data representation of the game as layered 2d image
+# Data representation of the game as layered 2d image from the perspective of
+# the active player (active player plays with 1, other with -1)
 representation(:: Game) :: Array{Float32, 3} = error("unimplemented")
+
+# Convenience function if we want to convert several games in a batch
+function representation(games :: Vector{G}) :: Array{Float32, 4} where G <: Game
+  @assert !isempty(games) "Cannot compute data representation of empty game vector"
+  results = zeros(Float32, (size(games[1])..., length(games)))
+  for i in length(games)
+    results[:,:,:,i] = representation(games[i])
+  end
+  results
+end
 
 # Size of the data representation of the game
 Base.size(:: Game) :: Tuple{Int, Int, Int} = error("unimplemented")

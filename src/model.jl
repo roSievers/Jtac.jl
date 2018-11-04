@@ -1,30 +1,19 @@
 
 # A (neural network) model that is trained by playing against itself.
 # Each concrete subtype of Model should provide a constructor that
-# takes a game to adapt the input and output dimensions
+# takes a game to adapt the input and output dimensions.
+#
+# Also, each subtype must be made callable with arguments of type
+# (:: Game) and (:: # Vector{Game})
+#
+# The output of applying a model is a Vector where the first entry
+# is the model prediction of the state value, and the 
+# policy_length(game) entries afterwards are the policy (expected to be
+# normalized).
+
 abstract type Model end
 
-# The model is usually characterized by
-#   - the model type
-#   - the model weights (updated by gradient descent during training)
-#   - the model state (not updated by gradient descent)
-# Both the weights and the state are assumed to be of type Array{Any}
-modelweights(::Model) = error("unimplemented")
-modelstate(::Model)   = error("unimplemented")
-# TODO: check if we can also leave the type of modelstate unspecified
-
-#
-# Applying a model
-#
-
-# Low level
-# Takes raw weights and state and returns a result vector [value; policy]
-apply(weights, state, :: Type{Model}, :: Game) :: Vector{Float32} = error("unimplemented")
-
-# High level
-# Takes a complete model and returns tuple (value, policy)
-function apply(model :: M, game :: Game) :: Tuple{Float32, Vector{Float32}} where M <: Model
-  result = apply(modelweights(model), modelstate(model), M, game)
-  (result[1], result[2:end])
+function apply(model :: Model, game :: Game)
+  result = model(game)
+  result[1], result[2:end]
 end
-

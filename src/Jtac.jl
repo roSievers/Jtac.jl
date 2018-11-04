@@ -10,6 +10,7 @@ include("model.jl")
 export Model
 
 # Model implementations
+include("models/layers.jl")
 include("models/toymodels.jl")
 export DummyModel, RolloutModel, LinearModel
 
@@ -23,5 +24,9 @@ include("games/metatac.jl")
 #include("games/four3d.jl")
 #include("games/chess.jl")
 export MetaTac #, Tac, Four3d, Chess
+
+# Loss for learning
+include("learning.jl")
+export loss, record_selfplay
 
 

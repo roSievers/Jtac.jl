@@ -135,7 +135,7 @@ policy_length(:: Type{MetaTac}) :: UInt = 81
 # Data representation of the game as layered 2d image
 function representation(game :: MetaTac) :: Array{Float32, 3}
   data = zeros(Float32, 81, 2)
-  data[:, 1] = game.board
+  data[:, 1] = game.current_player .* game.board
   data[legal_actions(game), 2] .= 1
   reshape(data, (9, 9, 2))
 end
