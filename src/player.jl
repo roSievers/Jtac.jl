@@ -35,6 +35,7 @@ function turn!(game :: Game, p :: PolicyPlayer) :: Nothing
   argmax(policy)
 end
 
+
 # Player that uses the soft (random) model policy decision directly
 struct SoftPolicyPlayer <: Player
   model :: Model
@@ -42,10 +43,7 @@ end
 
 function turn!(game :: Game, p :: SoftPolicyPlayer) :: Nothing
   policy = p.model(game)[2:end]
-  r = rand()
-  action = findfirst(x -> r <= x, cumsum(policy))
-  @assert action != nothing "policy vector is no proper probability"
-  action
+  draw_index(policy)
 end
 
 

@@ -92,23 +92,37 @@ function backpropagate!(node, value) :: Nothing
   end
 end
 
+# Cute little helper function that is also used in player.jl searches new home
+# file! Can you adopt it? Please?
+function draw_index(probs)
+  r = rand()
+  index = findfirst(x -> r <= x, cumsum(probs))
+  @assert index != nothing "probability vector is not proper!"
+  index
+end
+
 function mctree_turn!(game :: Game; 
                       power = 100,
                       model = RolloutModel(game)) :: Node
 
   root = Node()
   for i = 1:power
-      expand_tree_by_one!(root, game, model)
+    expand_tree_by_one!(root, game, model)
   end
   
-  # TODO: The paper states, that during self play we pick a move from the
+  # The paper states, that during self play we pick a move from the
   # improved stochastic policy root.visit_counter at random.
   # Note that visit_counter is generally prefered over expected_reward
   # when choosing the best move in a match, as it is less susceptible to
   # random fluctuations.
-  best_i = findmax(root.visit_counter)[2]
-  best_child = root.children[best_i]
-  apply_action!(game, best_child.action)
+  # TODO: We now also draw from root.visit_counter in real playthroughts,
+  # not only during learning. Think about this!
+  probs = root.visit_counter / sum(root.visit_counter)
+  #@show probs
+  chosen_i = draw_index(probs)
+  #chosen_i = findmax(root.visit_counter)[2]
+  chosen_child = root.children[chosen_i]
+  apply_action!(game, chosen_child.action)
   root
 end
 
