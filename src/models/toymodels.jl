@@ -4,8 +4,9 @@
 uniform_policy(length) = ones(Float32, length) / length
 
 function random_policy(length)
-  zeros(Float32, length)
-  zeros[rand(1:length)] = 1.
+  policy = zeros(Float32, length)
+  policy[rand(1:length)] = 1.
+  policy
 end
 
 # Dummy Model
