@@ -91,7 +91,7 @@ function draw(game :: TicTacToe) :: Nothing
     end
     println()
     if i != 3
-      println(" $(repeat("─", 7))") 
+      println(" $(repeat("─", 9))") 
     end
   end
 end
