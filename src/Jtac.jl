@@ -20,10 +20,10 @@ export mctree_turn!, mctree_vs_random
 
 # Game implementations
 include("games/metatac.jl")
-#include("games/tac.jl")
+include("games/tictactoe.jl")
 #include("games/four3d.jl")
 #include("games/chess.jl")
-export MetaTac #, Tac, Four3d, Chess
+export MetaTac, TicTacToe #, Four3d, Chess
 
 # Loss for learning
 include("learning.jl")
