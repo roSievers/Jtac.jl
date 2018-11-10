@@ -44,19 +44,18 @@ struct LinearModel <: Model
   layer :: Dense
 end
 
+
 function LinearModel(game :: Game)
-  layer = Dense(prod(size(game)), policy_length(game) + 1, x -> x)
+  layer = Dense(prod(size(game)), policy_length(game) + 1, tanh)
   LinearModel(layer)
 end
 
 function (m :: LinearModel)(games :: Vector{G}) where G <: Game
   data = representation(games)
   result = m.layer(data)
-
-  result[1,:] = tanh.(result[1,:])
-  result[2:end,:] = softmax(result[2:end,:], dims = 1)
-
-  result
+#  result[1,:] = tanh.(result[1,:])
+#  result[2:end,:] = softmax(result[2:end,:], dims = 1)
+  vcat(tanh.(result[1,:])', softmax(result[2:end,:], dims = 1))
 end
 
 (m :: LinearModel)(game :: Game) = reshape(m([game]), (policy_length(game) + 1,))
