@@ -45,6 +45,7 @@ is_over(game :: Game) = is_over(status(game))
 
 Base.copy(:: Game) :: Game = error("unimplemented") 
 status(game :: Game) :: Status = error("unimplemented")
+current_player(game :: Game) :: Int = error("unimplemented") # Must be 1 or -1.
 
 legal_actions(:: Game) :: Vector{ActionIndex} = error("unimplemented")
 apply_action!(:: Game, :: ActionIndex) :: Nothing = error("unimplemented")
