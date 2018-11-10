@@ -29,4 +29,9 @@ export MetaTac, TicTacToe #, Four3d, Chess
 include("learning.jl")
 export loss, record_selfplay
 
+# Players
+include("player.jl")
+export RandomPlayer, MCTPlayer, 
+       PolicyPlayer, SoftPolicyPlayer, 
+       HumanPlayer
 
