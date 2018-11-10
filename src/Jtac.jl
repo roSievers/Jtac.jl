@@ -12,7 +12,7 @@ export Model
 # Model implementations
 include("models/layers.jl")
 include("models/toymodels.jl")
-export DummyModel, RolloutModel, LinearModel
+export DummyModel, RandomModel, RolloutModel, LinearModel
 
 # Markov chain tree search with model predictions
 include("mc.jl")

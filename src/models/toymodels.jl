@@ -3,6 +3,11 @@
 # Some of the models will return uninformative policies
 uniform_policy(length) = ones(Float32, length) / length
 
+function random_policy(length)
+  zeros(Float32, length)
+  zeros[rand(1:length)] = 1.
+end
+
 # Dummy Model
 # This model always returns the neutral value 0 and a uniform policy vector.
 # Totally uninformative, and for debugging purposes only
@@ -16,6 +21,17 @@ DummyModel(game :: Game) = DummyModel(policy_length(game))
 (m :: DummyModel)(game :: Game) = Float32[ 0; uniform_policy(m.policy_length) ]
 (m :: DummyModel)(games :: Vector{G}) where G <: Game = hcat(m.(games)...)
 
+# Random Model
+# This model proposes a random policy
+
+struct RandomModel <: Model
+  policy_length :: Int
+end
+
+RandomModel(game :: Game) = RandomModel(policy_length(game))
+
+(m :: RandomModel)(game :: Game) = Float32[ 0; random_policy(m.policy_length) ]
+(m :: RandomModel)(games :: Vector{G}) where G <: Game = hcat(m.(games)...)
 
 # Rollout Model
 # This model executes random moves untile the game is over and reports the

@@ -13,7 +13,7 @@ function DataSet{G}() where G <: Game
 end
 
 # Calculates the loss function for a single data point.
-function loss(data :: Game, label :: Vector{Float32}, model :: Model)
+function loss(model :: Model, data :: Game, label :: Vector{Float32})
   output = model(data)
   value_loss = (output[1] - label[1])^2
   cross_entropy_loss = -sum(label[2:end] .* log.(output[2:end]))
@@ -22,10 +22,10 @@ function loss(data :: Game, label :: Vector{Float32}, model :: Model)
 end
 
 # Calculates the loss function for a whole data set.
-function loss(dataSet :: DataSet, model :: Model)
-  sum :: Float32 = 0
+function loss(model :: Model, dataSet :: DataSet)
+  sum = 0
   for i = 1:length(dataSet.data)
-    sum += loss(dataSet.data[i], dataSet.label[i], model)
+    sum += loss(model, dataSet.data[i], dataSet.label[i])
   end
   sum
 end
