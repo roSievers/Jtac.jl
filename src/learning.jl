@@ -2,7 +2,7 @@
 
 # Stores a replay of a selfplay which we may use to train the model
 mutable struct SelfplayReplay{G <: Game}
-  game_states :: Vector{G}
+  games :: Vector{G}
   # A list of normalized node.visit_counter
   posterior_distributions :: Vector{Vector{Float32}}
   # Possible values are -1, 0, 1.
@@ -14,9 +14,9 @@ function SelfplayReplay{G}() where G <: Game
 end
 
 # Calculates the loss function for a single game moment from a selfplay.
-function loss(game_state :: Game, posterior :: Vector{Float32}, result :: Float32, model :: Model) :: Float32
-  value, policy = apply(model, game_state)
-  value_loss = (value - result * game_state.current_player)^2
+function loss(game :: Game, posterior :: Vector{Float32}, result :: Float32, model :: Model) :: Float32
+  value, policy = apply(model, game)
+  value_loss = (value - result * game.current_player)^2
   cross_entropy_loss = - sum(posterior .* log.(policy))
 
   value_loss + cross_entropy_loss
@@ -25,8 +25,8 @@ end
 # Calculates the loss function for a whole selfplay
 function loss(replay :: SelfplayReplay, model :: Model)
   sum :: Float32 = 0
-  for i = 1:length(replay.game_states)
-    sum += loss(replay.game_states[i], replay.posterior_distributions[i], replay.game_result, model)
+  for i = 1:length(replay.game)
+    sum += loss(replay.game[i], replay.posterior_distributions[i], replay.game_result, model)
   end
   sum
 end
@@ -36,7 +36,7 @@ function record_selfplay(game :: G; power = 100, model = RolloutModel(game)) :: 
   game = copy(game)
   replay = SelfplayReplay{G}()
   while !is_over(game)
-    push!(replay.game_states, copy(game))
+    push!(replay.games, copy(game))
     actions = legal_actions(game)
     node = mctree_turn!(game, power = power, model = model)
 
