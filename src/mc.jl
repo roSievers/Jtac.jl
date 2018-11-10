@@ -18,24 +18,23 @@ end
 # Find all children for a node and assesses them through the model.
 # The state value predicted by the model is returned.
 function expand!(node :: Node, game :: Game, model :: Model) :: Float64
+  # We need to first check if the game is still active
+  # and only evaluate the model on those games.
+  if is_over(game)
+    return status(game)*current_player(game) 
+  end
+
   actions = legal_actions(game)
-  # TODO: We can not rely on the model to correctly decide the output,
-  # even for a game that is already over. Here we need to first check if
-  # the game is still active and only evaluate the model on those games.
   value, policy = apply(model, game)
 
-  if isempty(actions)
-    value
-  else
-    # Initialize the vectors that will be filled with info about the children 
-    node.children = Node.(actions, node)
-    node.visit_counter = zeros(UInt, length(node.children))
-    node.expected_reward = zeros(UInt, length(node.children))
+  # Initialize the vectors that will be filled with info about the children 
+  node.children = Node.(actions, node)
+  node.visit_counter = zeros(UInt, length(node.children))
+  node.expected_reward = zeros(UInt, length(node.children))
 
-    # Filter and normalize the policy vector returned by the network
-    node.model_policy = policy[actions] / sum(policy[actions])
-    value
-  end
+  # Filter and normalize the policy vector returned by the network
+  node.model_policy = policy[actions] / sum(policy[actions])
+  value
 end
 
 # Helper function that returns true when a Node is a leaf
