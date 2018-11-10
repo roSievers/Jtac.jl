@@ -125,10 +125,11 @@ function record_selfplay(game; power = 100, model = RolloutModel(game))
   node_list
 end
 
-function mctree_vs_random(game; power = 100, model = RolloutModel(game))
+function mctree_vs_random(game; power = 100, model = RolloutModel(game), start_player = 1)
+  @assert start_player == 1 || start_player == -1 "start_player must be 1 or -1"
   game = copy(game)
   while !is_over(game)
-    if current_player(game) == 1
+    if current_player(game) == start_player
       mctree_turn!(game, power = power, model = model)
     else
       random_turn!(game)
