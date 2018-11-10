@@ -31,7 +31,7 @@ RolloutModel(game :: Game) = RolloutModel(policy_length(game))
 function (m :: RolloutModel)(game :: Game)
   result = random_playout(game)
   # We can be sure that is_over(result) holds, thus typeof(status(result)) == Int
-  Float32[ status(result) * game.current_player; uniform_policy(m.policy_length) ]
+  Float32[ status(result) * current_player(game); uniform_policy(m.policy_length) ]
 end
 
 (m :: RolloutModel)(games :: Vector{G}) where G <: Game = hcat(m.(games)...)

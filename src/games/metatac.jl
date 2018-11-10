@@ -24,6 +24,8 @@ function Base.copy(s :: MetaTac) :: MetaTac
   )
 end
 
+current_player(game :: MetaTac) :: Int = game.current_player
+
 # Returns a list of the Indices of all legal actions
 function legal_actions(game :: MetaTac) :: Vector{ActionIndex}
   ActionIndex[ index for index in 1:81 if is_action_legal(game, index) ]

@@ -19,6 +19,9 @@ end
 # The state value predicted by the model is returned.
 function expand!(node :: Node, game :: Game, model :: Model) :: Float64
   actions = legal_actions(game)
+  # TODO: We can not rely on the model to correctly decide the output,
+  # even for a game that is already over. Here we need to first check if
+  # the game is still active and only evaluate the model on those games.
   value, policy = apply(model, game)
 
   if isempty(actions)
@@ -125,7 +128,7 @@ end
 function mctree_vs_random(game; power = 100, model = RolloutModel(game))
   game = copy(game)
   while !is_over(game)
-    if game.current_player == 1
+    if current_player(game) == 1
       mctree_turn!(game, power = power, model = model)
     else
       random_turn!(game)
