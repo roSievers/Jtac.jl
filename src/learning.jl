@@ -12,6 +12,13 @@ function DataSet{G}() where G <: Game
   DataSet(Vector{G}(), Vector{Vector{Float32}}())
 end
 
+function Base.merge(d :: DataSet{G}, ds...) where G <: Game
+  dataset = DataSet{G}()
+  dataset.data = vcat([d.data, (x.data for x in ds)...]...)
+  dataset.label = vcat([d.label, (x.label for x in ds)...]...)
+  dataset
+end
+
 # Calculates the loss function for a single data point.
 function loss(model :: Model, data :: Game, label :: Vector{Float32})
   output = model(data)
@@ -31,27 +38,31 @@ function loss(model :: Model, dataset :: DataSet)
 end
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay(game :: G; power = 100, model = RolloutModel(game)) :: DataSet{G} where G <: Game
-  game = copy(game)
-  dataset = DataSet{G}()
-  while !is_over(game)
-    push!(dataset.data, copy(game))
-    actions = legal_actions(game)
-    node = mctree_turn!(game, power = power, model = model)
+function record_selfplay(startgame :: G, n = 1; power = 100, model = RolloutModel(startgame)) :: DataSet{G} where G <: Game
+  sets = map(1:n) do _
+    game = copy(startgame)
+    dataset = DataSet{G}()
+    while !is_over(game)
+      push!(dataset.data, copy(game))
+      actions = legal_actions(game)
+      node = mctree_turn!(game, power = power, model = model)
 
-    # The visit counters are stored in a dense array where each entry
-    # corresponds to a legal move. We need the policy over all moves
-    # including zeros for illegal moves. Here we do the transformation.
-    # We also add a leading zero which correspond to the outcome prediction.
-    posterior_distribution = node.visit_counter / sum(node.visit_counter)
-    improved_policy = zeros(1 + policy_length(game))
-    improved_policy[actions .+ 1] = posterior_distribution
-    push!(dataset.label, improved_policy)
+      # The visit counters are stored in a dense array where each entry
+      # corresponds to a legal move. We need the policy over all moves
+      # including zeros for illegal moves. Here we do the transformation.
+
+      # We also add a leading zero which correspond to the outcome prediction.
+      posterior_distribution = node.visit_counter / sum(node.visit_counter)
+      improved_policy = zeros(1 + policy_length(game))
+      improved_policy[actions .+ 1] = posterior_distribution
+      push!(dataset.label, improved_policy)
+    end
+    game_result = status(game)
+    # We left the first entry for each label empty for the game result
+    for i = 1:length(dataset.data)
+      dataset.label[i][1] = current_player(dataset.data[i]) * game_result
+    end
+    dataset
   end
-  game_result = status(game)
-  # We left the first entry for each label empty for the game result
-  for i = 1:length(dataset.data)
-    dataset.label[i][1] = current_player(dataset.data[i]) * game_result
-  end
-  dataset
+  merge(sets...)
 end
