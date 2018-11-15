@@ -1,14 +1,18 @@
 
-# A player is an agent that can change a game by making turns
+# A player is an agent that can change a game by choosing actions to perform
 abstract type Player end
 
-turn!(game :: Game, p :: Player) :: Nothing = error("Not implemented")
+# This method must be implemented by each player
+think(game :: Game, p :: Player) :: ActionIndex = error("Not implemented")
+
+# Convenience function to automatically alter the game
+turn!(game :: Game, p :: Player) = apply_action!(game, think(game, p))
 
 
 # A player that always chooses random actions from allowed ones
 struct RandomPlayer <: Player end
 
-turn!(game :: Game, p :: RandomPlayer) :: Nothing = random_turn!(game)
+think(game :: Game, p :: RandomPlayer) :: ActionIndex = random_action(game)
 
 
 # A player that has a model that it can ask for decision making 
@@ -17,10 +21,10 @@ struct MCTPlayer <: Player
   power :: Int
 end
 
-MCTPlayer(model, power = 100) = MCTPlayer(model, power)
+MCTPlayer(model) = MCTPlayer(model, 100)
 
-function turn!(game :: Game, p :: MCTPlayer) :: Nothing
-  mctree_turn!(game, power = p.power, model = p.model)
+function think(game :: Game, p :: MCTPlayer) :: ActionIndex
+  mctree_action(game, power = p.power, model = p.model)
   nothing
 end
 
@@ -30,7 +34,7 @@ struct PolicyPlayer <: Player
   model :: Model
 end
 
-function turn!(game :: Game, p :: PolicyPlayer) :: Nothing
+function think(game :: Game, p :: PolicyPlayer) :: ActionIndex
   policy = p.model(game)[2:end]
   argmax(policy)
 end
@@ -41,7 +45,7 @@ struct SoftPolicyPlayer <: Player
   model :: Model
 end
 
-function turn!(game :: Game, p :: SoftPolicyPlayer) :: Nothing
+function think(game :: Game, p :: SoftPolicyPlayer) :: ActionIndex
   policy = p.model(game)[2:end]
   choose_index(policy)
 end
@@ -55,15 +59,15 @@ end
 
 HumanPlayer() = HumanPlayer("player")
 
-function turn!(game :: Game, p :: HumanPlayer) :: Nothing
+function think(game :: Game, p :: HumanPlayer) :: ActionIndex
+  println()
   draw(game)
   while true
     print("$(p.name): ")
     input = readline()
     try 
       action = parse(Int, input)
-      apply_action!(game, action)
-      break
+      return action
     catch error
       if isa(error, ArgumentError)
         println("Cannot parse action ($error)")

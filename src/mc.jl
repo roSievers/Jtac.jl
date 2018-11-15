@@ -101,11 +101,12 @@ function choose_index(probs)
   index
 end
 
-function mctree_turn!(game :: Game; 
-                      power = 100,
-                      model = RolloutModel(game)) :: Node
+function mctree_action(game :: Game;
+                       root = Node(), # To track the expansion
+                       power = 100,
+                       model = RolloutModel(game)) :: Node
 
-  root = Node()
+  # Expand the root node
   for i = 1:power
     expand_tree_by_one!(root, game, model)
   end
@@ -118,11 +119,18 @@ function mctree_turn!(game :: Game;
   # TODO: We now also draw from root.visit_counter in real playthroughts,
   # not only during learning. Think about this!
   probs = root.visit_counter / sum(root.visit_counter)
-  #@show probs
   chosen_i = choose_index(probs)
-  #chosen_i = findmax(root.visit_counter)[2]
-  chosen_child = root.children[chosen_i]
-  apply_action!(game, chosen_child.action)
+
+  root.children[chosen_i].action
+end
+
+function mctree_turn!(game :: Game; 
+                      power = 100,
+                      model = RolloutModel(game)) :: Node
+
+  root = Node()
+  action = mctree_action(game, power = power, model = model, root = root)
+  apply_action!(game, action)
   root
 end
 

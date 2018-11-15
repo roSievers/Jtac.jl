@@ -54,26 +54,3 @@ end
 (m :: RolloutModel)(games :: Vector{G}) where G <: Game = hcat(m.(games)...)
 
 
-# Linear Model
-# A linear model that will perform terrible
-
-function LinearModel(game :: Game)
-  logitmodel = Dense(prod(size(game)), policy_length(game) + 1, id)
-  GenericModel(logitmodel)
-end
-
-
-function MLP(game :: Game, hidden, f = relu)
-  widths = [ prod(size(game)), hidden..., policy_length(game) + 1 ]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
-  GenericModel(Chain(layers...))
-end
-
-
-function SimpleConv(game :: Game, channels, f = relu)
-  logitmodel = Chain(
-    Conv(size(game, 3), channels, f),
-    Dense(channels, policy_length(game) + 1, id)
-  )
-  GenericModel(logitmodel)
-end
