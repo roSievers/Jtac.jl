@@ -126,18 +126,6 @@ function mctree_turn!(game :: Game;
   root
 end
 
-function record_selfplay(game; power = 100, model = RolloutModel(game))
-  node_list = Vector{Tuple{Game, Node}}()
-  while !is_over(game)
-    game_copy = copy(game)
-    current_root = mctree_turn!(game, power = power, model = model)
-    # Remove all children to save memory
-    current_root.children = []
-    push!(node_list, (game_copy, current_root))
-  end
-  node_list
-end
-
 function mctree_vs_random(game; power = 100, model = RolloutModel(game), tree_player = 1)
   @assert tree_player == 1 || tree_player == -1 "tree_player must be 1 or -1"
   game = copy(game)
