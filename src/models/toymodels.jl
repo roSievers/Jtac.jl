@@ -57,23 +57,23 @@ end
 # Linear Model
 # A linear model that will perform terrible
 
-struct LinearModel <: Model
-  layer :: Dense
-end
-
-
 function LinearModel(game :: Game)
-  layer = Dense(prod(size(game)), policy_length(game) + 1, tanh)
-  LinearModel(layer)
+  logitmodel = Dense(prod(size(game)), policy_length(game) + 1, id)
+  GenericModel(logitmodel)
 end
 
-function (m :: LinearModel)(games :: Vector{G}) where G <: Game
-  data = representation(games)
-  result = m.layer(data)
-#  result[1,:] = tanh.(result[1,:])
-#  result[2:end,:] = softmax(result[2:end,:], dims = 1)
-  vcat(tanh.(result[1,:])', softmax(result[2:end,:], dims = 1))
+
+function MLP(game :: Game, hidden, f = relu)
+  widths = [ prod(size(game)), hidden..., policy_length(game) + 1 ]
+  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
+  GenericModel(Chain(layers...))
 end
 
-(m :: LinearModel)(game :: Game) = reshape(m([game]), (policy_length(game) + 1,))
 
+function SimpleConv(game :: Game, channels, f = relu)
+  logitmodel = Chain(
+    Conv(1, channels, f),
+    Dense(channels, policy_length(game) + 1, id)
+  )
+  GenericModel(logitmodel)
+end
