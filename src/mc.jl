@@ -94,7 +94,7 @@ end
 
 # Cute little helper function that is also used in player.jl searches new home
 # file! Can you adopt it? Please?
-function draw_index(probs)
+function choose_index(probs)
   r = rand()
   index = findfirst(x -> r <= x, cumsum(probs))
   @assert index != nothing "probability vector is not proper!"
@@ -119,7 +119,7 @@ function mctree_turn!(game :: Game;
   # not only during learning. Think about this!
   probs = root.visit_counter / sum(root.visit_counter)
   #@show probs
-  chosen_i = draw_index(probs)
+  chosen_i = choose_index(probs)
   #chosen_i = findmax(root.visit_counter)[2]
   chosen_child = root.children[chosen_i]
   apply_action!(game, chosen_child.action)

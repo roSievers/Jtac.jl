@@ -43,7 +43,7 @@ end
 
 function turn!(game :: Game, p :: SoftPolicyPlayer) :: Nothing
   policy = p.model(game)[2:end]
-  draw_index(policy)
+  choose_index(policy)
 end
 
 

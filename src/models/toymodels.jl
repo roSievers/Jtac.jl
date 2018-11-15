@@ -72,7 +72,7 @@ end
 
 function SimpleConv(game :: Game, channels, f = relu)
   logitmodel = Chain(
-    Conv(1, channels, f),
+    Conv(size(game, 3), channels, f),
     Dense(channels, policy_length(game) + 1, id)
   )
   GenericModel(logitmodel)

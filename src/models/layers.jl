@@ -61,25 +61,3 @@ function (c :: Chain)(x)
   end
   x
 end
-
-
-# Generic Model
-# Wrapper around a model that generates 1 + policy_length "logit" values
-
-struct GenericModel <: Model
-  logitmodel  # Takes input and returns "logits"
-  vconv       # Converts value-logit to value
-  pconv       # Converts policy-logits to policy
-end
-
-function GenericModel(logitmodel; vconv = tanh, pconv = softmax)
-  GenericModel(logitmodel, vconv, pconv)
-end
-
-function (m :: GenericModel)(games :: Vector{G}) where G <: Game
-  data = representation(games)
-  result = m.logitmodel(data)
-  vcat(m.vconv.(result[1:1,:]), m.pconv(result[2:end,:], dims = 1))
-end
-
-(m :: GenericModel)(game :: Game) = reshape(m([game]), (policy_length(game) + 1,))

@@ -66,6 +66,7 @@ end
 
 # Size of the data representation of the game
 Base.size(:: Game) :: Tuple{Int, Int, Int} = error("unimplemented")
+Base.size(g :: Game, v) = size(g)[v]
 
 # Length of the policy vector
 policy_length(:: Type{Game}) :: Int = error("unimplemented")

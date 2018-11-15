@@ -1,18 +1,32 @@
 # Jtac.jl
 # A julia implementation of the Alpha zero learning design
 
+module Jtac
+
+# We use machine learning capabilities of the package Knet.jl
+using AutoGrad, Knet
+
 # Interface that games must satisfy and some convenience functions
 include("game.jl")
-export Game, Status, ActionIndex
+export Game, Status, ActionIndex,
+       status, current_player, legal_actions, apply_action!, 
+       representation, policy_length, random_playout, draw
+
 
 # Interface for models
 include("model.jl")
-export Model
+export Model, apply
+
+# Model building blocks 
+include("models/layers.jl")
+export Dense, Conv, Chain, id
 
 # Model implementations
-include("models/layers.jl")
 include("models/toymodels.jl")
-export DummyModel, RandomModel, RolloutModel, LinearModel
+export DummyModel, RandomModel, RolloutModel
+
+include("models/genericmodels.jl")
+export GenericModel, LinearModel, MLP, SimpleConv
 
 # Markov chain tree search with model predictions
 include("mc.jl")
@@ -27,11 +41,12 @@ export MetaTac, TicTacToe #, Four3d, Chess
 
 # Loss for learning
 include("learning.jl")
-export loss, record_selfplay
+export DataSet, loss, record_selfplay
 
 # Players
 include("player.jl")
 export RandomPlayer, MCTPlayer, 
        PolicyPlayer, SoftPolicyPlayer, 
-       HumanPlayer
+       HumanPlayer, pvp
 
+end # module JTac
