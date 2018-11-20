@@ -25,8 +25,8 @@ export Dense, Conv, Chain, id
 include("models/toymodels.jl")
 export DummyModel, RandomModel, RolloutModel
 
-include("models/genericmodels.jl")
-export GenericModel, LinearModel, MLP, SimpleConv
+include("models/basemodels.jl")
+export BaseModel, LinearModel, MLP, SimpleConv
 
 # Markov chain tree search with model predictions
 include("mc.jl")

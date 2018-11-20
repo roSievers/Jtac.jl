@@ -25,7 +25,6 @@ MCTPlayer(model) = MCTPlayer(model, 100)
 
 function think(game :: Game, p :: MCTPlayer) :: ActionIndex
   mctree_action(game, power = p.power, model = p.model)
-  nothing
 end
 
 

@@ -1,40 +1,5 @@
 # Neural network layers that can be used to create more complicated models
 
-using AutoGrad
-using Knet
-
-# Auxiliary functions
-
-# Identity. Need to give the primitive due to current AutoGrad limitations
-id(x) = x
-@primitive id(x),dy (dy)
-
-# Check if something is a AutoGrad param or not
-is_param(array) = typeof(array) <: Param
-
-# Layers
-
-abstract type Layer{GPU} end
-
-# Conversion of layers from and to cpu
-to_cpu(l :: Layer{false}) :: Layer{false} = l
-to_gpu(l :: Layer{true}) :: Layer{true} = l
-
-to_cpu(l :: Layer{true}) :: Layer{false} = swap(l)
-to_gpu(l :: Layer{false}) :: Layer{true} = swap(l)
-
-swap(l :: Layer) = error("Not implemented")
-
-# Check if a layer lives on the gpu
-on_gpu(:: Layer{GPU}) :: Bool = GPU
-
-# Copy a layer
-Base.copy(l :: Layer) :: Layer = error("Not implemented")
-
-# Convert GPU :: Bool to the representing array type
-atype(gpu :: Bool) = gpu ? KnetArray{Float32} : Array{Float32}
-
-
 # Dense layers
 
 struct Dense{GPU} <: Layer{GPU}
@@ -59,6 +24,7 @@ function swap(d :: Dense{GPU}) where {GPU}
   Dense{!GPU}(Param(w), is_param(d.b) ? Param(b) : b, d.f)
 end
 
+Base.copy(d :: Dense{GPU}) where {GPU} = Dense{GPU}(copy(d.w), copy(d.b), d.f)
 
 # Convolutional layer
 
@@ -85,6 +51,8 @@ function swap(c :: Conv{GPU}) where {GPU}
   Conv{!GPU}(Param(w), is_param(c.b) ? Param(b) : b, c.f)
 end
 
+Base.copy(c :: Conv{GPU}) where {GPU} = Conv{GPU}(copy(c.w), copy(c.b), c.f)
+
 
 # Chaining of layers
 
@@ -102,5 +70,4 @@ function (c :: Chain)(x)
 end
 
 swap(c :: Chain{GPU}) where {GPU} = Chain{!GPU}(swap.(c.layers)...)
-
-
+Base.copy(c :: Chain{GPU}) where {GPU} = Chain{GPU}(copy.(c.layers)...)

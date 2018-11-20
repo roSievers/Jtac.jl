@@ -104,7 +104,7 @@ end
 function mctree_action(game :: Game;
                        root = Node(), # To track the expansion
                        power = 100,
-                       model = RolloutModel(game)) :: Node
+                       model = RolloutModel(game)) :: ActionIndex
 
   # Expand the root node
   for i = 1:power
