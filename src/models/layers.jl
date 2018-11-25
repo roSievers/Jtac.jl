@@ -1,4 +1,4 @@
-# Neural network layers that can be used to create more complicated models
+# Neural network layers that can be used to create more complex models
 
 # Dense layers
 
@@ -25,6 +25,7 @@ function swap(d :: Dense{GPU}) where {GPU}
 end
 
 Base.copy(d :: Dense{GPU}) where {GPU} = Dense{GPU}(copy(d.w), copy(d.b), d.f)
+
 
 # Convolutional layer
 
@@ -69,5 +70,6 @@ function (c :: Chain)(x)
   x
 end
 
-swap(c :: Chain{GPU}) where {GPU} = Chain{!GPU}(swap.(c.layers)...)
-Base.copy(c :: Chain{GPU}) where {GPU} = Chain{GPU}(copy.(c.layers)...)
+swap(c :: Chain{GPU}) where {GPU} = Chain(swap.(c.layers)...)
+Base.copy(c :: Chain{GPU}) where {GPU} = Chain(copy.(c.layers)...)
+

@@ -1,5 +1,5 @@
 
-# Neural network architectures are usually composed from different layers. We
+# Neural network architectures are usually composed of different layers. We
 # want separate types for Models on the one hand, which we can apply to games,
 # and Layers on the other hand, which are applied to raw data and are
 # composable. Both of these types, however, come in two flavors: living on the
@@ -56,3 +56,8 @@ atype(gpu :: Bool) = gpu ? KnetArray{Float32} : Array{Float32}
 
 # Check if something is a AutoGrad param or not
 is_param(array) = typeof(array) <: Param
+
+# Fix for failure to copy param, issue #102 in AutoGrad.jl
+Base.copy(p :: Param) = Param(copy(value(p)))
+
+
