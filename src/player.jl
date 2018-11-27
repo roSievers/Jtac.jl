@@ -66,13 +66,18 @@ function think(game :: Game, p :: HumanPlayer) :: ActionIndex
     input = readline()
     try 
       action = parse(Int, input)
-      return action
+      if !is_action_legal(game, action)
+        println("Action $input is illegal ($error)")
+      else
+        return action
+      end
     catch error
       if isa(error, ArgumentError)
         println("Cannot parse action ($error)")
       else
-        println("Action $input is illegal ($error)")
+        println("An unknown error occured: $error")
       end
+
     end
   end
 end
