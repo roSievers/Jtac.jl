@@ -28,7 +28,7 @@ function legal_actions(game :: TicTacToe) :: Vector{ActionIndex}
 end
 
 # A action is legal, if the board position is still empty
-function is_action_legal(game :: TicTacToe, index) :: Bool
+function is_action_legal(game :: TicTacToe, index :: ActionIndex) :: Bool
   game.board[index] == 0 &&
   !is_over(game)
 end
@@ -77,6 +77,34 @@ Base.size(:: TicTacToe) :: Tuple{Int, Int, Int} = (3, 3, 1)
 function representation(game :: TicTacToe) :: Array{Float32, 3}
   reshape(game.current_player .* game.board, (3, 3, 1))
 end
+
+hmirror(matrix) = matrix[end:-1:1, :]
+vmirror(matrix) = matrix[:, end:-1:1]
+
+function apply_dihedral_group(matrix)
+  [
+    matrix |> copy,
+    matrix |> hmirror,
+    matrix |> transpose,
+    matrix |> vmirror,
+    matrix |> transpose |> hmirror,
+    matrix |> hmirror |> transpose,
+    matrix |> vmirror |> hmirror,
+    matrix |> vmirror |> hmirror |> vmirror
+  ]
+end
+
+function augment(game :: TicTacToe, label :: Vector{Float32})
+  boards = apply_dihedral_group(reshape(game.board, (3,3))) 
+  games = [ TicTacToe(reshape(b, (9,)), game.current_player, game.status) for b in boards ]
+
+  matpol = reshape(label[2:end], (3, 3))
+  matpols = apply_dihedral_group(matpol)
+  labels = [ vcat(label[1], reshape(mp, (9,))) for mp in matpols ]
+
+  games, labels
+end
+
 
 function draw(game :: TicTacToe) :: Nothing
   board = reshape(game.board, (3,3))

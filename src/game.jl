@@ -94,6 +94,15 @@ function random_playout(game :: Game) :: Game
   random_playout!(copy(game))
 end
 
+# This should be implemented by the specific game for performance reasons
+function is_action_legal(game :: Game, action :: ActionIndex)
+  action in legal_actions(game)
+end
+
+# This should be implemented using the symmetries of the specific game
+function augment(game :: Game, label) :: Tuple{Vector{Game}, Vector{Vector{Float32}}}
+  [game], [label]
+end
 
 #
 # Optional interface functions

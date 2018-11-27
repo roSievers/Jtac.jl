@@ -8,6 +8,7 @@ mutable struct DataSet{G <: Game}
   label :: Vector{Vector{Float32}}
 end
 
+# TODO: make sure that data and label must always have the same length!
 function DataSet{G}() where G <: Game
   DataSet(Vector{G}(), Vector{Vector{Float32}}())
 end
@@ -17,6 +18,16 @@ function Base.merge(d :: DataSet{G}, ds...) where G <: Game
   dataset.data = vcat([d.data, (x.data for x in ds)...]...)
   dataset.label = vcat([d.label, (x.label for x in ds)...]...)
   dataset
+end
+
+Base.length(d :: DataSet) = length(d.data)
+
+function augment2(data, label)
+  DataSet(augment(data, label)...)
+end
+
+function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
+  merge(augment2.(d.data, d.label)...)
 end
 
 # Calculates the loss function for a single data point.

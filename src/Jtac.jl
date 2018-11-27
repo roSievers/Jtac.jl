@@ -10,7 +10,8 @@ using AutoGrad, Knet
 include("game.jl")
 export Game, Status, ActionIndex,
        status, current_player, legal_actions, apply_action!, 
-       representation, policy_length, random_playout, draw
+       is_action_legal, representation, policy_length, random_playout, 
+       augment, draw
 
 
 # Interface for models

@@ -35,7 +35,7 @@ end
 #   - The game is still active
 #   - The region is available
 #   - The board position is still empty
-function is_action_legal(game :: MetaTac, index) :: Bool
+function is_action_legal(game :: MetaTac, index :: ActionIndex) :: Bool
   game.board[index] == 0 &&
   is_region_allowed(game, region(index)) &&
   !is_over(game)
