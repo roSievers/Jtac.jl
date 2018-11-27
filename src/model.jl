@@ -20,7 +20,6 @@ to_gpu(el :: Element{false}) :: Element{true}  = swap(el)
 Base.copy(l :: Element) :: Element = error("Not implemented")
 
 
-
 # A (neural network) model that is trained by playing against itself. Each
 # concrete subtype of Model should provide a constructor that takes a game to
 # adapt the input and output dimensions.
@@ -40,6 +39,18 @@ function apply(model :: Model, game :: Game)
 end
 
 is_compatible(:: Model, :: Game) = error("Not implemented")
+
+# Saving and loading models, only for models on the CPU
+# Maybe we should think about something more version-stable here,
+# because this can break if AutoGrad, or Knet, or BSON, or Jtac changes
+
+function save_model(fname :: String, model :: Model{false})
+  bson(fname * ".jtm", model = model)
+end
+
+function load_model(fname :: String)
+  BSON.load(fname * ".jtm")[:model]
+end
 
 
 # A layer is a functional element that provides a parameterized mapping from

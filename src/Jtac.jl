@@ -6,6 +6,11 @@ module Jtac
 # We use machine learning capabilities of the package Knet.jl
 using AutoGrad, Knet
 
+export AutoGrad, Knet
+
+# We save models/games via BSON.jl
+using BSON
+
 # Interface that games must satisfy and some convenience functions
 include("game.jl")
 export Game, Status, ActionIndex,
