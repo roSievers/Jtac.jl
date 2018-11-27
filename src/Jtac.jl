@@ -21,7 +21,7 @@ export Game, Status, ActionIndex,
 
 # Interface for models
 include("model.jl")
-export Model, apply
+export Model, apply, save_model, load_model
 
 # Model building blocks 
 include("models/layers.jl")
