@@ -31,8 +31,16 @@ function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
 end
 
 # Calculates the loss function for a single data point.
-function loss(model :: Model, data :: Game, label :: Vector{Float32})
+function loss(model :: Model{GPU}, data :: Game, label) where {GPU}
+
+  # Push the label vector to the gpu if the model lives there
+  at = atype(GPU)
+  label = convert(at, label)
+
+  # Apply the model
   output = model(data)
+
+  # Calculate and return the loss
   value_loss = (output[1] - label[1])^2
   cross_entropy_loss = -sum(label[2:end] .* log.(output[2:end]))
 
@@ -49,7 +57,8 @@ function loss(model :: Model, dataset :: DataSet)
 end
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay(startgame :: G, n = 1; power = 100, model = RolloutModel(startgame)) :: DataSet{G} where G <: Game
+function record_selfplay(model :: Model{GPU, G}, startgame :: G = G(), n = 1; 
+                         power = 100, augment = true) :: DataSet{G} where {GPU, G}
   sets = map(1:n) do _
     game = copy(startgame)
     dataset = DataSet{G}()
@@ -75,5 +84,27 @@ function record_selfplay(startgame :: G, n = 1; power = 100, model = RolloutMode
     end
     dataset
   end
-  merge(sets...)
+  if augment
+    merge(sets...) |> Jtac.augment
+  else
+    merge(sets...)
+  end
 end
+
+# Set the optimizer
+function set_optimizer!(model :: Model, opt = Adam; kwargs...)
+  for param in params(model)
+    param.opt = opt(; kwargs...)
+  end
+end
+
+# A single training step, the loss is returned
+function train_step!(model :: Model, dataset :: DataSet)
+  tape = @diff loss(model, dataset)
+  for param in params(model)
+    update!(value(param), grad(tape, param), param.opt)
+  end
+  value(tape)
+end
+
+

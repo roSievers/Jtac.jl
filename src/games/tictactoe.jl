@@ -68,10 +68,10 @@ end
 
 status(game :: TicTacToe) :: Status = game.status
 
-policy_length(:: Type{TicTacToe}) :: UInt = 9
+policy_length(:: Type{TicTacToe}) :: Int = 9
 
 # Size of the data representation of the game
-Base.size(:: TicTacToe) :: Tuple{Int, Int, Int} = (3, 3, 1)
+Base.size(:: Type{TicTacToe}) :: Tuple{Int, Int, Int} = (3, 3, 1)
 
 # Data representation of the game as layered 2d image
 function representation(game :: TicTacToe) :: Array{Float32, 3}

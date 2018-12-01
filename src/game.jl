@@ -65,20 +65,21 @@ function representation(games :: Vector{G}) :: Array{Float32, 4} where G <: Game
 end
 
 # Size of the data representation of the game
-Base.size(:: Game) :: Tuple{Int, Int, Int} = error("unimplemented")
-Base.size(g :: Game, v) = size(g)[v]
+Base.size(:: Type{Game}) :: Tuple{Int, Int, Int} = error("unimplemented")
+Base.size(:: Type{G}, v) where {G} = size(G)[v]
+
+Base.size(:: G) where {G <: Game} = size(G)
+Base.size(:: G, v) where {G <: Game} = size(G, v)
 
 # Length of the policy vector
 policy_length(:: Type{Game}) :: Int = error("unimplemented")
+policy_length(:: G) where {G <: Game} = policy_length(G)
 
 
 #
 # Convenience functions 
 #
 
-function policy_length(game :: G) :: Int where G <: Game
-  policy_length(G)
-end
 
 random_action(game :: Game) = rand(legal_actions(game))
 random_turn!(game :: Game)  = apply_action!(game, random_action(game))

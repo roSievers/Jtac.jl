@@ -132,7 +132,10 @@ function tic_tac_toc_status(board :: Matrix{Int}) :: Status
   end
 end
 
-policy_length(:: Type{MetaTac}) :: UInt = 81
+policy_length(:: Type{MetaTac}) :: Int = 81
+
+# Size of the data representation of the game
+Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 2)
 
 # Data representation of the game as layered 2d image
 function representation(game :: MetaTac) :: Array{Float32, 3}
@@ -142,8 +145,6 @@ function representation(game :: MetaTac) :: Array{Float32, 3}
   reshape(data, (9, 9, 2))
 end
 
-# Size of the data representation of the game
-Base.size(:: MetaTac) :: Tuple{Int, Int, Int} = (9, 9, 2)
 
 
 function draw(game :: MetaTac) :: Nothing

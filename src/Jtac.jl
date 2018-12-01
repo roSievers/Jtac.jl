@@ -47,7 +47,8 @@ export MetaTac, TicTacToe #, Four3d, Chess
 
 # Loss for learning
 include("learning.jl")
-export DataSet, loss, record_selfplay
+export DataSet, loss, record_selfplay, 
+       set_optimizer!, train_step!
 
 # Players
 include("player.jl")

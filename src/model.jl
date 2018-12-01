@@ -31,14 +31,13 @@ Base.copy(l :: Element) :: Element = error("Not implemented")
 # prediction of the state value, and the policy_length(game) entries afterwards
 # are the policy (expected to be normalized).
 
-abstract type Model{GPU} <: Element{GPU} end
+abstract type Model{GPU, G <: Game} <: Element{GPU} end
 
-function apply(model :: Model, game :: Game)
+function apply(model :: Model{GPU, G}, game :: G) where {GPU, G}
   result = model(game)
   result[1], result[2:end]
 end
 
-is_compatible(:: Model, :: Game) = error("Not implemented")
 
 # Saving and loading models, only for models on the CPU
 # Maybe we should think about something more version-stable here,
