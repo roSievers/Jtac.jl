@@ -19,34 +19,30 @@ think(game :: Game, p :: RandomPlayer) :: ActionIndex = random_action(game)
 struct MCTPlayer <: Player 
   model :: Model
   power :: Int
+  temperature :: Float32
 end
 
-MCTPlayer(model) = MCTPlayer(model, 100)
+function MCTPlayer(model = RolloutModel(); power = 100, temperature = 1.) 
+  MCTPlayer(model, power, temperature)
+end
 
 function think(game :: Game, p :: MCTPlayer) :: ActionIndex
-  mctree_action(game, power = p.power, model = p.model)
+  mctree_action(game, power = p.power, model = p.model, temperature = p.temperature)
 end
 
 
 # Player that uses the model policy decision directly
+# The temperature controls how strictly/loosely it follows the policy
 struct PolicyPlayer <: Player
   model :: Model
+  temperature :: Float32
 end
+
+PolicyPlayer(model :: Model; temperature = 1.)
 
 function think(game :: Game, p :: PolicyPlayer) :: ActionIndex
-  policy = p.model(game)[2:end]
-  argmax(policy)
-end
-
-
-# Player that uses the soft (random) model policy decision directly
-struct SoftPolicyPlayer <: Player
-  model :: Model
-end
-
-function think(game :: Game, p :: SoftPolicyPlayer) :: ActionIndex
-  policy = p.model(game)[2:end]
-  choose_index(policy)
+  weighted_policy = p.model(game)[2:end].^(1/p.temperature)
+  choose_index(weighted_policy / sum(weighted_policy))
 end
 
 

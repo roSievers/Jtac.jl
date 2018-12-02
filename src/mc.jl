@@ -95,7 +95,7 @@ end
 # Cute little helper function that is also used in player.jl searches new home
 # file! Can you adopt it? Please?
 function choose_index(probs)
-  r = rand()
+  r = rand(Float32)
   index = findfirst(x -> r <= x, cumsum(probs))
   @assert index != nothing "probability vector is not proper!"
   index
@@ -104,6 +104,7 @@ end
 function mctree_action(game :: Game;
                        root = Node(), # To track the expansion
                        power = 100,
+                       temperature = 1.,
                        model = RolloutModel(game)) :: ActionIndex
 
   # Expand the root node
@@ -118,18 +119,25 @@ function mctree_action(game :: Game;
   # random fluctuations.
   # TODO: We now also draw from root.visit_counter in real playthroughts,
   # not only during learning. Think about this!
-  probs = root.visit_counter / sum(root.visit_counter)
-  chosen_i = choose_index(probs)
+  if temperature == 0
+    chosen_i = findmax(root.visit_counter)[2]
+  else
+    weighted_counter = root.visit_counter.^(1/temperature)
+    probs = weighted_counter / sum(weighted_counter)
+    chosen_i = choose_index(probs)
+  end
 
   root.children[chosen_i].action
 end
 
 function mctree_turn!(game :: Game; 
                       power = 100,
+                      temperature = 1.,
                       model = RolloutModel(game)) :: Node
 
   root = Node()
-  action = mctree_action(game, power = power, model = model, root = root)
+  action = mctree_action(game, power = power, model = model, 
+                         temperature = temperature, root = root)
   apply_action!(game, action)
   root
 end
