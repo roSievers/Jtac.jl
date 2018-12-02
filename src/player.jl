@@ -22,7 +22,7 @@ struct MCTPlayer <: Player
   temperature :: Float32
 end
 
-function MCTPlayer(model = RolloutModel(); power = 100, temperature = 1.) 
+function MCTPlayer(model; power = 100, temperature = 1.) 
   MCTPlayer(model, power, temperature)
 end
 
@@ -38,11 +38,24 @@ struct PolicyPlayer <: Player
   temperature :: Float32
 end
 
-PolicyPlayer(model :: Model; temperature = 1.)
+PolicyPlayer(model :: Model; temperature = 1.) = PolicyPlayer(model, temperature)
 
 function think(game :: Game, p :: PolicyPlayer) :: ActionIndex
-  weighted_policy = p.model(game)[2:end].^(1/p.temperature)
-  choose_index(weighted_policy / sum(weighted_policy))
+  
+  # Get the model policy
+  policy = p.model(game)[2:end]
+  
+  # Set policy predictions for illegal actions to 0
+  actions = legal_actions(game)
+  policy[actions] .= 0.
+
+  # Return the action that the player decides for
+  if p.temperature == 0
+    findmax(p.model(game)[2:end])[2]
+  else
+    weighted_policy = p.model(game)[2:end].^(1/p.temperature)
+    choose_index(weighted_policy / sum(weighted_policy))
+  end
 end
 
 
