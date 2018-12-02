@@ -58,7 +58,7 @@ representation(:: Game) :: Array{Float32, 3} = error("unimplemented")
 function representation(games :: Vector{G}) :: Array{Float32, 4} where G <: Game
   @assert !isempty(games) "Cannot compute data representation of empty game vector"
   results = zeros(Float32, (size(games[1])..., length(games)))
-  for i in length(games)
+  for i in 1:length(games)
     results[:,:,:,i] = representation(games[i])
   end
   results

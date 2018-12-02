@@ -30,37 +30,31 @@ function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
   merge(augment2.(d.data, d.label)...)
 end
 
-# Calculates the loss function for a single data point.
-function loss(model :: Model{GPU}, data :: Game, label) where {GPU}
 
-  # Push the label vector to the gpu if the model lives there
+function loss(model :: Model{G, GPU}, dataset :: DataSet{G}) where {G, GPU}
+
+  # Push the label matrix to the gpu if the model lives there
   at = atype(GPU)
-  label = convert(at, label)
+  label = convert(at, hcat(dataset.label...))
 
   # Apply the model
-  output = model(data)
+  output = model(dataset.data)
 
   # Calculate and return the loss
-  value_loss = (output[1] - label[1])^2
-  cross_entropy_loss = -sum(label[2:end] .* log.(output[2:end]))
+  value_loss = sum(abs2, output[1, :] .- label[1, :])
+  cross_entropy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
 
   value_loss + cross_entropy_loss
 end
 
-# Calculates the loss function for a whole data set.
-function loss(model :: Model, dataset :: DataSet)
-  sum = 0
-  for i = 1:length(dataset.data)
-    sum += loss(model, dataset.data[i], dataset.label[i])
-  end
-  sum
-end
+loss(model, data, label) = loss(model, DataSet([data], [label]))
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay(model :: Model{GPU, G}, startgame :: G = G(), n = 1; 
-                         power = 100, augment = true) :: DataSet{G} where {GPU, G}
+function record_selfplay(model :: Model{G, GPU}, n = 1; game = G(),
+                         power = 100, augment = true) :: DataSet{G} where {G, GPU}
+  rootgame = game
   sets = map(1:n) do _
-    game = copy(startgame)
+    game = copy(rootgame)
     dataset = DataSet{G}()
     while !is_over(game)
       push!(dataset.data, copy(game))

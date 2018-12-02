@@ -1,6 +1,6 @@
 
 # A player is an agent that can change a game by choosing actions to perform
-abstract type Player end
+abstract type Player{G <: Game} end
 
 # This method must be implemented by each player
 think(game :: Game, p :: Player) :: ActionIndex = error("Not implemented")
@@ -10,58 +10,63 @@ turn!(game :: Game, p :: Player) = apply_action!(game, think(game, p))
 
 
 # A player that always chooses random actions from allowed ones
-struct RandomPlayer <: Player end
+struct RandomPlayer <: Player{Game} end
 
-think(game :: Game, p :: RandomPlayer) :: ActionIndex = random_action(game)
+think(game :: Game, p :: RandomPlayer) = random_action(game)
 
 
 # A player that has a model that it can ask for decision making 
-struct MCTPlayer <: Player 
-  model :: Model
+struct MCTPlayer{G} <: Player{G}
+  model :: Model{G}
   power :: Int
   temperature :: Float32
 end
 
-function MCTPlayer(model; power = 100, temperature = 1.) 
-  MCTPlayer(model, power, temperature)
+function MCTPlayer(model :: Model{G}; power = 100, temperature = 1.) where {G <: Game}
+  MCTPlayer{G}(model, power, temperature)
 end
 
-function think(game :: Game, p :: MCTPlayer) :: ActionIndex
+# The default MCTPlayer uses the RolloutModel
+function MCTPlayer(; power = 100, temperature = 1.) where {G <: Game}
+  MCTPlayer{Game}(RolloutModel(), power, temperature)
+end
+
+function think(game :: G, p :: MCTPlayer{G}) where {G <: Game}
   mctree_action(game, power = p.power, model = p.model, temperature = p.temperature)
 end
 
 
 # Player that uses the model policy decision directly
 # The temperature controls how strictly/loosely it follows the policy
-struct PolicyPlayer <: Player
-  model :: Model
+struct PolicyPlayer{G} <: Player{G}
+  model :: Model{G}
   temperature :: Float32
 end
 
-PolicyPlayer(model :: Model; temperature = 1.) = PolicyPlayer(model, temperature)
+function PolicyPlayer(model :: Model{G}; temperature = 1.) where {G <: Game}
+  PolicyPlayer{G}(model, temperature)
+end
 
-function think(game :: Game, p :: PolicyPlayer) :: ActionIndex
+function think(game :: G, p :: PolicyPlayer{G}) where {G <: Game}
   
-  # Get the model policy
-  policy = p.model(game)[2:end]
-  
-  # Set policy predictions for illegal actions to 0
+  # Get all legal actions and their model policy values
   actions = legal_actions(game)
-  policy[actions] .= 0.
-
+  policy = p.model(game)[actions .+ 1]
+  
   # Return the action that the player decides for
   if p.temperature == 0
-    findmax(p.model(game)[2:end])[2]
+    index = findmax(policy)[2]
   else
-    weighted_policy = p.model(game)[2:end].^(1/p.temperature)
-    choose_index(weighted_policy / sum(weighted_policy))
+    weighted_policy = policy.^(1/p.temperature)
+    index = choose_index(weighted_policy / sum(weighted_policy))
   end
+  actions[index]
 end
 
 
 # Human player that queries for interaction
 # Relies on implemented draw() method for the game
-struct HumanPlayer <: Player 
+struct HumanPlayer <: Player{Game}
   name :: String
 end
 
@@ -94,7 +99,7 @@ end
 
 # Let players play versus players
 
-function pvp(game, p1 :: Player, p2 :: Player)
+function pvp(p1 :: Player, p2 :: Player, game :: Game)
   game = copy(game)
   while !is_over(game)
     if current_player(game) == 1
@@ -105,3 +110,20 @@ function pvp(game, p1 :: Player, p2 :: Player)
   end
   status(game)
 end
+
+function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
+  try
+    # Find the most concrete game type
+    G = sort([G1, G2], lt = <:)[1]
+    pvp(p1, p2, G())
+  catch err
+    throw(err)
+    if isa(err, MethodError)
+      error("Cannot initialize the game. It must be provided explicitly.")
+    end
+  end
+end
+
+
+#function duel(game, p1 :: Player, p2 :: Player)
+

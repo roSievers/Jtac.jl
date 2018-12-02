@@ -31,9 +31,9 @@ Base.copy(l :: Element) :: Element = error("Not implemented")
 # prediction of the state value, and the policy_length(game) entries afterwards
 # are the policy (expected to be normalized).
 
-abstract type Model{GPU, G <: Game} <: Element{GPU} end
+abstract type Model{G <: Game, GPU} <: Element{GPU} end
 
-function apply(model :: Model{GPU, G}, game :: G) where {GPU, G}
+function apply(model :: Model{G, GPU}, game :: G) where {G, GPU}
   result = model(game)
   result[1], result[2:end]
 end
@@ -43,7 +43,7 @@ end
 # Maybe we should think about something more version-stable here,
 # because this can break if AutoGrad, or Knet, or BSON, or Jtac changes
 
-function save_model(fname :: String, model :: Model{false})
+function save_model(fname :: String, model :: Model{G, false}) where {G}
   bson(fname * ".jtm", model = model)
 end
 

@@ -15,7 +15,7 @@ function Dense(i :: Int, o :: Int, f = relu; bias = true, gpu = false)
   Dense{gpu}(w, b, f)
 end
 
-(d :: Dense)(x) = d.f.(d.w * mat(x) + d.b)
+(d :: Dense)(x) = d.f.(d.w * mat(x) .+ d.b)
 
 function swap(d :: Dense{GPU}) where {GPU}
   at = atype(!GPU)

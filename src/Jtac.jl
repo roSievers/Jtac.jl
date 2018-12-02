@@ -32,7 +32,7 @@ include("models/toymodels.jl")
 export DummyModel, RandomModel, RolloutModel
 
 include("models/basemodels.jl")
-export BaseModel, LinearModel, MLP, SimpleConv
+export BaseModel, Shallow, MLP, ShallowConv
 
 # Markov chain tree search with model predictions
 include("mc.jl")
