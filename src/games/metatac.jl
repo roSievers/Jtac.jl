@@ -67,7 +67,7 @@ function region_view(game, r)
   reshape(game.board, (9, 9))[row:row + 2, col:col + 2]
 end
 
-function apply_action!(game :: MetaTac, index :: ActionIndex) :: Nothing
+function apply_action!(game :: MetaTac, index :: ActionIndex) :: MetaTac
   @assert is_action_legal(game, index) "Action $index is not allowed."
   # Update the board state
   game.board[index] = game.current_player
@@ -83,7 +83,7 @@ function apply_action!(game :: MetaTac, index :: ActionIndex) :: Nothing
   if is_over(game.region_status_cache[game.focus])
     game.focus = 0
   end
-  nothing
+  game
 end
 
 status(game :: MetaTac) :: Status = game.status_cache

@@ -8,11 +8,15 @@ think(game :: Game, p :: Player) :: ActionIndex = error("Not implemented")
 # Convenience function to automatically alter the game
 turn!(game :: Game, p :: Player) = apply_action!(game, think(game, p))
 
+# It is nice to have a name for each player if we want to do tournaments etc.
+name(p :: Player) :: String = error("Not implemented")
 
 # A player that always chooses random actions from allowed ones
 struct RandomPlayer <: Player{Game} end
 
 think(game :: Game, p :: RandomPlayer) = random_action(game)
+
+name(p :: RandomPlayer) = "random"
 
 
 # A player that has a model that it can ask for decision making 
@@ -20,20 +24,29 @@ struct MCTPlayer{G} <: Player{G}
   model :: Model{G}
   power :: Int
   temperature :: Float32
+  name :: String
 end
 
-function MCTPlayer(model :: Model{G}; power = 100, temperature = 1.) where {G <: Game}
-  MCTPlayer{G}(model, power, temperature)
+function MCTPlayer(model :: Model{G}; 
+                   power = 100, temperature = 1., name = nothing) where {G <: Game}
+  if name == nothing
+    id = div(Int(hash(model)), Int(1e14))
+    name = "mct$(power)-$id"
+  end
+  MCTPlayer{G}(model, power, temperature, name)
 end
 
 # The default MCTPlayer uses the RolloutModel
-function MCTPlayer(; power = 100, temperature = 1.) where {G <: Game}
-  MCTPlayer{Game}(RolloutModel(), power, temperature)
+function MCTPlayer(; power = 100, temperature = 1., name = nothing) where {G <: Game}
+  MCTPlayer{Game}(RolloutModel(), power = power, 
+                  temperature = temperature, name = name)
 end
 
 function think(game :: G, p :: MCTPlayer{G}) where {G <: Game}
-  mctree_action(game, power = p.power, model = p.model, temperature = p.temperature)
+  mctree_action(p.model, game, power = p.power, temperature = p.temperature)
 end
+
+name(p :: MCTPlayer) = p.name
 
 
 # Player that uses the model policy decision directly
@@ -41,9 +54,15 @@ end
 struct PolicyPlayer{G} <: Player{G}
   model :: Model{G}
   temperature :: Float32
+  name :: String
 end
 
-function PolicyPlayer(model :: Model{G}; temperature = 1.) where {G <: Game}
+function PolicyPlayer(model :: Model{G}; 
+                      temperature = 1., name = nothing) where {G <: Game}
+  if name == nothing
+    id = div(Int(hash(model)), Int(1e14))
+    name = "policy-$id"
+  end
   PolicyPlayer{G}(model, temperature)
 end
 
@@ -62,6 +81,8 @@ function think(game :: G, p :: PolicyPlayer{G}) where {G <: Game}
   end
   actions[index]
 end
+
+name(p :: PolicyPlayer) = p.name
 
 
 # Human player that queries for interaction
@@ -96,6 +117,7 @@ function think(game :: Game, p :: HumanPlayer) :: ActionIndex
   end
 end
 
+name(p :: HumanPlayer) = p.name
 
 # Let players play versus players
 

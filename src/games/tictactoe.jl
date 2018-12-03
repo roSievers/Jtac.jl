@@ -33,7 +33,7 @@ function is_action_legal(game :: TicTacToe, index :: ActionIndex) :: Bool
   !is_over(game)
 end
 
-function apply_action!(game :: TicTacToe, index :: ActionIndex) :: Nothing
+function apply_action!(game :: TicTacToe, index :: ActionIndex) :: TicTacToe
   @assert is_action_legal(game, index) "Action $index is not allowed."
   # Update the board state
   game.board[index] = game.current_player
@@ -41,7 +41,7 @@ function apply_action!(game :: TicTacToe, index :: ActionIndex) :: Nothing
   
   # Update the status cache
   game.status = tic_tac_toe_status(game.board)
-  nothing
+  game
 end
 
 function tic_tac_toe_status(board :: Vector{Int}) :: Status

@@ -50,16 +50,30 @@ end
 loss(model, data, label) = loss(model, DataSet([data], [label]))
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay(model :: Model{G, GPU}, n = 1; game = G(),
-                         power = 100, augment = true) :: DataSet{G} where {G, GPU}
+function record_selfplay(model :: Model{G, GPU}, n = 1; 
+                         game = G(),
+                         power = 100, 
+                         temperature = 1.,
+                         branch_prob = 0.,  # Probability for random branching
+                         augment = true) :: DataSet{G} where {G, GPU}
   rootgame = game
   sets = map(1:n) do _
+    branched_games = []
     game = copy(rootgame)
     dataset = DataSet{G}()
     while !is_over(game)
+
+      # Random branching
+      # With a certain probability we introduce a branching point with a random
+      # move. This should help the network explore suboptimal situations better.
+      if rand() <= branch_prob
+        push!(branched_games, random_turn!(copy(game)))
+      end
+
+      # Record the current game state and do one mctree_turn
       push!(dataset.data, copy(game))
       actions = legal_actions(game)
-      node = mctree_turn!(game, power = power, model = model)
+      node = mctree_turn!(model, game, power = power, temperature = temperature)
 
       # The visit counters are stored in a dense array where each entry
       # corresponds to a legal move. We need the policy over all moves
@@ -76,7 +90,12 @@ function record_selfplay(model :: Model{G, GPU}, n = 1; game = G(),
     for i = 1:length(dataset.data)
       dataset.label[i][1] = current_player(dataset.data[i]) * game_result
     end
-    dataset
+    # We now play all games which were created through random branching
+    branch_datasets = map(branched_games) do branched_game
+      record_selfplay(model, 1, game = branched_game, power = power, augment = false, 
+                      temperature = temperature, branch_prob = branch_prob)
+    end
+    merge(dataset, branch_datasets...)
   end
   if augment
     merge(sets...) |> Jtac.augment

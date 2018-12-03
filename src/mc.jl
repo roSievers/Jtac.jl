@@ -101,11 +101,10 @@ function choose_index(probs)
   index
 end
 
-function mctree_action(game :: Game;
+function mctree_action(model, game :: Game;
                        root = Node(), # To track the expansion
                        power = 100,
-                       temperature = 1.,
-                       model = RolloutModel(game)) :: ActionIndex
+                       temperature = 1.) :: ActionIndex
 
   # Expand the root node
   for i = 1:power
@@ -130,10 +129,9 @@ function mctree_action(game :: Game;
   root.children[chosen_i].action
 end
 
-function mctree_turn!(game :: Game; 
+function mctree_turn!(model, game :: Game; 
                       power = 100,
-                      temperature = 1.,
-                      model = RolloutModel(game)) :: Node
+                      temperature = 1.,) :: Node
 
   root = Node()
   action = mctree_action(game, power = power, model = model, 
@@ -142,15 +140,3 @@ function mctree_turn!(game :: Game;
   root
 end
 
-function mctree_vs_random(game; power = 100, model = RolloutModel(game), tree_player = 1)
-  @assert tree_player == 1 || tree_player == -1 "tree_player must be 1 or -1"
-  game = copy(game)
-  while !is_over(game)
-    if current_player(game) == tree_player
-      mctree_turn!(game, power = power, model = model)
-    else
-      random_turn!(game)
-    end
-  end
-  status(game)
-end

@@ -48,7 +48,7 @@ status(game :: Game) :: Status = error("unimplemented")
 current_player(game :: Game) :: Int = error("unimplemented") # Must be 1 or -1.
 
 legal_actions(:: Game) :: Vector{ActionIndex} = error("unimplemented")
-apply_action!(:: Game, :: ActionIndex) :: Nothing = error("unimplemented")
+apply_action!(:: Game, :: ActionIndex) :: Game = error("unimplemented")
 
 # Data representation of the game as layered 2d image from the perspective of
 # the active player (active player plays with 1, other with -1)
