@@ -134,7 +134,7 @@ function mctree_turn!(model, game :: Game;
                       temperature = 1.,) :: Node
 
   root = Node()
-  action = mctree_action(game, power = power, model = model, 
+  action = mctree_action(model, game, power = power, 
                          temperature = temperature, root = root)
   apply_action!(game, action)
   root

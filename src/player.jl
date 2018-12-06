@@ -30,7 +30,7 @@ end
 function MCTPlayer(model :: Model{G}; 
                    power = 100, temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
-    id = div(Int(hash(model)), Int(1e14))
+    id = Int(div(hash(model), Int(1e14)))
     name = "mct$(power)-$id"
   end
   MCTPlayer{G}(model, power, temperature, name)
@@ -51,22 +51,22 @@ name(p :: MCTPlayer) = p.name
 
 # Player that uses the model policy decision directly
 # The temperature controls how strictly/loosely it follows the policy
-struct PolicyPlayer{G} <: Player{G}
+struct IntuitionPlayer{G} <: Player{G}
   model :: Model{G}
   temperature :: Float32
   name :: String
 end
 
-function PolicyPlayer(model :: Model{G}; 
+function IntuitionPlayer(model :: Model{G}; 
                       temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
-    id = div(Int(hash(model)), Int(1e14))
+    id = Int(div(hash(model), Int(1e14)))
     name = "policy-$id"
   end
-  PolicyPlayer{G}(model, temperature)
+  IntuitionPlayer{G}(model, temperature, name)
 end
 
-function think(game :: G, p :: PolicyPlayer{G}) where {G <: Game}
+function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
@@ -82,7 +82,7 @@ function think(game :: G, p :: PolicyPlayer{G}) where {G <: Game}
   actions[index]
 end
 
-name(p :: PolicyPlayer) = p.name
+name(p :: IntuitionPlayer) = p.name
 
 
 # Human player that queries for interaction
@@ -134,16 +134,9 @@ function pvp(p1 :: Player, p2 :: Player, game :: Game)
 end
 
 function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
-  try
-    # Find the most concrete game type
-    G = sort([G1, G2], lt = <:)[1]
-    pvp(p1, p2, G())
-  catch err
-    throw(err)
-    if isa(err, MethodError)
-      error("Cannot initialize the game. It must be provided explicitly.")
-    end
-  end
+  # Find the most concrete game type
+  G = sort([G1, G2], lt = <:)[1]
+  pvp(p1, p2, G())
 end
 
 

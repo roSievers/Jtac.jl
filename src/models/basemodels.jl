@@ -51,10 +51,10 @@ end
 
 # Shallow convolutional network
 
-function ShallowConv(:: Type{G}, channels, f = relu; kwargs...) where {G}
+function ShallowConv(:: Type{G}, filters, f = relu; kwargs...) where {G}
   logits = Chain(
-    Conv(size(G, 3), channels, f),
-    Dense(channels, policy_length(G) + 1, identity)
+    Conv(size(G, 3), filters, f),
+    Dense(filters, policy_length(G) + 1, identity)
   )
   BaseModel(G, logits; kwargs...)
 end
