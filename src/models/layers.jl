@@ -73,3 +73,42 @@ end
 swap(c :: Chain{GPU}) where {GPU} = Chain(swap.(c.layers)...)
 Base.copy(c :: Chain{GPU}) where {GPU} = Chain(copy.(c.layers)...)
 
+
+# Dropout layer
+# Note that we try to recognize if we are training (dropout is active)
+# or not. This can only be done if the Dropout layer is not the first layer
+# that manipulates the weights
+
+struct Dropout{GPU} <: Layer{GPU}
+  prob
+end
+
+Dropout(prob = 0.5; gpu = false) = Dropout{gpu}(prob)
+
+function (d :: Dropout)(x)
+  if isa(x, AutoGrad.Value)
+    dropout(x, d.prob)
+  else
+    x
+  end
+end
+
+swap(d :: Dropout{GPU}) where {GPU} = Dropout{!GPU}(d.prob)
+Base.copy(d :: Dropout) = d
+
+
+# Batch normalization layer
+
+struct Batchnorm{GPU} <: Layer{GPU}
+  moments
+  params
+end
+
+Batchnorm(channels; gpu = false) = Batchnorm{gpu}(bnmoments(), bnparams(channels))
+
+(b :: Batchnorm)(x) = batchnorm(x, b.moments, b.params)
+
+swap(b :: Batchnorm{GPU}) where {GPU} = Batchnorm{!GPU}(b.moments, b.params)
+Base.copy(b :: Batchnorm{GPU}) where {GPU} = Batchnorm{!GPU}(b.moments, b.params)
+
+

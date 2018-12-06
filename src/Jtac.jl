@@ -25,7 +25,7 @@ export Model, apply, save_model, load_model
 
 # Model building blocks 
 include("models/layers.jl")
-export Dense, Conv, Chain, id
+export Dense, Conv, Chain, Dropout, Batchnorm
 
 # Model implementations
 include("models/toymodels.jl")
@@ -53,7 +53,7 @@ export DataSet, loss, record_selfplay,
 # Players
 include("player.jl")
 export RandomPlayer, MCTPlayer, 
-       PolicyPlayer, SoftPolicyPlayer, 
-       HumanPlayer, pvp
+       IntuitionPlayer, HumanPlayer, 
+       pvp
 
 end # module JTac
