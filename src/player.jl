@@ -135,7 +135,11 @@ end
 
 function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
   # Find the most concrete game type
-  G = sort([G1, G2], lt = <:)[1]
+  G = typeintersect(G1, G2)
+  # Check that it really is a concrete type
+  if G == Game
+    error("Cannot infere a concrete game from the provided players")
+  end
   pvp(p1, p2, G())
 end
 
