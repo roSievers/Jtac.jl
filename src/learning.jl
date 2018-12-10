@@ -105,14 +105,14 @@ function record_selfplay(model :: Model{G, GPU}, n = 1;
 end
 
 # Set the optimizer
-function set_optimizer!(model :: Model, opt = Adam; kwargs...)
+function set_optimizer!(model, opt = Adam; kwargs...)
   for param in params(model)
     param.opt = opt(; kwargs...)
   end
 end
 
 # A single training step, the loss is returned
-function train_step!(model :: Model, dataset :: DataSet)
+function train_step!(model, dataset :: DataSet)
   tape = @diff loss(model, dataset)
   for param in params(model)
     update!(value(param), grad(tape, param), param.opt)

@@ -1,4 +1,7 @@
 
+# Elements
+# --------------------------------------------------------------------------- #
+
 # Neural network architectures are usually composed of different layers. We
 # want separate types for Models on the one hand, which we can apply to games,
 # and Layers on the other hand, which are applied to raw data and are
@@ -20,6 +23,9 @@ to_gpu(el :: Element{false}) :: Element{true}  = swap(el)
 Base.copy(l :: Element) :: Element = error("Not implemented")
 
 
+# Models
+# --------------------------------------------------------------------------- #
+
 # A (neural network) model that is trained by playing against itself. Each
 # concrete subtype of Model should provide a constructor that takes a game to
 # adapt the input and output dimensions.
@@ -38,8 +44,7 @@ function apply(model :: Model{G, GPU}, game :: G) where {G, GPU}
   result[1], result[2:end]
 end
 
-
-# Saving and loading models, only for models on the CPU
+# Saving and loading models
 # Maybe we should think about something more version-stable here,
 # because this can break if AutoGrad, or Knet, or BSON, or Jtac changes
 
@@ -50,24 +55,4 @@ end
 function load_model(fname :: String)
   BSON.load(fname * ".jtm")[:model]
 end
-
-
-# A layer is a functional element that provides a parameterized mapping from
-# data to features. Each subtype of Layer should be callable with 4-d arrays,
-# where the last dimension indicates the batch.
-
-abstract type Layer{GPU} <: Element{GPU} end
-
-
-# Auxiliary functions
-
-# Convert (gpu :: Bool) to the underlying representing array type
-atype(gpu :: Bool) = gpu ? KnetArray{Float32} : Array{Float32}
-
-# Check if something is a AutoGrad param or not
-is_param(array) = typeof(array) <: Param
-
-# Fix for failure to copy param, issue #102 in AutoGrad.jl
-Base.copy(p :: Param) = Param(copy(value(p)))
-
 

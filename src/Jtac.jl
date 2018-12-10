@@ -23,8 +23,8 @@ export Game, Status, ActionIndex,
 include("model.jl")
 export Model, apply, save_model, load_model
 
-# Model building blocks 
-include("models/layers.jl")
+# Building blocks for models
+include("layers.jl")
 export Dense, Conv, Chain, Dropout, Batchnorm
 
 # Model implementations
@@ -36,16 +36,14 @@ export BaseModel, Shallow, MLP, ShallowConv
 
 # Markov chain tree search with model predictions
 include("mc.jl")
-export mctree_turn!, mctree_vs_random
+export mctree_turn!
 
 # Game implementations
-include("games/metatac.jl")
 include("games/tictactoe.jl")
-#include("games/four3d.jl")
-#include("games/chess.jl")
-export MetaTac, TicTacToe #, Four3d, Chess
+include("games/metatac.jl")
+export TicTacToe, MetaTac
 
-# Loss for learning
+# Loss and update steps for learning
 include("learning.jl")
 export DataSet, loss, record_selfplay, 
        set_optimizer!, train_step!
