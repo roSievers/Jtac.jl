@@ -14,24 +14,24 @@ abstract type Layer{GPU} <: Element{GPU} end
 
 # Convert (gpu :: Bool) to the underlying representing array type
  
-atype(gpu :: Bool) = gpu ? KnetArray{Float32} : Array{Float32}
+atype(gpu :: Bool) = gpu ? Knet.KnetArray{Float32} : Array{Float32}
 
 # Check if something is a AutoGrad param or not
  
-is_param(p) = isa(p, Param)
+is_param(p) = isa(p, Knet.Param)
 
 # Function to copy (and convert) objects of type Param
 # For convenience, we allow this function to be applied to other objects as well
 
-function copy_param(p :: Param; at = nothing)
+function copy_param(p :: Knet.Param; at = nothing)
 
-  if at == nothing || isa(value(p), at)
-    val = copy(value(p))
+  if at == nothing || isa(Knet.value(p), at)
+    val = copy(Knet.value(p))
   else
-    val = convert(at, value(p))
+    val = convert(at, Knet.value(p))
   end
 
-  param = Param(val)
+  param = Knet.Param(val)
   param.opt = p.opt
   param
 
@@ -55,14 +55,15 @@ struct Dense{GPU} <: Layer{GPU}
   f  # Activation function
 end
 
-function Dense(i :: Int, o :: Int, f = relu; bias = true, gpu = false)
+function Dense( i :: Int, o :: Int, f = Knet.identity; 
+                bias = true, gpu = false )
   at = atype(gpu)
-  w = param(o,i, atype = at)
-  b = bias ? param0(o, atype = at) : convert(at, zeros(Float32, o))
+  w = Knet.param(o,i, atype = at)
+  b = bias ? Knet.param0(o, atype = at) : convert(at, zeros(Float32, o))
   Dense{gpu}(w, b, f)
 end
 
-(d :: Dense)(x) = d.f.(d.w * mat(x) .+ d.b)
+(d :: Dense)(x) = d.f.(d.w * Knet.mat(x) .+ d.b)
 
 function swap(d :: Dense{GPU}) where {GPU}
   at = atype(!GPU)
@@ -75,6 +76,17 @@ function Base.copy(d :: Dense{GPU}) where {GPU}
   Dense{GPU}(copy_param(d.w), copy_param(d.b), d.f)
 end
 
+# Check if some input of a given size s can be processed by the layer
+# Note that the batchsize is not part of s, so s will usually have
+# Dimension 1 (after dense layers) or 3 (before/after convolution layers)
+valid_insize(d :: Dense, s) = (prod(s) == size(d.w, 2))
+
+# Get the correct output size for a respective input size
+function outsize(d :: Dense, s)
+  @assert valid_insize(d, s) "Layer cannot be applied to input of size $s"
+  size(d.w, 1)
+end
+
 
 # Convolutional layers
 # --------------------------------------------------------------------------- # 
@@ -83,25 +95,29 @@ struct Conv{GPU} <: Layer{GPU}
   w  # Convolutional kernel
   b  # Bias vector
   f  # Activation function
+
+  p  # Padding for the convolution
+  s  # Stride for the convolution
 end
 
-function Conv(ci :: Int, co :: Int, f = relu; 
-              kernelsize :: Int = 3, bias = true, gpu = false)
+function Conv( ci :: Int, co :: Int, f = Knet.identity; 
+               kernelsize :: Int = 3, padding = 0, 
+               stride = 1, bias = true, gpu = false )
 
-  at = atype(gpu)
-  w = param(kernelsize, kernelsize, ci, co, atype = at)
+  at = Knet.atype(gpu)
+  w = Knet.param(kernelsize, kernelsize, ci, co, atype = at)
 
   if bias
-    b = param0(1, 1, co, 1, atype = at) 
+    b = Knet.param0(1, 1, co, 1, atype = at) 
   else
     b = convert(at, zeros(Float32, 1, 1, co, 1))
   end
 
-  Conv{gpu}(w, b, f)
+  Conv{gpu}(w, b, f, padding, stride)
 
 end
 
-(c :: Conv)(x) = c.f.(conv4(c.w, x) .+ c.b)
+(c :: Conv)(x) = c.f.(Knet.conv4(c.w, x, padding = c.p, stride = c.s) .+ c.b)
 
 function swap(c :: Conv{GPU}) where {GPU}
   at = atype(!GPU)
@@ -114,6 +130,25 @@ function Base.copy(c :: Conv{GPU}) where {GPU}
   Conv{GPU}(copy_param(c.w), copy_param(c.b), c.f)
 end
 
+expand_to_pair(t :: NTuple{2, Int}) = t
+expand_to_pair(t :: Int) = (t, t)
+
+function valid_insize(d :: Dense, s)
+  p = expand_to_pair(d.p)
+  all(( length(s) == 3,
+        s[1] >= size(d.w, 1) - p[1],
+        s[2] >= size(d.w, 2) - p[2],
+        s[3] == size(d.w, 3) ))
+end
+
+function outsize(d :: Dense, insize)
+  @assert valid_insize(d, s) "Layer cannot be applied to input of size $s"
+  p, s = expand_to_pair.((d.p, d.s))
+  ( 1 + (div(insize[1] + 2p[1] - size(d.w, 1), s[1]) |> floor),
+    1 + (div(insize[2] + 2p[2] - size(d.w, 2), s[2]) |> floor),
+    size(d.w, 4)
+  )
+end
 
 # Chaining of layers
 # --------------------------------------------------------------------------- # 
@@ -150,7 +185,7 @@ Dropout(prob = 0.5; gpu = false) = Dropout{gpu}(prob)
 
 function (d :: Dropout)(x)
   if isa(x, AutoGrad.Value)
-    dropout(x, d.prob)
+    Knet.dropout(x, d.prob)
   else
     x
   end
@@ -168,9 +203,9 @@ struct Batchnorm{GPU} <: Layer{GPU}
   params
 end
 
-Batchnorm(channels; gpu = false) = Batchnorm{gpu}(bnmoments(), bnparams(channels))
+Batchnorm(channels; gpu = false) = Batchnorm{gpu}(Knet.bnmoments(), Knet.bnparams(channels))
 
-(b :: Batchnorm)(x) = batchnorm(x, b.moments, b.params)
+(b :: Batchnorm)(x) = Knet.batchnorm(x, b.moments, b.params)
 
 function swap(b :: Batchnorm{GPU}) where {GPU}
   at = atype(!GPU)
