@@ -31,7 +31,7 @@ Base.copy(l :: Element) :: Element = error("Not implemented")
 # adapt the input and output dimensions.
 #
 # Also, each subtype must be made callable with arguments of type (:: Game) and
-# (:: # Vector{Game}).
+# (:: Vector{Game}).
 #
 # The output of applying a model is a Vector where the first entry is the model
 # prediction of the state value, and the policy_length(game) entries afterwards
@@ -49,7 +49,7 @@ end
 # because this can break if AutoGrad, or Knet, or BSON, or Jtac changes
 
 function save_model(fname :: String, model :: Model{G, false}) where {G}
-  bson(fname * ".jtm", model = model)
+  BSON.bson(fname * ".jtm", model = model)
 end
 
 function load_model(fname :: String)

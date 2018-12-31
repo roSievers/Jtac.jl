@@ -9,7 +9,7 @@ struct BaseModel{G, GPU} <: Model{G, GPU}
 end
 
 function BaseModel(:: Type{G}, logits :: Layer{GPU}; 
-                   vconv = tanh, pconv = softmax) where {G, GPU}
+                   vconv = Knet.tanh, pconv = Knet.softmax) where {G, GPU}
   BaseModel{G, GPU}(logits, vconv, pconv)
 end
 
@@ -37,24 +37,22 @@ Base.copy(m :: BaseModel{G, GPU}) where {G, GPU} =
 # Linear Model
 
 function Shallow(:: Type{G}; kwargs...) where {G}
-  logits = Dense(prod(size(G)), policy_length(G) + 1, identity)
+  logits = Dense(prod(size(G)), policy_length(G) + 1, Knet.identity)
   BaseModel(G, logits; kwargs...)
 end
 
 # Multilayer perception
 
-function MLP(:: Type{G}, hidden, f = relu; kwargs...) where {G}
+function MLP(:: Type{G}, hidden, f = Knet.relu; kwargs...) where {G}
   widths = [ prod(size(G)), hidden..., policy_length(G) + 1 ]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
+  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 2 ]
+  push!(layers, Dense(widths[end-1], widths[end], identity))
   BaseModel(G, Chain(layers...); kwargs...)
 end
 
 # Shallow convolutional network
 
-function ShallowConv(:: Type{G}, filters, f = relu; kwargs...) where {G}
-  logits = Chain(
-    Conv(size(G, 3), filters, f),
-    Dense(filters, policy_length(G) + 1, identity)
-  )
+function ShallowConv(:: Type{G}, filters, f = Knet.relu; kwargs...) where {G}
+  logits = @chain G Conv(filters, f) Dense(policy_length(G) + 1)
   BaseModel(G, logits; kwargs...)
 end

@@ -114,7 +114,7 @@ end
 # A single training step, the loss is returned
 function train_step!(model, dataset :: DataSet)
   tape = Knet.@diff loss(model, dataset)
-  for param in params(model)
+  for param in Knet.params(model)
     Knet.update!(Knet.value(param), Knet.grad(tape, param), param.opt)
   end
   Knet.value(tape)

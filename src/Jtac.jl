@@ -10,7 +10,7 @@ export AutoGrad, Knet
 
 # We save models/games via BSON.jl
 
-using BSON
+import BSON
 
 # Interface that games must satisfy and some convenience functions
 
@@ -29,7 +29,8 @@ export Model, apply, save_model, load_model
 # Building blocks for models
 
 include("layers.jl")
-export Dense, Conv, Chain, Dropout, Batchnorm
+export Dense, Conv, Deconv, Pool, Chain, Dropout, Batchnorm, 
+       valid_insize, outsize
 
 # Model implementations
 
