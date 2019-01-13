@@ -312,7 +312,8 @@ struct Batchnorm{GPU} <: Layer{GPU}
 end
 
 function Batchnorm(channels; gpu = false)
-  Batchnorm{gpu}(Knet.bnmoments(), Knet.bnparams(channels))
+  b = Batchnorm{false}(Knet.bnmoments(), Knet.bnparams(Float32, channels))
+  gpu ? swap(b) : b
 end
 
 (b :: Batchnorm)(x) = Knet.batchnorm(x, b.moments, b.params)

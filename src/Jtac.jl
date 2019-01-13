@@ -30,7 +30,7 @@ export Model, apply, save_model, load_model
 
 include("layers.jl")
 export Dense, Conv, Deconv, Pool, Chain, Dropout, Batchnorm, 
-       valid_insize, outsize
+       valid_insize, outsize, @chain
 
 # Model implementations
 
