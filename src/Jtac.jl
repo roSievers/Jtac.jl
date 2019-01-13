@@ -40,6 +40,9 @@ export DummyModel, RandomModel, RolloutModel
 include("models/basemodels.jl")
 export BaseModel, Shallow, MLP, ShallowConv
 
+include("models/asyncmodel.jl")
+export Async
+
 # Markov chain tree search with model predictions
 
 include("mc.jl")
