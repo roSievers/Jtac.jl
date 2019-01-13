@@ -4,9 +4,9 @@ mutable struct Node
     action :: ActionIndex             # How did we get here?
     parent :: Union{Node, Nothing}    # Where did we get here from?
     children :: Vector{Node}           # Where can we walk?
-    visit_counter :: Vector{Float64}   # How often were children visited?
-    expected_reward :: Vector{Float64} 
-    model_policy :: Vector{Float64}    
+    visit_counter :: Vector{Float32}   # How often were children visited?
+    expected_reward :: Vector{Float32} 
+    model_policy :: Vector{Float32}    
 end
 
 Broadcast.broadcastable(node :: Node) = Ref(node)
@@ -17,7 +17,7 @@ end
 
 # Find all children for a node and assesses them through the model.
 # The state value predicted by the model is returned.
-function expand!(node :: Node, game :: Game, model :: Model) :: Float64
+function expand!(node :: Node, game :: Game, model :: Model) :: Float32
   # We need to first check if the game is still active
   # and only evaluate the model on those games.
   if is_over(game)
@@ -29,8 +29,8 @@ function expand!(node :: Node, game :: Game, model :: Model) :: Float64
 
   # Initialize the vectors that will be filled with info about the children 
   node.children = Node.(actions, node)
-  node.visit_counter = zeros(UInt, length(node.children))
-  node.expected_reward = zeros(UInt, length(node.children))
+  node.visit_counter = zeros(Float32, length(node.children))
+  node.expected_reward = zeros(Float32, length(node.children))
 
   # Filter and normalize the policy vector returned by the network
   node.model_policy = policy[actions] / sum(policy[actions])
@@ -55,9 +55,9 @@ end
 
 # The confidence in a node
 # TODO: 1.41 should not be hardcoded
-function confidence(node) :: Array{Float64}
+function confidence(node) :: Array{Float32}
   exploration_weight = 1.41 * sqrt(sum(node.visit_counter))
-  result = zeros(Float64, length(node.children))
+  result = zeros(Float32, length(node.children))
   for i = 1:length(node.children)
     exploration = exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
     result[i] = node.expected_reward[i] + exploration

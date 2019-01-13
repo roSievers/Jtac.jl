@@ -12,7 +12,6 @@ end
 # Dummy Model
 # This model always returns the neutral value 0 and a uniform policy vector.
 # Totally uninformative, and for debugging purposes only
-
 struct DummyModel <: Model{Game, false} end
 
 (m :: DummyModel)(game :: Game) = Float32[ 0; uniform_policy(policy_length(game)) ]
@@ -22,7 +21,6 @@ Base.copy(m :: DummyModel) = m
 
 # Random Model
 # This model proposes a random policy
-
 struct RandomModel <: Model{Game, false} end
 
 (m :: RandomModel)(game :: Game) = Float32[ 0; random_policy(policy_length(game)) ]
@@ -31,7 +29,7 @@ struct RandomModel <: Model{Game, false} end
 Base.copy(m :: RandomModel) = m
 
 # Rollout Model
-# This model executes random moves untile the game is over and reports the
+# This model executes random moves until the game is over and reports the
 # result as chance/value. It always proposes a uniform policy vector.
 # This integrates the usual rollout step of a MCTS in the MC-Model interface.
 # Like DummyModel, this model will not learn anything.
