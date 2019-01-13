@@ -81,7 +81,7 @@ function record_selfplay(model :: Model{G, GPU}, n = 1;
 
       # We also add a leading zero which correspond to the outcome prediction.
       posterior_distribution = node.visit_counter / sum(node.visit_counter)
-      improved_policy = zeros(1 + policy_length(game))
+      improved_policy = zeros(Float32, 1 + policy_length(game))
       improved_policy[actions .+ 1] = posterior_distribution
       push!(dataset.label, improved_policy)
     end

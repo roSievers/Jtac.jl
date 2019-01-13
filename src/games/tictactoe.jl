@@ -6,7 +6,7 @@ mutable struct TicTacToe <: Game
   status :: Status
 end
 
-TicTacToe() = TicTacToe(zeros(9), 1, Status())
+TicTacToe() = TicTacToe(zeros(Int, 9), 1, Status())
 
 function Base.copy(s :: TicTacToe) :: TicTacToe
   TicTacToe(
