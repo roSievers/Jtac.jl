@@ -31,7 +31,9 @@ function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
 end
 
 
-function loss(model :: Model{G, GPU}, dataset :: DataSet{G}) where {G, GPU}
+function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
+               value_weight = 1f0, policy_weight = 1f0, 
+               regularization_weight = 0f0 ) where {G, GPU}
 
   # Push the label matrix to the gpu if the model lives there
   at = atype(GPU)
@@ -40,27 +42,45 @@ function loss(model :: Model{G, GPU}, dataset :: DataSet{G}) where {G, GPU}
   # Apply the model
   output = model(dataset.data)
 
-  # Calculate and return the loss
+  # Calculate the different loss components
+  
+  # Squared error loss for the value prediction
   value_loss = sum(abs2, output[1, :] .- label[1, :])
-  cross_entropy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
 
-  value_loss + cross_entropy_loss
+  # Cross entropy loss for the policy prediction
+  policy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
+
+  # L2 regularization (weight decay)
+  regularization_loss = 0f0
+  if regularization_weight >= 0f0
+    for param in Knet.params(model)
+      regularization_loss += sum(abs2, param)
+    end
+  end
+
+  # Return the total loss
+  value_weight * value_loss +
+  policy_weight * policy_loss +
+  regularization_weight * regularization_loss
 end
 
 loss(model, data, label) = loss(model, DataSet([data], [label]))
 
 # Executes a selfplay and returns the Replay as a Dataset
 function record_selfplay(model :: Model{G, GPU}, n = 1; 
-                         game = G(),
+                         game :: T = G(),
                          power = 100, 
                          temperature = 1.,
                          branch_prob = 0.,  # Probability for random branching
-                         augment = true) :: DataSet{G} where {G, GPU}
+                         augment = true) :: DataSet{T} where {G, T, GPU}
+
+  @assert (T <: G) "Provided game does not fit model"
+
   rootgame = game
   sets = map(1:n) do _
     branched_games = []
     game = copy(rootgame)
-    dataset = DataSet{G}()
+    dataset = DataSet{T}()
     while !is_over(game)
 
       # Random branching
@@ -104,7 +124,7 @@ function record_selfplay(model :: Model{G, GPU}, n = 1;
   end
 end
 
-# Set the optimizer
+# Set an optimizer for all parameters of a model
 function set_optimizer!(model, opt = Knet.Adam; kwargs...)
   for param in Knet.params(model)
     param.opt = opt(; kwargs...)
