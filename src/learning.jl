@@ -67,12 +67,12 @@ end
 loss(model, data, label) = loss(model, DataSet([data], [label]))
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay(model :: Model{G, GPU}, n = 1; 
-                         game :: T = G(),
-                         power = 100, 
-                         temperature = 1.,
-                         branch_prob = 0.,  # Probability for random branching
-                         augment = true) :: DataSet{T} where {G, T, GPU}
+function record_selfplay( model :: Model{G, GPU}, n = 1; 
+                          game :: T = G(),
+                          power = 100, 
+                          temperature = 1.,
+                          branch_prob = 0.,  # Probability for random branching
+                          augment = true ) :: DataSet{T} where {G, T, GPU}
 
   @assert (T <: G) "Provided game does not fit model"
 

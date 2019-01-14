@@ -52,24 +52,29 @@ end
 
 # Helper functions
 
-closed_and_empty(channel) = try fetch(channel); true catch _ false end
+closed_and_empty(channel) = try fetch(channel); false catch _ true end
 
 function worker_thread(channel, model, max_batchsize)
-  while !closed_and_empty(channel)
-    inputs = Vector()
-    # If we arrive here, there is at least one thing to be done.
-    while isready(channel) && length(inputs) < max_batchsize
-      push!(inputs, take!(channel))
-    end
-    #println("Processing $(length(inputs)) inputs at the same time.")
-    if length(inputs) == 1
-      put!(inputs[1][2], model(inputs[1][1]))
-    else
-      outputs = model(first.(inputs))
-      for i = 1:length(inputs)
-        put!(inputs[i][2], outputs[:,i])
+  try
+    while !closed_and_empty(channel)
+      inputs = Vector()
+      # If we arrive here, there is at least one thing to be done.
+      while isready(channel) && length(inputs) < max_batchsize
+        push!(inputs, take!(channel))
+      end
+      print("")
+      #println("Processing $(length(inputs)) inputs at the same time.")
+      if length(inputs) == 1
+        put!(inputs[1][2], model(inputs[1][1]))
+      else
+        outputs = model(first.(inputs))
+        for i = 1:length(inputs)
+          put!(inputs[i][2], outputs[:,i])
+        end
       end
     end
+  catch err
+    println("Worker died: $err")
   end
 end
 
