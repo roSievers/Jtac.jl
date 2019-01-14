@@ -34,13 +34,13 @@ export Dense, Conv, Deconv, Pool, Chain, Dropout, Batchnorm,
 
 # Model implementations
 
-include("models/toymodels.jl")
+include("models/toy.jl")
 export DummyModel, RandomModel, RolloutModel
 
-include("models/basemodels.jl")
+include("models/base.jl")
 export BaseModel, Shallow, MLP, ShallowConv
 
-include("models/asyncmodel.jl")
+include("models/async.jl")
 export Async
 
 # Markov chain tree search with model predictions
