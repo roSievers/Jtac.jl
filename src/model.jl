@@ -61,3 +61,7 @@ to_cpu(a :: Array{Float32}) = a
 
 to_gpu(a :: Knet.KnetArray{Float32}) = a
 to_gpu(a :: Array{Float32}) = convert(Knet.KnetArray{Float32}, a)
+
+# Some models will be able to harness asyncmap with more (or fewer) tasks
+ntasks(:: Model) = 100
+

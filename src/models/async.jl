@@ -49,6 +49,8 @@ function Base.copy(m :: Async)
   Async( copy(m.model), max_batchsize = m.max_batchsize, buffersize = m.buffersize )
 end
 
+ntasks(m :: Async) = m.buffersize
+
 
 # Helper functions
 
