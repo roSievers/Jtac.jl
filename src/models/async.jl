@@ -39,7 +39,7 @@ function (m :: Async{G})(game :: G) where {G <: Game}
   take!(out_channel)
 end
 
-(m :: Async{G})(games :: Vector{G}) where {G <: Game} = map(m, games)
+(m :: Async{G})(games :: Vector{G}) where {G <: Game} = hcat(asyncmap(m, games)...)
 
 function swap(m :: Async)
   Async( swap(m.model), max_batchsize = m.max_batchsize, buffersize = m.buffersize )
