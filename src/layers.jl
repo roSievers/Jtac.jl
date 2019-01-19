@@ -132,7 +132,7 @@ function swap(c :: Conv{GPU}) where {GPU}
   at = atype(!GPU)
   w = copy_param(c.w, at = at)
   b = copy_param(c.b, at = at)
-  Conv{!GPU}(w, b, c.f)
+  Conv{!GPU}(w, b, c.f, c.p, c.s)
 end
 
 function Base.copy(c :: Conv{GPU}) where {GPU}
@@ -193,7 +193,7 @@ function swap(d :: Deconv{GPU}) where {GPU}
   at = atype(!GPU)
   w = copy_param(d.w, at = at)
   b = copy_param(d.b, at = at)
-  Deconv{!GPU}(w, b, d.f)
+  Deconv{!GPU}(w, b, d.f, d.p, d.s)
 end
 
 function Base.copy(d :: Deconv{GPU}) where {GPU}

@@ -61,9 +61,9 @@ function worker_thread(channel, model, max_batchsize)
       # If we arrive here, there is at least one thing to be done.
       while isready(channel) && length(inputs) < max_batchsize
         push!(inputs, take!(channel))
+        yield()
       end
-      print("")
-      #println("Processing $(length(inputs)) inputs at the same time.")
+      #println("Processing $(length(inputs))/$max_batchsize inputs at the same time.")
       if length(inputs) == 1
         put!(inputs[1][2], model(inputs[1][1]))
       else

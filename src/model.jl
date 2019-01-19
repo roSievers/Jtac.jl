@@ -40,7 +40,7 @@ Base.copy(l :: Element) :: Element = error("Not implemented")
 abstract type Model{G <: Game, GPU} <: Element{GPU} end
 
 function apply(model :: Model{G, GPU}, game :: G) where {G, GPU}
-  result = model(game)
+  result = model(game) |> to_cpu
   result[1], result[2:end]
 end
 
@@ -56,3 +56,8 @@ function load_model(fname :: String)
   BSON.load(fname * ".jtm")[:model]
 end
 
+to_cpu(a :: Knet.KnetArray{Float32}) = convert(Array{Float32}, a)
+to_cpu(a :: Array{Float32}) = a
+
+to_gpu(a :: Knet.KnetArray{Float32}) = a
+to_gpu(a :: Array{Float32}) = convert(Knet.KnetArray{Float32}, a)

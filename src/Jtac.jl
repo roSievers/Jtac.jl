@@ -24,7 +24,8 @@ export Game, Status, ActionIndex,
 # Interface for models
 
 include("model.jl")
-export Model, apply, save_model, load_model
+export Model, apply, save_model, load_model, 
+       to_gpu, to_cpu, swap, on_gpu
 
 # Building blocks for models
 
