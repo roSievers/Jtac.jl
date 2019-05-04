@@ -1,65 +1,83 @@
 
 using Jtac
 
-function train(; model = ShallowConv(TicTacToe, 200),
-                 power = 15,
-                 branch_prob = 0.2,
-                 temperature = 1
+function train!( model;
+                 power = 50,
+                 branch_prob = 0.05,
+                 temperature = 1,
+                 augment = true,   # whether to use symmetry augmentation on the recorded games
+                 epochs = 10,      # number of times a new dataset is produced (with constant network)
+                 batchsize = 200,  # number of states per gd-step
+                 selfplays = 50    # number of selfplays to record the dataset
+                                   # note that branching and augmentation may lead to a higher number of recorded games
               )
+
+  println("Begin training")
+
+  @show power
+  @show epochs
+  @show selfplays
+  @show batchsize
+  @show branch_prob
+  @show temperature
+  @show augment
 
   p1 = MCTPlayer(model, power = power)
   p2 = MCTPlayer(copy(model), power = power)
   p3 = MCTPlayer(RolloutModel(), power = 500, temperature = 0.5)
-  #p4 = MCTPlayer(RolloutModel(), power = 1000, temperature = 0.5)
-  #p5 = MCTPlayer(RolloutModel(), power = 1000, temperature = 0.1)
 
   println("Before training of p1 (from perspective of p1):")
 
-  println("p1 vs. p2: $(sum(pvp(p1, p2) for i in 1:500))")
-  println("p2 vs. p1: $(-sum(pvp(p2, p1) for i in 1:500))")
+  println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
+  println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
 
-  println("p1 vs. p3: $(sum(pvp(p1, p3) for i in 1:500))")
-  println("p3 vs. p1: $(-sum(pvp(p3, p1) for i in 1:500))")
+  println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
+  println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
+  
 
   println()
 
   set_optimizer!(model, Knet.Adam, lr = 5e-3)
 
-  l = 0
 
-  for i in 1:1999
+  for i in 1:epochs
 
-    dataset = record_selfplay(model, 5, power = power, 
+    l = 0
+
+    dataset = record_selfplay(model, selfplays, power = power, 
                               branch_prob = branch_prob, 
-                              augment = true, temperature = temperature)
+                              augment = augment, temperature = temperature)
 
-    #bts = batches(dataset, 25)
+#    @info "Dataset generation complete"
+    batches = minibatch(dataset, batchsize, shuffle = true, partial = false)
 
-    l += train_step!(model, dataset)
-
-    if i % 10 == 0
-      println("i: $i, loss: $(l/100*2)")
-      l = 0
+    for batch in batches
+      l += train_step!(training_model(model), batch)
+#      @info "Single training step done"
     end
+#    @info "All training steps done"
 
-    if i % 250 == 0
+
+    println("i: $i, loss: $(l/batchsize/length(batches))")
+
+    if i % 10 == 0 && i != epochs
       println("After $i training steps:")
 
-      println("p1 vs. p2: $(sum(pvp(p1, p2) for i in 1:500))")
-      println("p2 vs. p1: $(-sum(pvp(p2, p1) for i in 1:500))")
+      println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
+      println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
 
-      println("p1 vs. p3: $(sum(pvp(p1, p3) for i in 1:500))")
-      println("p3 vs. p1: $(-sum(pvp(p3, p1) for i in 1:500))")
+      println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
+      println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
     end
   end
 
   println("After full training:")
 
-  println("p1 vs. p2: $(sum(pvp(p1, p2) for i in 1:500))")
-  println("p2 vs. p1: $(-sum(pvp(p2, p1) for i in 1:500))")
+  println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
+  println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
 
-  println("p1 vs. p3: $(sum(pvp(p1, p3) for i in 1:500))")
-  println("p3 vs. p1: $(-sum(pvp(p3, p1) for i in 1:500))")
+  println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
+  println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
 
   model
 

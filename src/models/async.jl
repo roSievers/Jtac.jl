@@ -50,6 +50,7 @@ function Base.copy(m :: Async)
 end
 
 ntasks(m :: Async) = m.buffersize
+training_model(m :: Async) = m.model
 
 
 # Helper functions
@@ -65,7 +66,7 @@ function worker_thread(channel, model, max_batchsize)
         push!(inputs, take!(channel))
         yield()
       end
-      #println("Processing $(length(inputs))/$max_batchsize inputs at the same time.")
+#      println("Processing $(length(inputs))/$max_batchsize inputs at the same time.")
       if length(inputs) == 1
         put!(inputs[1][2], model(inputs[1][1]))
       else

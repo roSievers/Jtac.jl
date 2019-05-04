@@ -125,7 +125,7 @@ function mctree_action(model, game :: Game;
     probs = weighted_counter / sum(weighted_counter)
     chosen_i = choose_index(probs)
   end
-
+  
   root.children[chosen_i].action
 end
 

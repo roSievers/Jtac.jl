@@ -30,10 +30,26 @@ function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
   merge(augment2.(d.data, d.label)...)
 end
 
+import Knet: minibatch
+function minibatch(d :: DataSet{G}, batchsize; shuffle = false, partial = true) where {G}
+  l = length(d)
+  indices = shuffle ? Random.shuffle(1:l) : collect(1:l)
+  batches = []
+  i, j = 1, batchsize
+  while max(i, j) <= l
+    sel = indices[i:j]
+    ds  = DataSet{G}(d.data[sel], d.label[sel])
+    push!(batches, ds)
+    i += batchsize
+    j += partial ? min(batchsize, l - j) : batchsize
+  end
+  batches
+end
 
 function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
-               value_weight = 1f0, policy_weight = 1f0, 
-               regularization_weight = 0f0 ) where {G, GPU}
+               value_weight :: Float32 = 1f0, 
+               policy_weight :: Float32 = 1f0, 
+               regularization_weight :: Float32 = 0f0 ) where {G, GPU}
 
   # Push the label matrix to the gpu if the model lives there
   at = atype(GPU)
@@ -54,6 +70,7 @@ function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
   regularization_loss = 0f0
   if regularization_weight >= 0f0
     for param in Knet.params(model)
+      # TODO: Do not apply regularization to bias-terms!
       regularization_loss += sum(abs2, param)
     end
   end
@@ -77,10 +94,13 @@ function record_selfplay( model :: Model{G, GPU}, n = 1;
   @assert (T <: G) "Provided game does not fit model"
 
   rootgame = game
-  sets = map(1:n) do _
+
+  function play()
+
+    local game = copy(rootgame)
     branched_games = []
-    game = copy(rootgame)
     dataset = DataSet{T}()
+
     while !is_over(game)
 
       # Random branching
@@ -102,7 +122,7 @@ function record_selfplay( model :: Model{G, GPU}, n = 1;
       # We also add a leading zero which correspond to the outcome prediction.
       posterior_distribution = node.visit_counter / sum(node.visit_counter)
       improved_policy = zeros(Float32, 1 + policy_length(game))
-      improved_policy[actions .+ 1] = posterior_distribution
+      improved_policy[actions .+ 1] .= posterior_distribution
       push!(dataset.label, improved_policy)
     end
     game_result = status(game)
@@ -110,6 +130,7 @@ function record_selfplay( model :: Model{G, GPU}, n = 1;
     for i = 1:length(dataset.data)
       dataset.label[i][1] = current_player(dataset.data[i]) * game_result
     end
+
     # We now play all games which were created through random branching
     branch_datasets = map(branched_games) do branched_game
       record_selfplay(model, 1, game = branched_game, power = power, augment = false, 
@@ -117,6 +138,13 @@ function record_selfplay( model :: Model{G, GPU}, n = 1;
     end
     merge(dataset, branch_datasets...)
   end
+
+  if !isa(model, Async) || n == 1
+    sets = map(i -> play(), 1:n)
+  else
+    sets = asyncmap(i -> play(), 1:n, ntasks = 100)
+  end
+
   if augment
     merge(sets...) |> Jtac.augment
   else
