@@ -22,16 +22,12 @@ end
 
 Base.length(d :: DataSet) = length(d.data)
 
-function augment2(data, label)
-  DataSet(augment(data, label)...)
-end
-
 function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
-  merge(augment2.(d.data, d.label)...)
+  aux(data, label) = DataSet(augment(data, label)...)
+  merge(aux.(d.data, d.label)...)
 end
 
-import Knet: minibatch
-function minibatch(d :: DataSet{G}, batchsize; shuffle = false, partial = true) where {G}
+function Knet.minibatch(d :: DataSet{G}, batchsize; shuffle = false, partial = true) where {G}
   l = length(d)
   indices = shuffle ? Random.shuffle(1:l) : collect(1:l)
   batches = []
@@ -67,12 +63,13 @@ function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
   policy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
 
   # L2 regularization (weight decay)
-  regularization_loss = 0f0
   if regularization_weight >= 0f0
-    for param in Knet.params(model)
-      # TODO: Do not apply regularization to bias-terms!
-      regularization_loss += sum(abs2, param)
+    regularization_loss = sum(Knet.params(model)) do param
+      s = size(param)
+      maximum(s) < prod(s) ? sum(abs2, param) : 0f0
     end
+  else
+    regularization_loss = 0f0
   end
 
   # Return the total loss

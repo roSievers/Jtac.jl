@@ -63,7 +63,7 @@ end
 function Dense( i :: Int, o :: Int, f = Knet.identity; 
                 bias = true, gpu = false )
   at = atype(gpu)
-  w = Knet.param(o,i, atype = at)
+  w = Knet.param(o, i, atype = at)
   b = bias ? Knet.param0(o, atype = at) : convert(at, zeros(Float32, o))
   Dense{gpu}(w, b, f)
 end
