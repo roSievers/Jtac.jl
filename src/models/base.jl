@@ -27,7 +27,6 @@ end
 swap(m :: BaseModel{G, GPU}) where {G, GPU} = 
   BaseModel{G, !GPU}(swap(m.logits), m.vconv, m.pconv)
 
-
 Base.copy(m :: BaseModel{G, GPU}) where {G, GPU} =
   BaseModel{G, GPU}(copy(m.logits), m.vconv, m.pconv)
 
