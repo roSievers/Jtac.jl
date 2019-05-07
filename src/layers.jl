@@ -323,14 +323,14 @@ function swap(b :: Batchnorm{GPU}) where {GPU}
   mean = (b.moments.mean != nothing) ? convert(at, b.moments.mean) : nothing
   var  = (b.moments.var != nothing) ? convert(at, b.moments.var) : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{!GPU}(b.moments, copy_param(b.params, at = at))
+  Batchnorm{!GPU}(moments, copy_param(b.params, at = at))
 end
 
 function Base.copy(b :: Batchnorm{GPU}) where {GPU}
   mean = (b.moments.mean != nothing) ? copy(b.moments.mean) : nothing
   var  = (b.moments.var  != nothing) ? copy(b.moments.var)  : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{GPU}(b.moments, copy_param(b.params))
+  Batchnorm{GPU}(moments, copy_param(b.params))
 end
 
 valid_insize(:: Batchnorm, s) = true
