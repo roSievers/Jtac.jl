@@ -248,7 +248,7 @@ struct Pool{GPU} <: Layer{GPU}
   s  # Stride
 end
 
-function Pool(window = 2; padding = 0, stride = window, gpu = false)
+function Pool(; window = 2, padding = 0, stride = window, gpu = false)
   w, p, s = expand_to_pair.((window, padding, stride))
   Pool{gpu}(w, p, s)
 end

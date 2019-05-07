@@ -9,7 +9,9 @@ import AutoGrad
 import Knet
 import Knet: identity, relu, softmax 
 
-export AutoGrad, Knet, identity, relu, elu, softmax, tanh, sigm
+export AutoGrad, Knet, 
+       minibatch,
+       identity, relu, elu, softmax, tanh, sigm
 
 # We save models/games via BSON.jl
 
