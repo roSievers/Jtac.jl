@@ -11,7 +11,7 @@ end
 function BaseModel(:: Type{G}, logits :: Layer{GPU}; 
                    vconv = Knet.tanh, pconv = Knet.softmax) where {G, GPU}
   @assert valid_insize(logits, size(G)) "Input layer does not fit the game"
-  @assert outsize(logits, size(G)) == policy_length(G) "Output layer does not fit the game"
+  @assert outsize(logits, size(G)) == policy_length(G) + 1 "Output layer does not fit the game"
   BaseModel{G, GPU}(logits, vconv, pconv)
 end
 
