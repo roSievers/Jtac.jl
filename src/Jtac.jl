@@ -78,4 +78,7 @@ export RandomPlayer, MCTPlayer,
        IntuitionPlayer, HumanPlayer, 
        pvp
 
+include("belo.jl")
+export ranking, show_ranking
+
 end # module JTac
