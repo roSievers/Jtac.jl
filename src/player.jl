@@ -30,17 +30,14 @@ end
 function MCTPlayer(model :: Model{G}; 
                    power = 100, temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
-    id = Int(div(hash(model), Int(1e14)))
+    id = Int(div(hash((model, temperature)), Int(1e14)))
     name = "mct$(power)-$id"
   end
   MCTPlayer{G}(model, power, temperature, name)
 end
 
 # The default MCTPlayer uses the RolloutModel
-function MCTPlayer(; power = 100, temperature = 1., name = nothing) where {G <: Game}
-  MCTPlayer{Game}(RolloutModel(), power = power, 
-                  temperature = temperature, name = name)
-end
+MCTPlayer(; kwargs...) = MCTPlayer(RolloutModel(); kwargs...)
 
 function think(game :: G, p :: MCTPlayer{G}) where {G <: Game}
   mctree_action(p.model, game, power = p.power, temperature = p.temperature)
@@ -60,7 +57,7 @@ end
 function IntuitionPlayer(model :: Model{G}; 
                       temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
-    id = Int(div(hash(model), Int(1e14)))
+    id = Int(div(hash((model, temperature)), Int(1e14)))
     name = "policy-$id"
   end
   IntuitionPlayer{G}(model, temperature, name)
