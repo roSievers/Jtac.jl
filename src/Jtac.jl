@@ -7,7 +7,7 @@ module Jtac
 
 import AutoGrad
 import Knet
-import Knet: identity, relu, softmax 
+import Knet: identity, relu, softmax, minibatch
 
 export AutoGrad, Knet, 
        minibatch,
