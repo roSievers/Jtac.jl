@@ -6,10 +6,9 @@ chain = @chain(
                 Conv(512, relu, stride = 3, padding = 0),
                 Conv(1024, relu),
                 Dense(512, relu),
-                Dense(82) 
               )
 
-model = BaseModel(MetaTac, chain) |> to_gpu |> Async
+model = NeuralModel(MetaTac, chain) |> to_gpu |> Async
 
 train!( 
         model,

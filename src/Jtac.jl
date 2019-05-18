@@ -39,8 +39,9 @@ export Model, apply, save_model, load_model,
 # Building blocks for models
 
 include("layers.jl")
-export Dense, Conv, Deconv, Pool, Dropout, Batchnorm, Chain, Stack,
-       valid_insize, outsize, 
+export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
+       Chain, Stack,
+       valid_insize, outsize, layers,
        @chain, @stack
 
 # Model implementations
@@ -48,8 +49,8 @@ export Dense, Conv, Deconv, Pool, Dropout, Batchnorm, Chain, Stack,
 include("models/toy.jl")
 export DummyModel, RandomModel, RolloutModel
 
-include("models/base.jl")
-export BaseModel, Shallow, MLP, ShallowConv
+include("models/neural.jl")
+export NeuralModel, Shallow, MLP, ShallowConv
 
 include("models/async.jl")
 export Async

@@ -4,12 +4,12 @@ using Jtac
 G = MetaTac
 bp = 0.02
 
-chain = @chain G Conv(256) Pool() Dropout(0.2) Deconv(512) Conv(512) Dropout(0.2) Conv(256) Dense(82)
+chain = @chain G Conv(256) Pool() Dropout(0.2) Deconv(512) Conv(512) Dropout(0.2) Conv(256)
 #chain = @chain G Dense(1000) Dense(1000) Dense(1000) Dense(1000) Dense(Jtac.policy_length(G)+1)
 
 
 #model = ShallowConv(G, 500)
-model = BaseModel(G, chain)
+model = NeuralModel(G, chain)
 
 amodel = Async(model, max_batchsize = 100)
 

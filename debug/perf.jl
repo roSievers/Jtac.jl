@@ -8,7 +8,7 @@ G = MetaTac
 
 
 model = ShallowConv(G, 200)
-#model = BaseModel(G, chain)
+#model = NeuralModel(G, chain)
 amodel = Async(model, max_batchsize = 100)
 
 games = map(1:10000) do _

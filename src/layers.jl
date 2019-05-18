@@ -66,7 +66,25 @@ expand_to_pair(t :: NTuple{2, Int}) = t
 expand_to_pair(t :: Int) = (t, t)
 
 
-# Dense layers
+# Pointwise operation layer
+# --------------------------------------------------------------------------- # 
+
+struct Pointwise{GPU} <: PrimitiveLayer{GPU}
+  f # Activation function
+end
+
+Pointwise( f = Knet.identity; gpu = false ) = Pointwise{gpu}(f)
+
+(p :: Pointwise)(x) = p.f.(x)
+
+swap(p :: Pointwise{GPU}) where {GPU} = Pointwise(p.f, gpu = !GPU)
+Base.copy(p :: Pointwise) = p
+
+valid_insize(:: Pointwise, _) = true
+outsize(p :: Pointwise, s) = s
+
+
+# Dense layer
 # --------------------------------------------------------------------------- # 
 
 struct Dense{GPU} <: PrimitiveLayer{GPU}
