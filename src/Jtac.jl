@@ -39,8 +39,9 @@ export Model, apply, save_model, load_model,
 # Building blocks for models
 
 include("layers.jl")
-export Dense, Conv, Deconv, Pool, Chain, Dropout, Batchnorm, 
-       valid_insize, outsize, @chain
+export Dense, Conv, Deconv, Pool, Dropout, Batchnorm, Chain, Stack,
+       valid_insize, outsize, 
+       @chain, @stack
 
 # Model implementations
 
