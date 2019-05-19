@@ -63,7 +63,7 @@ end
 
 
 # Returns a named tuple with entries :elos, :draw, :adv
-function ranking(players, game :: Game, nmax; kwargs...)
+function ranking(players, game :: Game, nmax; async = false, kwargs...)
   
   k = length(players)
   n = floor(Int, nmax / binomial(k, 2) / 2)
@@ -74,10 +74,15 @@ function ranking(players, game :: Game, nmax; kwargs...)
   players = enumerate(players)
 
   for (i, p1) in players, (j, p2) in players
+
     i == j && continue
 
-    g = [(i, j, pvp(p1, p2, game)) for _ in 1:n]
-    push!(games, g)
+    if async
+      push!(games, asyncmap(_ -> (i, j, pvp(p1, p2, game)), 1:n))
+    else
+      push!(games, map(_ -> (i, j, pvp(p1, p2, game)), 1:n))
+    end
+
   end
 
   games = vcat(games...)

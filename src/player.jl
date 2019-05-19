@@ -31,7 +31,7 @@ function MCTSPlayer(model :: Model{G};
                    power = 100, temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
     id = Int(div(hash((model, temperature)), Int(1e14)))
-    name = "mct$(power)-$id"
+    name = "mcts$(power)-$id"
   end
   MCTSPlayer{G}(model, power, temperature, name)
 end
