@@ -93,7 +93,16 @@ function ranking(players, game :: Game, nmax; async = false, kwargs...)
 
 end
 
-function print_ranking(players, rk)
+function ranking(players, nmax; kwargs...)
+  G = mapreduce(gametype, typeintersect, players, init = Game)
+
+  @assert G != Union{} "Players do not play compatible games"
+  @assert !isabstracttype(G) "Cannot infere a concrete game"
+
+  ranking(players, G(), nmax; kwargs...)
+end
+
+function print_ranking(players, rk :: NamedTuple)
 
   i = 1
 
@@ -109,8 +118,8 @@ function print_ranking(players, rk)
 
 end
 
-function print_ranking(players, game, nmax; kwargs...)
-  rk = ranking(players, game, nmax; kwargs...)
+function print_ranking(players, args...; kwargs...)
+  rk = ranking(players, args...; kwargs...)
   print_ranking(players, rk)
 end
 

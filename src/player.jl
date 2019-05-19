@@ -18,6 +18,7 @@ think(game :: Game, p :: RandomPlayer) = random_action(game)
 
 name(p :: RandomPlayer) = "random"
 
+gametype(:: Player{G}) where {G <: Game} = G
 
 # A Markov chain tree search player with a model it can ask for decision making 
 struct MCTSPlayer{G} <: Player{G}
@@ -58,7 +59,7 @@ function IntuitionPlayer(model :: Model{G};
                       temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
     id = Int(div(hash((model, temperature)), Int(1e14)))
-    name = "policy-$id"
+    name = "intuition-$id"
   end
   IntuitionPlayer{G}(model, temperature, name)
 end
@@ -133,10 +134,10 @@ end
 function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
   # Find the most concrete game type
   G = typeintersect(G1, G2)
+
   # Check that it really is a concrete type
-  if G == Game
-    error("Cannot infere a concrete game from the provided players")
-  end
+  @assert !isabstracttype(G) "Cannot infere a concrete game"
+
   pvp(p1, p2, G())
 end
 
