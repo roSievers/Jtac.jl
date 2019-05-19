@@ -30,22 +30,39 @@ function objective(elos, games; mean, std, kwargs...)
   end
 end
 
-function estimate(k, games; adv = nothing, draw = nothing, mean = 0, std = 1500)
-  if isnothing(draw) && isnothing(adv)
-    opt = NLopt.Opt(:LN_BOBYQA, k+2)
-    NLopt.min_objective!(opt, (x, _) -> -objective(x[1:k], games; draw = x[k+2], adv = x[k+1], mean = mean, std = std))
-    NLopt.lower_bounds!(opt, [fill(mean - 3std, k+1); 1])
-    NLopt.upper_bounds!(opt, [fill(mean + 3std, k+1); abs(mean) + 3std])
-    value, params, ret = NLopt.optimize(opt, [[mean for _ in 1:k]; 0.; 1.] )
-  else
-    @show adv
-    @show draw
-    error("Fixed adv or draw values not yet implemented")
-  end
+function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500.)
+
+  # Upper and lower bounds and start values for (adv, draw)
+  lb = [-4std, 1]
+  ub = [ 4std, 4std]
+  st = [ 0., 1.]
+
+  # If adv or draw are given, we do not estimate them but set 
+  # upper bound = lower bound = start value = given value
+  !isnothing(adv)  && (st[1] = lb[1] = ub[1] = adv)
+  !isnothing(draw) && (st[2] = lb[2] = ub[2] = draw)
+
+  # Create the optimizer object
+  opt = NLopt.Opt(:LN_BOBYQA, k+2)
+
+  # Define the minimization objective function compatible to NLopt
+  f(x, _) = -objective(x[1:k], games; draw = x[k+2], adv = x[k+1], mean = mean, std = std)
+
+  # Set the objective and set reasonable lower/upper bounds
+  NLopt.min_objective!(opt, f)
+  NLopt.lower_bounds!(opt, [fill(mean - 4std, k); lb])
+  NLopt.upper_bounds!(opt, [fill(mean + 4std, k); ub])
+
+  # Conduct the optimization
+  value, params, ret = NLopt.optimize(opt, [fill(mean, k); st] )
+
+  # Return the found values
   params
+
 end
 
 
+# Returns a named tuple with entries :elos, :draw, :adv
 function ranking(players, game :: Game, nmax; kwargs...)
   
   k = length(players)
@@ -65,37 +82,30 @@ function ranking(players, game :: Game, nmax; kwargs...)
 
   games = vcat(games...)
 
-  estimate(k, games; kwargs...)
+  res = estimate(k, games; kwargs...)
+
+  (elos = res[1:k], adv = res[k+1], draw = res[k+2])
 
 end
 
-function show_ranking(players, game, nmax; adv = nothing, draw = nothing, kwargs...)
-  
-  rk = ranking(players, game, nmax; adv = adv, draw = draw, kwargs...)
-  elos = rk[1:length(players)]
+function print_ranking(players, rk)
 
-  if isnothing(adv) && isnothing(draw)
-    adv, draw = rk[end-1:end]
-  else
-    error("Fixed adv or draw values not yet implemented")
-  end
-
-  perm = sortperm(elos) |> reverse
   i = 1
-  for (player, elo) in zip(players[perm], elos[perm])
+
+  # The player with highest elo will come first
+  perm = sortperm(rk.elos) |> reverse
+
+  for (player, elo) in zip(players[perm], rk.elos[perm])
     Printf.@printf "%3d. %7.2f %10s\n" i elo name(player)
     i += 1
   end
 
-  Printf.@printf "\nstart-advantage: %.2f\ndraw_bandwidth:  %.2f" adv draw
+  Printf.@printf "\nstart-advantage: %.2f\ndraw-bandwidth:  %.2f" rk.adv rk.draw
 
 end
 
-function show_ranking(players, elos)
-  perm = sortperm(elos) |> reverse
-  for (player, elo) in zip(players[perm], elos[perm])
-    println(name(player), ": ", elo)
-  end
+function print_ranking(players, game, nmax; kwargs...)
+  rk = ranking(players, game, nmax; kwargs...)
+  print_ranking(players, rk)
 end
-
 
