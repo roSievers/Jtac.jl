@@ -436,7 +436,7 @@ function (s :: Stack{GPU})(x) where {GPU}
   end
 
   # Create a buffer that the results are written to
-  buffer = convert(atype(GPU), zeros(Float32, (sum(lengths), batchsize)))
+  buffer = atype(GPU)(undef, (sum(lengths), batchsize))
 
   # Fill the buffer with the layer outputs (and optionally the input layer)
   cs = cumsum([0; lengths])
