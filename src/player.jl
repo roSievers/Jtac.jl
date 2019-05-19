@@ -68,7 +68,8 @@ function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
-  policy = p.model(game)[actions .+ 1]
+  output = p.model(game) |> Array{Float32}
+  policy = output[actions .+ 1]
   
   # Return the action that the player decides for
   if p.temperature == 0

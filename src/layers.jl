@@ -413,49 +413,24 @@ function Stack(layers :: Layer{GPU}...;
 end
 
 function (s :: Stack{GPU})(x) where {GPU}
-  inshape, batchsize = size(x)[1:end-1], size(x)[end]
 
-  # Collect the shapes and sizes of all layer outputs
-  shapes  = []
-  lengths = Int[]
+  batchsize = size(x)[end]
 
-  # If the input is also stacked, add the shape and length of the input layer
-  if s.stack_input
-    push!(shapes, inshape)
-    push!(lengths, prod(inshape))
-  end
-
-  # Iterate through the layers and add shapes and lengths
-  shape = inshape
+  features = s.stack_input ? Any[x] : Any[]
 
   for layer in s.layers
-    @assert valid_insize(layer, shape)
-    shape = outsize(layer, shape)
-    push!(shapes, shape)
-    push!(lengths, prod(shape))
+    x = layer(x)
+    push!(features, x)
   end
 
-  # Create a buffer that the results are written to
-  buffer = atype(GPU)(undef, (sum(lengths), batchsize))
-
-  # Fill the buffer with the layer outputs (and optionally the input layer)
-  cs = cumsum([0; lengths])
-
-  i = 1
-  if s.stack_input
-    buffer[cs[i]+1:cs[i+1],:] = reshape(x, (lengths[i], batchsize))
-    i += 1
+  features = map(features) do data
+    reshape(data, (prod(size(data)[1:end-1]), batchsize))
   end
 
-  for layer in s.layers
-    x = buffer[cs[i]+1:cs[i+1],:] = reshape(layer(x), (lengths[i], batchsize))
-    x = reshape(x, (shapes[i]..., batchsize))
-    i += 1
-  end
+  vcat(features...)
 
-  # Return the buffer that contains the output of all layers
-  buffer
 end
+
 
 function swap(s :: Stack{GPU}) where {GPU}
   Stack(swap.(s.layers)..., stack_input = s.stack_input)
@@ -493,6 +468,7 @@ layers(s :: Stack) = s.layers
 # Macro for composite layers that automatically adapts input sizes
 # --------------------------------------------------------------------------- #
 
+getsize(t :: Int) = t
 getsize(t :: Tuple) = t
 getsize(g :: Game) = size(g)
 getsize(:: Type{G}) where {G <: Game} = size(G)
@@ -561,7 +537,7 @@ function composite_macro_body(c, ex, layers...)
     layers = filter(x -> !isa(x, LineNumberNode), layers[1].args)
   end
 
-  for (i, layer) in enumerate(layers)
+  for layer in layers
 
     # The "layer" is assumed to be a
     #   1. :call Expression
@@ -589,7 +565,7 @@ function composite_macro_body(c, ex, layers...)
     end
 
     # Give the layer a temporary name
-    name = Symbol("l$i")
+    name = gensym("l") 
     push!(names, name)
 
     # Add the evaluation of the completed layer constructor to the body

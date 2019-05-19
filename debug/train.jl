@@ -2,42 +2,58 @@
 using Jtac
 
 function train!( model;
-                 power = 50,
-                 branch_prob = 0.05,
-                 temperature = 1,
+                 power = 100,
+                 branch_prob = 0.,
+                 selfplay_temperature = 1.,
+                 contest_temperature = 1.,
+                 contest_length :: Int = 250,
+                 contest_interval :: Int = 10,
+                 optimizer = Knet.Adam,
+                 learning_rate = 1e-3,
+                 iterations = 1,
+                 regularization_weight = 0.,
+                 opponents = [],
                  augment = true,   # whether to use symmetry augmentation on the recorded games
                  epochs = 10,      # number of times a new dataset is produced (with constant network)
                  batchsize = 200,  # number of states per gd-step
-                 selfplays = 50    # number of selfplays to record the dataset
+                 selfplays = 50,   # number of selfplays to record the dataset
                                    # note that branching and augmentation may lead to a higher number of recorded games
               )
 
-  println("Begin training")
-
-  @show power
+  println("Training options:")
+  println()
   @show epochs
   @show selfplays
   @show batchsize
   @show branch_prob
-  @show temperature
+  @show power
   @show augment
+  @show optimizer
+  @show learning_rate
+  @show selfplay_temperature
+  @show contest_length
+  @show contest_temperature
+  @show contest_interval
+  println("opponents = ", name.(opponents))
 
-  p1 = MCTPlayer(model, power = power)
-  p2 = MCTPlayer(copy(model), power = power)
-  p3 = MCTPlayer(RolloutModel(), power = 500, temperature = 0.5)
+  async = isa(model, Async)
 
-  println("Before training of p1 (from perspective of p1):")
+  if contest_length > 0
+    players = [
+      IntuitionPlayer(model, temperature = contest_temperature, name = "current");
+      IntuitionPlayer(copy(model), temperature = contest_temperature, name = "initial");
+      opponents
+    ]
 
-  println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
-  println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
-
-  println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
-  println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
-  
+    println()
+    println("First contest begins...")
+    print_ranking(players, contest_length, async = async)
+  end
 
   println()
+  println("Training begins...")
 
-  set_optimizer!(model, Knet.Adam, lr = 5e-3)
+  set_optimizer!(model, optimizer, lr = learning_rate)
 
 
   for i in 1:epochs
@@ -45,45 +61,37 @@ function train!( model;
     l = 0
 
     dataset = record_selfplay(model, selfplays, power = power, 
-                              branch_prob = branch_prob, 
-                              augment = augment, temperature = temperature)
+                              branch_prob = branch_prob, augment = augment, 
+                              temperature = selfplay_temperature)
 
-#    @info "Dataset generation complete"
-    batches = minibatch(dataset, batchsize, shuffle = true, partial = false)
+    for j in 1:iterations
 
-    for batch in batches
-      l += train_step!(training_model(model), batch)
-#      @info "Single training step done"
+      batches = minibatch(dataset, batchsize, shuffle = true, partial = false)
+
+      for batch in batches
+        l += train_step!(training_model(model), batch, 
+                         regularization_weight = regularization_weight)
+      end
+
     end
-#    @info "All training steps done"
 
+    println("i: $i, loss: $(l/length(dataset)/iterations)")
 
-    println("i: $i, loss: $(l/batchsize/length(batches))")
-
-    if i % 10 == 0 && i != epochs
-      println("After $i training steps:")
-
-      println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
-      println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
-
-      println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
-      println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
+    if i % contest_interval == 0 && i != epochs && contest_length > 0
+      println()
+      println("Intermediate contest begins...")
+      print_ranking(players, contest_length, async = async)
+      println()
     end
   end
 
-  println("After full training:")
-
-  println("p1 vs. p2: $(asyncmap(_ -> pvp(p1, p2), 1:50) |> sum)")
-  println("p2 vs. p1: $(asyncmap(_ -> pvp(p2, p1), 1:50) |> sum)")
-
-  println("p1 vs. p3: $(asyncmap(_ -> pvp(p1, p3), 1:50) |> sum)")
-  println("p3 vs. p1: $(asyncmap(_ -> pvp(p3, p1), 1:50) |> sum)")
+  if contest_length > 0
+    println()
+    println("Final contest begins...")
+    print_ranking(players, contest_length, async = async)
+  end
 
   model
 
 end
 
-# OBSERVATIONS:
-# * The lower the power, the better the trained LinearModel becomes against Rollout
-# * When the power during training is different to the power during playout, we suck
-#

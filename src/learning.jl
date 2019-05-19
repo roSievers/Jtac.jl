@@ -43,9 +43,14 @@ function Knet.minibatch(d :: DataSet{G}, batchsize; shuffle = false, partial = t
 end
 
 function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
-               value_weight :: Float32 = 1f0, 
-               policy_weight :: Float32 = 1f0, 
-               regularization_weight :: Float32 = 0f0 ) where {G, GPU}
+               value_weight = 1f0, 
+               policy_weight = 1f0, 
+               regularization_weight = 0f0 ) where {G, GPU}
+
+  # Convert all weights to Float32
+  value_weight = convert(Float32, value_weight)
+  policy_weight = convert(Float32, policy_weight)
+  regularization_weight = convert(Float32, regularization_weight)
 
   # Push the label matrix to the gpu if the model lives there
   at = atype(GPU)
@@ -157,12 +162,10 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
 end
 
 # A single training step, the loss is returned
-function train_step!(model, dataset :: DataSet)
-  tape = Knet.@diff loss(model, dataset)
+function train_step!(model, dataset :: DataSet; kwargs...)
+  tape = Knet.@diff loss(model, dataset; kwargs...)
   for param in Knet.params(model)
     Knet.update!(Knet.value(param), Knet.grad(tape, param), param.opt)
   end
   Knet.value(tape)
 end
-
-

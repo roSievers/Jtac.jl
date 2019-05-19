@@ -114,7 +114,7 @@ function print_ranking(players, rk :: NamedTuple)
     i += 1
   end
 
-  Printf.@printf "\nstart-advantage: %.2f\ndraw-bandwidth:  %.2f" rk.adv rk.draw
+  Printf.@printf "\nstart-advantage: %.2f\ndraw-bandwidth:  %.2f\n" rk.adv rk.draw
 
 end
 

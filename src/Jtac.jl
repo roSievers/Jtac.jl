@@ -78,7 +78,7 @@ export DataSet, loss, record_selfplay,
 include("player.jl")
 export RandomPlayer, MCTSPlayer, 
        IntuitionPlayer, HumanPlayer, 
-       pvp
+       pvp, name
 
 include("belo.jl")
 export ranking, print_ranking
