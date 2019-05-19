@@ -263,7 +263,7 @@ function (p :: Pool)(x)
   p.f.(Knet.pool(x, window = p.w, padding = p.p, stride = p.s))
 end
 
-swap(p :: Pool{GPU}) where {GPU} = Pool{!GPU}(p.w, p.p, p.s)
+swap(p :: Pool{GPU}) where {GPU} = Pool{!GPU}(p.w, p.p, p.s, p.f)
 Base.copy(p :: Pool) = p
 
 function valid_insize(p :: Pool, s)
@@ -303,7 +303,7 @@ function (d :: Dropout)(x)
   end
 end
 
-swap(d :: Dropout{GPU}) where {GPU} = Dropout{!GPU}(d.prob)
+swap(d :: Dropout{GPU}) where {GPU} = Dropout{!GPU}(d.prob, d.f)
 Base.copy(d :: Dropout) = d
 
 valid_insize(:: Dropout, s) = true
@@ -331,14 +331,14 @@ function swap(b :: Batchnorm{GPU}) where {GPU}
   mean = (b.moments.mean != nothing) ? convert(at, b.moments.mean) : nothing
   var  = (b.moments.var != nothing) ? convert(at, b.moments.var) : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{!GPU}(moments, copy_param(b.params, at = at))
+  Batchnorm{!GPU}(moments, copy_param(b.params, at = at), b.f)
 end
 
 function Base.copy(b :: Batchnorm{GPU}) where {GPU}
   mean = (b.moments.mean != nothing) ? copy(b.moments.mean) : nothing
   var  = (b.moments.var  != nothing) ? copy(b.moments.var)  : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{GPU}(moments, copy_param(b.params))
+  Batchnorm{GPU}(moments, copy_param(b.params), b.f)
 end
 
 valid_insize(:: Batchnorm, s) = true
