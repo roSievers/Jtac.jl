@@ -19,31 +19,31 @@ think(game :: Game, p :: RandomPlayer) = random_action(game)
 name(p :: RandomPlayer) = "random"
 
 
-# A player that has a model that it can ask for decision making 
-struct MCTPlayer{G} <: Player{G}
+# A Markov chain tree search player with a model it can ask for decision making 
+struct MCTSPlayer{G} <: Player{G}
   model :: Model{G}
   power :: Int
   temperature :: Float32
   name :: String
 end
 
-function MCTPlayer(model :: Model{G}; 
+function MCTSPlayer(model :: Model{G}; 
                    power = 100, temperature = 1., name = nothing) where {G <: Game}
   if name == nothing
     id = Int(div(hash((model, temperature)), Int(1e14)))
     name = "mct$(power)-$id"
   end
-  MCTPlayer{G}(model, power, temperature, name)
+  MCTSPlayer{G}(model, power, temperature, name)
 end
 
-# The default MCTPlayer uses the RolloutModel
-MCTPlayer(; kwargs...) = MCTPlayer(RolloutModel(); kwargs...)
+# The default MCTSPlayer uses the RolloutModel
+MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 
-function think(game :: G, p :: MCTPlayer{G}) where {G <: Game}
+function think(game :: G, p :: MCTSPlayer{G}) where {G <: Game}
   mctree_action(p.model, game, power = p.power, temperature = p.temperature)
 end
 
-name(p :: MCTPlayer) = p.name
+name(p :: MCTSPlayer) = p.name
 
 
 # Player that uses the model policy decision directly

@@ -76,7 +76,7 @@ export DataSet, loss, record_selfplay,
 # Players
 
 include("player.jl")
-export RandomPlayer, MCTPlayer, 
+export RandomPlayer, MCTSPlayer, 
        IntuitionPlayer, HumanPlayer, 
        pvp
 
