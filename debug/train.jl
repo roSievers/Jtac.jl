@@ -26,10 +26,12 @@ function train!( model;
   @show selfplays
   @show batchsize
   @show branch_prob
+  @show iterations
   @show power
   @show augment
   @show optimizer
   @show learning_rate
+  @show regularization_weight
   @show selfplay_temperature
   @show contest_length
   @show contest_temperature
