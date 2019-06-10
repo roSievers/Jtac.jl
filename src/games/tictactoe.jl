@@ -78,22 +78,6 @@ function representation(game :: TicTacToe) :: Array{Float32, 3}
   reshape(game.current_player .* game.board, (3, 3, 1))
 end
 
-hmirror(matrix) = matrix[end:-1:1, :]
-vmirror(matrix) = matrix[:, end:-1:1]
-
-function apply_dihedral_group(matrix)
-  [
-    matrix |> copy,
-    matrix |> hmirror,
-    matrix |> transpose,
-    matrix |> vmirror,
-    matrix |> transpose |> hmirror,
-    matrix |> hmirror |> transpose,
-    matrix |> vmirror |> hmirror,
-    matrix |> vmirror |> hmirror |> vmirror
-  ]
-end
-
 function augment(game :: TicTacToe, label :: Vector{Float32})
   boards = apply_dihedral_group(reshape(game.board, (3,3))) 
   games = [ TicTacToe(reshape(b, (9,)), game.current_player, game.status) for b in boards ]

@@ -68,7 +68,7 @@ function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
-  output = p.model(game) |> Array{Float32}
+  output = p.model(game) |> Array{Float32} # convert potential gpu-output
   policy = output[actions .+ 1]
   
   # Return the action that the player decides for
