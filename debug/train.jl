@@ -4,7 +4,7 @@ using Jtac
 function train!( model;
                  power = 100,
                  branch_prob = 0.,
-                 selfplay_temperature = 1.,
+                 temperature = 1.,
                  contest_temperature = 1.,
                  contest_length :: Int = 250,
                  contest_interval :: Int = 10,
@@ -32,7 +32,7 @@ function train!( model;
   @show optimizer
   @show learning_rate
   @show regularization_weight
-  @show selfplay_temperature
+  @show temperature
   @show contest_length
   @show contest_temperature
   @show contest_interval
@@ -64,7 +64,7 @@ function train!( model;
 
     dataset = record_selfplay(model, selfplays, power = power, 
                               branch_prob = branch_prob, augment = augment, 
-                              temperature = selfplay_temperature)
+                              temperature = temperature)
 
     for j in 1:iterations
 
