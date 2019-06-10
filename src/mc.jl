@@ -92,15 +92,6 @@ function backpropagate!(node, value) :: Nothing
   end
 end
 
-# Cute little helper function that is also used in player.jl searches new home
-# file! Can you adopt it? Please?
-function choose_index(probs)
-  r = rand(Float32)
-  index = findfirst(x -> r <= x, cumsum(probs))
-  @assert index != nothing "probability vector is not proper!"
-  index
-end
-
 function mctree_action(model, game :: Game;
                        root = Node(), # To track the expansion
                        power = 100,

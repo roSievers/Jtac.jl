@@ -21,6 +21,9 @@ import BSON
 
 import Random
 
+# Auxiliary functions
+include("util.jl")
+
 # Interface that games must satisfy and some convenience functions
 
 include("game.jl")

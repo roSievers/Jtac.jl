@@ -104,6 +104,7 @@ end
 # It returns Tuple{Vector{G}, Vector{Vector{Float32}}}, where G is the input
 # game type
 function augment(game :: Game, label) 
+  @warn "Augmentation not implemented for type $(typeof(game))"
   [game], [label]
 end
 
