@@ -37,10 +37,10 @@ function apply_dihedral_group(action :: Int, s :: Tuple)
     hmirror(action, s),
     dmirror(action, s),
     vmirror(action, s),
-    dmirror(hmirror(action, s)),
-    hmirror(dmirror(action, s)),
-    vmirror(hmirror(action, s)),
-    vmirror(hmirror(vmirror(action, s)))
+    dmirror(hmirror(action, s), s),
+    hmirror(dmirror(action, s), s),
+    vmirror(hmirror(action, s), s),
+    vmirror(hmirror(vmirror(action, s), s), s)
   ]
 end
 
