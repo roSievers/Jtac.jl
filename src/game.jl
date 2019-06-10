@@ -103,7 +103,7 @@ end
 # This should be implemented using the symmetries of the specific game
 # It returns Tuple{Vector{G}, Vector{Vector{Float32}}}, where G is the input
 # game type
-function augment(game :: Game, label) 
+function augment(game :: Game, label :: Array{Float32}) 
   @warn "Augmentation not implemented for type $(typeof(game))"
   [game], [label]
 end

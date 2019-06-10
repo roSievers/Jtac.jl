@@ -146,6 +146,24 @@ function representation(game :: MetaTac) :: Array{Float32, 3}
 end
 
 
+function augment(game :: MetaTac, label :: Vector{Float32})
+  boards = apply_dihedral_group(reshape(game.board, (9,9))) 
+  caches = apply_dihedral_group(reshape(game.region_status_cache, (3,3)))
+  focii  = game.focus == 0 ? fill(0, length(boards)) : apply_dihedral_group(game.focus)
+
+  games = map(boards, caches, focii) do board, cache, focus
+    board = reshape(board, (81,))
+    cache = reshape(cache, (9,))
+    MetaTac(board, game.current_player, focus, game.status_cache, cache)
+  end
+
+  matpol = reshape(label[2:end], (9, 9))
+  matpols = apply_dihedral_group(matpol)
+  labels = [ vcat(label[1], reshape(mp, (81,))) for mp in matpols ]
+
+  games, labels
+end
+
 
 function draw(game :: MetaTac) :: Nothing
 
