@@ -18,7 +18,7 @@ dmirror(a :: Tuple, s) = (a[2], a[1], a[3:end]...)
 dmirror(a :: Int, s) = lind(dmirror(cind(a, s), s), s)
 
 
-function apply_dihedral_group(matrix)
+function apply_dihedral_group(matrix :: Array)
   [
     matrix |> copy,
     matrix |> hmirror,
@@ -28,6 +28,19 @@ function apply_dihedral_group(matrix)
     matrix |> hmirror |> dmirror,
     matrix |> vmirror |> hmirror,
     matrix |> vmirror |> hmirror |> vmirror
+  ]
+end
+
+function apply_dihedral_group(action :: Int, s :: Tuple)
+  [
+    action,
+    hmirror(action, s),
+    dmirror(action, s),
+    vmirror(action, s),
+    dmirror(hmirror(action, s)),
+    hmirror(dmirror(action, s)),
+    vmirror(hmirror(action, s)),
+    vmirror(hmirror(vmirror(action, s)))
   ]
 end
 
