@@ -8,6 +8,23 @@
   @test Jtac.with_default.(Jtac.Status.(vals), Jtac.Status()) == vals
 end
 
+@testset "Augment" begin
+  hmirror = Jtac.hmirror
+  vmirror = Jtac.vmirror
+  dmirror = Jtac.dmirror
+  a = rand(25)
+  ma = reshape(a, (5, 5))
+  @test all(ma |> hmirror |> hmirror .== ma)
+  @test all(ma |> vmirror |> vmirror .== ma)
+  @test all(ma |> dmirror |> dmirror .== ma)
+  for i in [1, 7, 15, 23]
+    @test a[i] == reshape(hmirror(ma), (25,))[hmirror(i, (5,5))]
+    @test a[i] == reshape(vmirror(ma), (25,))[vmirror(i, (5,5))]
+    @test a[i] == reshape(dmirror(ma), (25,))[dmirror(i, (5,5))]
+  end
+  
+end
+
 @testset "TicTacToe" begin
 
   game = TicTacToe()
