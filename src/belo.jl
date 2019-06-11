@@ -68,7 +68,10 @@ function ranking(players, game :: Game, nmax; async = false, kwargs...)
   k = length(players)
   n = floor(Int, nmax / binomial(k, 2) / 2)
 
-  @assert n > 0 "nmax too small: not every match is assumed"
+  if n == 0
+    @warn "nmax too small: every pair gets one game"
+    n = 1
+  end
 
   games = []
   players = enumerate(players)

@@ -42,15 +42,10 @@ function Knet.minibatch(d :: DataSet{G}, batchsize; shuffle = false, partial = t
   batches
 end
 
-function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
-               value_weight = 1f0, 
-               policy_weight = 1f0, 
-               regularization_weight = 0f0 ) where {G, GPU}
+function loss_components(model :: Model{G, GPU}, dataset :: DataSet{G}) where {G, GPU}
 
-  # Convert all weights to Float32
-  value_weight = convert(Float32, value_weight)
-  policy_weight = convert(Float32, policy_weight)
-  regularization_weight = convert(Float32, regularization_weight)
+  # Dataset size
+  n = length(dataset)
 
   # Push the label matrix to the gpu if the model lives there
   at = atype(GPU)
@@ -68,19 +63,34 @@ function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
   policy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
 
   # L2 regularization (weight decay)
-  if regularization_weight >= 0f0
-    regularization_loss = sum(Knet.params(model)) do param
-      s = size(param)
-      maximum(s) < prod(s) ? sum(abs2, param) : 0f0
-    end
-  else
-    regularization_loss = 0f0
+  regularization_loss = sum(Knet.params(model)) do param
+    s = size(param)
+    maximum(s) < prod(s) ? sum(abs2, param) : 0f0
   end
 
+  ( value = value_loss / n
+  , policy = policy_loss / n
+  , regularization = regularization_loss 
+  )
+
+end
+
+function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
+               value_weight = 1f0, 
+               policy_weight = 1f0, 
+               regularization_weight = 0f0 ) where {G, GPU}
+
+  # Convert all weights to Float32
+  value_weight = convert(Float32, value_weight)
+  policy_weight = convert(Float32, policy_weight)
+  regularization_weight = convert(Float32, regularization_weight)
+
+  l = loss_components(model, dataset)
+
   # Return the total loss
-  value_weight * value_loss +
-  policy_weight * policy_loss +
-  regularization_weight * regularization_loss
+  value_weight * l.value +
+  policy_weight * l.policy +
+  regularization_weight * l.regularization
 end
 
 loss(model, data, label) = loss(model, DataSet([data], [label]))

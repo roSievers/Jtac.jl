@@ -73,7 +73,7 @@ export TicTacToe, MetaTac, TicTac554
 # Loss and update steps for learning
 
 include("learning.jl")
-export DataSet, loss, record_selfplay, 
+export DataSet, loss, loss_components, record_selfplay, 
        set_optimizer!, train_step!,
        minibatch # exports Knet.minibatch
 

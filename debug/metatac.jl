@@ -1,13 +1,17 @@
 
 include("train.jl")
 
-#stack = @stack MetaTac stack_input=true begin
-#  Conv(512, relu, stride = 3, padding = 0)
-#  Conv(1024, relu, padding = 0)
-#  Dense(512, relu)
-#end
+stack = @stack MetaTac stack_input=true begin
+  Conv(1024, relu, stride = 3, padding = 0)
+  Dense(512, relu)
+end
 
-#model = NeuralModel(MetaTac, stack) |> to_gpu |> Async
+backup_model = NeuralModel(MetaTac, stack) 
+model = backup_model |> copy |> to_gpu |> Async
+
+mcts_opponents = [MCTSPlayer(power = p) for p in [10, 50, 100, 200, 500]]
+self_opponents = [MCTSPlayer(model, power = p, name = "current$p") for p in [10, 50]]
+
 
 train!( 
         model,
@@ -15,12 +19,12 @@ train!(
         selfplays = 50,
         batchsize = 100,
         branch_prob = 0.02,
-        iterations = 25,
-        epochs = 10,
+        iterations = 10,
+        epochs = 100,
         augment = true,
-        regularization_weight = 1e-3,
-        learning_rate = 1e-4,
-        opponents = [MCTSPlayer(power = p) for p in [10, 25, 50, 100, 200, 500]],
-        contest_interval = 1
+        regularization_weight = 2e-8,
+        opponents = [mcts_opponents; self_opponents],
+        contest_length = 1000,
+        contest_interval = 5
       )
 

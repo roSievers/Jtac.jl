@@ -1,23 +1,25 @@
 
 using Jtac
+using Printf
 
 function train!( model;
                  power = 100,
                  branch_prob = 0.,
                  temperature = 1.,
+                 opponents = [],
                  contest_temperature = 1.,
                  contest_length :: Int = 250,
                  contest_interval :: Int = 10,
                  optimizer = Knet.Adam,
-                 learning_rate = 1e-3,
-                 iterations = 1,
+                 value_weight = 1.,
+                 policy_weight = 1.,
                  regularization_weight = 0.,
-                 opponents = [],
+                 iterations = 1,   # how often we cycle through the generated training set
                  augment = true,   # whether to use symmetry augmentation on the recorded games
                  epochs = 10,      # number of times a new dataset is produced (with constant network)
                  batchsize = 200,  # number of states per gd-step
                  selfplays = 50,   # number of selfplays to record the dataset
-                                   # note that branching and augmentation may lead to a higher number of recorded games
+                 kwargs...         # arguments for the optimizer
               )
 
   println("Training options:")
@@ -30,7 +32,8 @@ function train!( model;
   @show power
   @show augment
   @show optimizer
-  @show learning_rate
+  @show value_weight
+  @show policy_weight
   @show regularization_weight
   @show temperature
   @show contest_length
@@ -55,12 +58,10 @@ function train!( model;
   println()
   println("Training begins...")
 
-  set_optimizer!(model, optimizer, lr = learning_rate)
+  set_optimizer!(model, optimizer; kwargs...)
 
 
   for i in 1:epochs
-
-    l = 0
 
     dataset = record_selfplay(model, selfplays, power = power, 
                               branch_prob = branch_prob, augment = augment, 
@@ -71,13 +72,32 @@ function train!( model;
       batches = minibatch(dataset, batchsize, shuffle = true, partial = false)
 
       for batch in batches
-        l += train_step!(training_model(model), batch, 
-                         regularization_weight = regularization_weight)
+        train_step!( training_model(model)
+                   , batch
+                   , value_weight = value_weight
+                   , policy_weight = policy_weight
+                   , regularization_weight = regularization_weight
+                   )
       end
 
     end
 
-    println("i: $i, loss: $(l/length(dataset)/iterations)")
+    # Calculate loss for this epoch
+    l = loss_components(model, dataset)
+    loss = value_weight * l.value + 
+           policy_weight * l.policy + 
+           regularization_weight * l.regularization
+
+
+    @printf( "%d: %6.3f %6.3f %6.3f %6.3f %d\n"
+           , i
+           , loss
+           , l.value * value_weight
+           , l.policy * policy_weight
+           , l.regularization * regularization_weight
+           , length(dataset)
+           )
+
 
     if i % contest_interval == 0 && i != epochs && contest_length > 0
       println()
