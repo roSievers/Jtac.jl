@@ -3,6 +3,8 @@
 
 module Jtac
 
+using Statistics, LinearAlgebra, Random
+
 # We use machine learning capabilities of the package Knet.jl
 
 import AutoGrad

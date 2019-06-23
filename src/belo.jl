@@ -105,7 +105,7 @@ function ranking(players, nmax; kwargs...)
   ranking(players, G(), nmax; kwargs...)
 end
 
-function print_ranking(players, rk :: NamedTuple)
+function print_ranking(players, rk :: NamedTuple; prepend = "")
 
   i = 1
 
@@ -113,16 +113,21 @@ function print_ranking(players, rk :: NamedTuple)
   perm = sortperm(rk.elos) |> reverse
 
   for (player, elo) in zip(players[perm], rk.elos[perm])
-    Printf.@printf "%3d. %7.2f %10s\n" i elo name(player)
+    Printf.@printf "%s %3d. %10.2f  %-s\n" prepend i elo name(player)
     i += 1
   end
 
-  Printf.@printf "\nstart-advantage: %.2f\ndraw-bandwidth:  %.2f\n" rk.adv rk.draw
+  Printf.@printf( "%s\n%s start-advantage: %.2f\n%s draw-bandwidth: %.2f\n"
+                , prepend
+                , prepend
+                , rk.adv
+                , prepend
+                , rk.draw )
 
 end
 
-function print_ranking(players, args...; kwargs...)
+function print_ranking(players, args...; prepend = "", kwargs...)
   rk = ranking(players, args...; kwargs...)
-  print_ranking(players, rk)
+  print_ranking(players, rk; prepend = prepend)
 end
 

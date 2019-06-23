@@ -14,11 +14,19 @@ abstract type Element{GPU} end
 swap(l :: Element) = error("Not implemented")
 on_gpu(:: Element{GPU}) where {GPU} = GPU
 
-to_cpu(el :: Element{false}) :: Element{false} = el
-to_gpu(el :: Element{true})  :: Element{true}  = el
+to_cpu(el :: Element{false}) = el
+to_gpu(el :: Element{true})  = el
 
-to_cpu(el :: Element{true})  :: Element{false} = swap(el)
-to_gpu(el :: Element{false}) :: Element{true}  = swap(el)
+to_cpu(el :: Element{true}) = swap(el)
+
+function to_gpu(el :: Element{false}) 
+  if Knet.gpu() == -1
+    @warn "No GPU was found by Knet. Element stays on CPU"
+    el
+  else
+   swap(el)
+  end
+end
 
 Base.copy(l :: Element) :: Element = error("Not implemented")
 

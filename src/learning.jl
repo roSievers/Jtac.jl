@@ -22,6 +22,16 @@ end
 
 Base.length(d :: DataSet) = length(d.data)
 
+function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
+  n = length(d)
+  @assert size <= n
+  idx = shuffle ? randperm(n) : 1:n
+  idx1, idx2 = idx[1:size], idx[size+1:end]
+  d1 = DataSet{G}(d.data[idx1], d.label[idx1])
+  d2 = DataSet{G}(d.data[idx2], d.label[idx2])
+  d1, d2
+end
+
 function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
   aux(data, label) = DataSet(augment(data, label)...)
   merge(aux.(d.data, d.label)...)
@@ -96,12 +106,16 @@ end
 loss(model, data, label) = loss(model, DataSet([data], [label]))
 
 # Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay( model :: Model{G, GPU}, n = 1; 
-                          game :: T = G(),
-                          power = 100, 
-                          temperature = 1.,
-                          branch_prob = 0.,  # Probability for random branching
-                          augment = true ) :: DataSet{T} where {G, T, GPU}
+function record_selfplay( model :: Model{G, GPU}
+                        , n :: Int = 1
+                        ; game :: T = G()
+                        , power :: Int = 100
+                        , temperature = 1.
+                        , branch_prob = 0.  # Probability for random branching
+                        , augment = true
+                        , ntasks = 100
+                        , callback :: Function = () -> nothing 
+                        ) :: DataSet{T} where {G, T, GPU}
 
   @assert (T <: G) "Provided game does not fit model"
 
@@ -145,16 +159,22 @@ function record_selfplay( model :: Model{G, GPU}, n = 1;
 
     # We now play all games which were created through random branching
     branch_datasets = map(branched_games) do branched_game
-      record_selfplay(model, 1, game = branched_game, power = power, augment = false, 
-                      temperature = temperature, branch_prob = branch_prob)
+      record_selfplay( model
+                     , 1
+                     , game = branched_game
+                     , power = power
+                     , augment = false
+                     , temperature = temperature
+                     , branch_prob = branch_prob )
     end
+    callback()
     merge(dataset, branch_datasets...)
   end
 
   if !isa(model, Async) || n == 1
-    sets = map(i -> play(), 1:n)
+    sets = map(_ -> play(), 1:n)
   else
-    sets = asyncmap(i -> play(), 1:n, ntasks = 100)
+    sets = asyncmap(_ -> play(), 1:n, ntasks = ntasks)
   end
 
   if augment

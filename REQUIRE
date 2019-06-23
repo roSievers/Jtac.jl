@@ -1,8 +1,14 @@
 julia 1.0
 
+Random
+LinearAlgebra
+Printf
 Knet 
 AutoGrad
 BSON
 NLopt
+ProgressMeter
+Crayons
+
 
 
