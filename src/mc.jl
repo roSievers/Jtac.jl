@@ -92,15 +92,31 @@ function backpropagate!(node, value) :: Nothing
   end
 end
 
-function mctree_action(model, game :: Game;
-                       root = Node(), # To track the expansion
-                       power = 100,
-                       temperature = 1.) :: ActionIndex
-
+# Runs the mcts algorithm, expanding the given root node.
+# This function can be used directy instead of mctree_action if you need
+# detailed information about the mcts decision.
+function run_mcts(model, game :: Game;
+                          root = Node(), # To track the expansion
+                          power = 100,
+                          temperature = 1.)
+  
   # Expand the root node
   for i = 1:power
     expand_tree_by_one!(root, game, model)
   end
+end
+
+function mctree_action(model, game :: Game;
+                       root = Node(), # To track the expansion
+                       power = 100,
+                       temperature = 1.) :: ActionIndex
+  run_mcts(
+    model,
+    game,
+    root = root,
+    power = power,
+    temperature = temperature
+    )
   
   # The paper states, that during self play we pick a move from the
   # improved stochastic policy root.visit_counter at random.
