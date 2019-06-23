@@ -41,9 +41,9 @@ end
 is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 # Traverse the tree from top to bottom and return a leaf
-function descend_to_leaf!(game :: Game, node :: Node) :: Node
+function descend_to_leaf!(game :: Game, node :: Node; mcts_exploration = 1.41) :: Node
   while !is_leaf(node)
-    best_i = findmax(confidence(node))[2]
+    best_i = findmax(confidence(node, mcts_exploration = mcts_exploration))[2]
   
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
@@ -55,8 +55,8 @@ end
 
 # The confidence in a node
 # TODO: 1.41 should not be hardcoded
-function confidence(node) :: Array{Float32}
-  exploration_weight = 1.41 * sqrt(sum(node.visit_counter))
+function confidence(node; mcts_exploration = 1.41) :: Array{Float32}
+  exploration_weight = mcts_exploration * sqrt(sum(node.visit_counter))
   result = zeros(Float32, length(node.children))
   for i = 1:length(node.children)
     exploration = exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
@@ -65,9 +65,9 @@ function confidence(node) :: Array{Float32}
   result
 end
 
-function expand_tree_by_one!(node, game, model)
+function expand_tree_by_one!(node, game, model; mcts_exploration = 1.41)
   new_game = copy(game)
-  new_node = descend_to_leaf!(new_game, node)
+  new_node = descend_to_leaf!(new_game, node, mcts_exploration = mcts_exploration)
   value = expand!(new_node, new_game, model)
   # Backpropagate the negative value, since the parent calculates its expected
   # reward from it.
@@ -98,24 +98,27 @@ end
 function run_mcts(model, game :: Game;
                           root = Node(), # To track the expansion
                           power = 100,
-                          temperature = 1.)
+                          temperature = 1.,
+                          mcts_exploration = 1.41)
   
   # Expand the root node
   for i = 1:power
-    expand_tree_by_one!(root, game, model)
+    expand_tree_by_one!(root, game, model, mcts_exploration = mcts_exploration)
   end
 end
 
 function mctree_action(model, game :: Game;
                        root = Node(), # To track the expansion
                        power = 100,
-                       temperature = 1.) :: ActionIndex
+                       temperature = 1.,
+                       mcts_exploration = 1.41) :: ActionIndex
   run_mcts(
     model,
     game,
     root = root,
     power = power,
-    temperature = temperature
+    temperature = temperature,
+    mcts_exploration = mcts_exploration
     )
   
   # The paper states, that during self play we pick a move from the
@@ -138,11 +141,13 @@ end
 
 function mctree_turn!(model, game :: Game; 
                       power = 100,
-                      temperature = 1.,) :: Node
+                      temperature = 1.,
+                      mcts_exploration = 1.41,) :: Node
 
   root = Node()
   action = mctree_action(model, game, power = power, 
-                         temperature = temperature, root = root)
+                         temperature = temperature, root = root,
+                         mcts_exploration = mcts_exploration)
   apply_action!(game, action)
   root
 end

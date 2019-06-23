@@ -40,8 +40,9 @@ end
 # The default MCTSPlayer uses the RolloutModel
 MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 
-function think(game :: G, p :: MCTSPlayer{G}) where {G <: Game}
-  mctree_action(p.model, game, power = p.power, temperature = p.temperature)
+function think(game :: G, p :: MCTSPlayer{G}; mcts_exploration = 1.41) where {G <: Game}
+  mctree_action(p.model, game, power = p.power, temperature = p.temperature,
+    mcts_exploration = mcts_exploration)
 end
 
 name(p :: MCTSPlayer) = p.name
