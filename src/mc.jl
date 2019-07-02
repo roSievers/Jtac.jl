@@ -41,9 +41,9 @@ end
 is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 # Traverse the tree from top to bottom and return a leaf
-function descend_to_leaf!(game :: Game, node :: Node; mcts_exploration = 1.41) :: Node
+function descend_to_leaf!(game :: Game, node :: Node; exploration = 1.41) :: Node
   while !is_leaf(node)
-    best_i = findmax(confidence(node, mcts_exploration = mcts_exploration))[2]
+    best_i = findmax(confidence(node, exploration = exploration))[2]
   
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
@@ -55,8 +55,8 @@ end
 
 # The confidence in a node
 # TODO: 1.41 should not be hardcoded
-function confidence(node; mcts_exploration = 1.41) :: Array{Float32}
-  exploration_weight = mcts_exploration * sqrt(sum(node.visit_counter))
+function confidence(node; exploration = 1.41) :: Array{Float32}
+  exploration_weight = exploration * sqrt(sum(node.visit_counter))
   result = zeros(Float32, length(node.children))
   for i = 1:length(node.children)
     exploration = exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
@@ -65,9 +65,9 @@ function confidence(node; mcts_exploration = 1.41) :: Array{Float32}
   result
 end
 
-function expand_tree_by_one!(node, game, model; mcts_exploration = 1.41)
+function expand_tree_by_one!(node, game, model; exploration = 1.41)
   new_game = copy(game)
-  new_node = descend_to_leaf!(new_game, node, mcts_exploration = mcts_exploration)
+  new_node = descend_to_leaf!(new_game, node, exploration = exploration)
   value = expand!(new_node, new_game, model)
   # Backpropagate the negative value, since the parent calculates its expected
   # reward from it.
@@ -99,27 +99,30 @@ function run_mcts(model, game :: Game;
                           root = Node(), # To track the expansion
                           power = 100,
                           temperature = 1.,
-                          mcts_exploration = 1.41)
+                          exploration = 1.41)
   
   # Expand the root node
   for i = 1:power
-    expand_tree_by_one!(root, game, model, mcts_exploration = mcts_exploration)
+    expand_tree_by_one!(root, game, model, exploration = exploration)
   end
+
 end
 
-function mctree_action(model, game :: Game;
-                       root = Node(), # To track the expansion
-                       power = 100,
-                       temperature = 1.,
-                       mcts_exploration = 1.41) :: ActionIndex
+function mctree_policy( model, game :: Game
+                      ; root = Node()
+                      , power = 100
+                      , temperature = 1.
+                      , exploration = 1.41 ) :: Vector{Float32}
+
   run_mcts(
     model,
     game,
     root = root,
     power = power,
     temperature = temperature,
-    mcts_exploration = mcts_exploration
+    exploration = exploration
     )
+
   
   # The paper states, that during self play we pick a move from the
   # improved stochastic policy root.visit_counter at random.
@@ -128,26 +131,46 @@ function mctree_action(model, game :: Game;
   # random fluctuations.
   # TODO: We now also draw from root.visit_counter in real playthroughts,
   # not only during learning. Think about this!
+
   if temperature == 0
-    chosen_i = findmax(root.visit_counter)[2]
+    probs = zeros(Float32, length(root.visit_counter))
+    probs[findmax(root.visit_counter)[2]] = 1
   else
     weighted_counter = root.visit_counter.^(1/temperature)
     probs = weighted_counter / sum(weighted_counter)
-    chosen_i = choose_index(probs)
   end
+
+  probs
+
+end
+
+function mctree_action(model, game :: Game;
+                       root = Node(), # To track the expansion
+                       power = 100,
+                       temperature = 1.,
+                       exploration = 1.41) :: ActionIndex
+
+  probs = mctree_policy( model
+                       , game
+                       , root = root
+                       , power = power
+                       , temperature = temperature
+                       , exploration = exploration )
   
+  chosen_i = choose_index(probs)
   root.children[chosen_i].action
+
 end
 
 function mctree_turn!(model, game :: Game; 
                       power = 100,
                       temperature = 1.,
-                      mcts_exploration = 1.41,) :: Node
+                      exploration = 1.41,) :: Node
 
   root = Node()
   action = mctree_action(model, game, power = power, 
                          temperature = temperature, root = root,
-                         mcts_exploration = mcts_exploration)
+                         exploration = exploration)
   apply_action!(game, action)
   root
 end

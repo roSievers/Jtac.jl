@@ -69,6 +69,7 @@ function train!( model
                , branch_prob = 0.
                , temperature = 1.
                , opponents = []
+               , no_contests = false
                , contest_temperature = 1.
                , contest_length :: Int = 250
                , contest_interval :: Int = 10
@@ -99,6 +100,7 @@ function train!( model
        , format_option(:regularization_weight, regularization_weight)
        , format_option(:temperature, temperature)
        , format_option(:testset_fraction, testset_fraction)
+       , format_option(:no_contests, no_contests)
        , format_option(:contest_length, contest_length)
        , format_option(:contest_temperature, contest_temperature)
        , format_option(:contest_interval, contest_interval) 
@@ -107,7 +109,9 @@ function train!( model
 
   async = isa(model, Async)
 
-  if contest_length > 0
+  no_contests |= contest_length <= 0
+
+  if !no_contests
     players = [
       IntuitionPlayer(model, temperature = contest_temperature, name = "current");
       IntuitionPlayer(copy(model), temperature = contest_temperature, name = "initial");
@@ -178,7 +182,7 @@ function train!( model
 
     end
 
-    if (i % contest_interval == 0 || i == epochs) && contest_length > 0
+    if (i % contest_interval == 0 || i == epochs) && !no_contests
       print_contest_results(players, contest_length, async)
     end
   end

@@ -2,11 +2,17 @@
 # A player is an agent that can change a game by choosing actions to perform
 abstract type Player{G <: Game} end
 
-# This method must be implemented by each player
-think(game :: Game, p :: Player) :: ActionIndex = error("Not implemented")
+# This method yields a probability distribution over all legal actions
+think(game :: Game, p :: Player) :: Vector{Float32} = error("Not implemented")
+
+# Randomly decide for an action based on the thought out policy
+function decide(game :: Game, p :: Player) :: ActionIndex
+  actions = legal_actions(game)
+  actions[choose_index(think(game, p))]
+end
 
 # Convenience function to automatically alter the game
-turn!(game :: Game, p :: Player) = apply_action!(game, think(game, p))
+turn!(game :: Game, p :: Player) = apply_action!(game, decide(game, p))
 
 # It is nice to have a name for each player if we want to do tournaments etc.
 name(p :: Player) :: String = error("Not implemented")
@@ -14,7 +20,10 @@ name(p :: Player) :: String = error("Not implemented")
 # A player that always chooses random actions from allowed ones
 struct RandomPlayer <: Player{Game} end
 
-think(game :: Game, p :: RandomPlayer) = random_action(game)
+function think(game :: Game, :: RandomPlayer)
+  l = length(legal_actions(game))
+  ones(l) / l
+end
 
 name(p :: RandomPlayer) = "random"
 
@@ -25,24 +34,36 @@ struct MCTSPlayer{G} <: Player{G}
   model :: Model{G}
   power :: Int
   temperature :: Float32
+  exploration :: Float32
   name :: String
 end
 
-function MCTSPlayer(model :: Model{G}; 
-                   power = 100, temperature = 1., name = nothing) where {G <: Game}
-  if name == nothing
+function MCTSPlayer( model :: Model{G}
+                   ; power = 100
+                   , temperature = 1.
+                   , exploration = 1.41
+                   , name = nothing 
+                   ) where {G <: Game}
+
+  if isnothing(name)
     id = Int(div(hash((model, temperature)), Int(1e14)))
     name = "mcts$(power)-$id"
   end
-  MCTSPlayer{G}(model, power, temperature, name)
+  MCTSPlayer{G}(model, power, temperature, exploration, name)
+
 end
 
 # The default MCTSPlayer uses the RolloutModel
 MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 
-function think(game :: G, p :: MCTSPlayer{G}; mcts_exploration = 1.41) where {G <: Game}
-  mctree_action(p.model, game, power = p.power, temperature = p.temperature,
-    mcts_exploration = mcts_exploration)
+function think(game :: G , p :: MCTSPlayer{G}) where {G <: Game}
+
+  mctree_policy( p.model
+               , game
+               , power = p.power
+               , temperature = p.temperature
+               , exploration = p.exploration)
+
 end
 
 name(p :: MCTSPlayer) = p.name
@@ -56,13 +77,17 @@ struct IntuitionPlayer{G} <: Player{G}
   name :: String
 end
 
-function IntuitionPlayer(model :: Model{G}; 
-                      temperature = 1., name = nothing) where {G <: Game}
-  if name == nothing
+function IntuitionPlayer( model :: Model{G}
+                        ; temperature = 1.
+                        , name = nothing
+                        ) where {G <: Game}
+  if isnothing(name)
     id = Int(div(hash((model, temperature)), Int(1e14)))
     name = "intuition-$id"
   end
+
   IntuitionPlayer{G}(model, temperature, name)
+
 end
 
 function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
@@ -74,12 +99,15 @@ function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
   
   # Return the action that the player decides for
   if p.temperature == 0
-    index = findmax(policy)[2]
+    probs = zeros(Float32, length(policy))
+    probs[findmax(policy)[2]] = 1.
   else
     weighted_policy = policy.^(1/p.temperature)
-    index = choose_index(weighted_policy / sum(weighted_policy))
+    probs = weighted_policy / sum(weighted_policy)
   end
-  actions[index]
+
+  probs
+
 end
 
 name(p :: IntuitionPlayer) = p.name
@@ -104,7 +132,8 @@ function think(game :: Game, p :: HumanPlayer) :: ActionIndex
       if !is_action_legal(game, action)
         println("Action $input is illegal ($error)")
       else
-        return action
+        actions = legal_actions(game)
+        return Float32[a == action ? 1. : 0. for a in actions]
       end
     catch error
       if isa(error, ArgumentError)
@@ -143,6 +172,4 @@ function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
   pvp(p1, p2, G())
 end
 
-
-#function duel(game, p1 :: Player, p2 :: Player)
 
