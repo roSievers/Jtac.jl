@@ -58,12 +58,25 @@ format_option(s, v) = Printf.@sprintf "# %-22s %s\n" string(s, ":") v
 
 function print_contest_results(players, contest_length, async, active, cache)
     println(gray_cr, "\n# CONTEST")
-    print_ranking( players
-                 , contest_length
-                 , prepend = "#"
-                 , async = async
-                 , active = active
-                 , cache = cache )
+
+    r = length(active)
+    k = length(players) - r
+    n = (r * (r-1) + 2k*r)
+
+    p = progressmeter(n + 1, "# Contest...")
+
+    rk = ranking( players
+                , contest_length
+                , async = async
+                , active = active
+                , cache = cache
+                , callback = () -> progress!(p) )
+
+    clear_output!(p)
+
+    print(gray_cr)
+    print_ranking(players, rk, prepend = "#")
+
     println()
 end
 
@@ -132,10 +145,13 @@ function train!( model
       otherplayers = filter(p -> training_model(p) != training_model(model), players)
       players = [otherplayers; modelplayers]
 
-      print("# Caching games... ")
       active = collect(1:length(modelplayers)) .+ length(otherplayers)
-      cache = playouts( otherplayers, contest_cache )
-      print("Done! $(length(cache)) games of $(length(otherplayers)) players cached.\n")
+
+      n = length(otherplayers) * (length(otherplayers) - 1)
+      p = progressmeter(n + 1, "# Caching...")
+      cache = playouts( otherplayers, contest_cache, callback =  () -> progress!(p))
+      clear_output!(p)
+      println(gray_cr, "# Cached $(length(cache)) matches from $(length(players)) players")
 
     else
 

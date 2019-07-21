@@ -61,20 +61,31 @@ function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500
 
 end
 
+function match_repetitions(nmax, players, active)
+
+  r = length(active)
+  k = length(players) - r
+  floor(Int, nmax / (r * (r-1) + 2k*r))
+
+end
+
+
 function playouts( players
                  , game :: Game
                  , nmax
                  ; active = 1:length(players)
-                 , async = false )
+                 , async = false
+                 #, callback = () -> nothing )
+                 , callback )
 
-  r = length(active)
-  k = length(players) - r
-  n = floor(Int, nmax / (r * (r-1) + 2k*r))
+  n = match_repetitions(nmax, players, active)
 
   if n == 0
     @warn "nmax too small: every pair gets one game"
     n = 1
   end
+
+  L = 0
 
   games = []
   players = enumerate(players)
@@ -93,6 +104,9 @@ function playouts( players
       push!(games, map(_ -> (i, j, pvp(p1, p2, game)), 1:n))
     end
 
+    L += 1
+    callback()
+
   end
 
   vcat(games...)
@@ -104,6 +118,15 @@ function playouts(players, nmax; kwargs...)
 end
 
 
+# Ranking based on given playouts
+function ranking( players, playouts :: Vector; kwargs... )
+
+  k = length(players)
+  res = estimate(k, playouts; kwargs...)
+  (elos = res[1:k], adv = res[k+1], draw = res[k+2])
+
+end
+
 # Returns a named tuple with entries :elos, :draw, :adv
 function ranking( players
                 , game :: Game
@@ -111,17 +134,12 @@ function ranking( players
                 ; cache = []
                 , active = 1:length(players)
                 , async = false
+                , callback = () -> nothing
                 , kwargs...)
 
   k = length(players)
-  
-  games = playouts(players, game, nmax; active = active, async = async)
-
-  games = [ games; cache ]
-
-  res = estimate(k, games; kwargs...)
-
-  (elos = res[1:k], adv = res[k+1], draw = res[k+2])
+  games = playouts(players, game, nmax; active = active, async = async, callback = callback)
+  ranking(players, [games; cache]; kwargs...)
 
 end
 

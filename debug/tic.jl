@@ -24,6 +24,6 @@ train!( model
       , value_weight = 10.
       , regularization_weight = 1e-5
       , opponents = opponents
-      , contest_interval = 10
-      , contest_length = 100
+      , contest_interval = 3
+      , contest_length = 5000
       , contest_cache = 5000 )
