@@ -75,5 +75,6 @@ ntasks(:: Model) = 100
 
 # For the training step, the model may be modified compared to the dataset
 # creation
+training_model(m) = nothing
 training_model(m :: Model) = m
 

@@ -56,9 +56,14 @@ end
 
 format_option(s, v) = Printf.@sprintf "# %-22s %s\n" string(s, ":") v
 
-function print_contest_results(players, contest_length, async)
+function print_contest_results(players, contest_length, async, active, cache)
     println(gray_cr, "\n# CONTEST")
-    print_ranking(players, contest_length, prepend = "#", async = async)
+    print_ranking( players
+                 , contest_length
+                 , prepend = "#"
+                 , async = async
+                 , active = active
+                 , cache = cache )
     println()
 end
 
@@ -69,9 +74,10 @@ function train!( model
                , branch_prob = 0.
                , temperature = 1.
                , opponents = []
-               , no_contests = false
+               , no_contest :: Bool = false
                , contest_temperature = 1.
                , contest_length :: Int = 250
+               , contest_cache :: Int = 0
                , contest_interval :: Int = 10
                , regularization_weight = 0.
                , testset_fraction = 0.1
@@ -100,8 +106,9 @@ function train!( model
        , format_option(:regularization_weight, regularization_weight)
        , format_option(:temperature, temperature)
        , format_option(:testset_fraction, testset_fraction)
-       , format_option(:no_contests, no_contests)
+       , format_option(:no_contest, no_contest)
        , format_option(:contest_length, contest_length)
+       , format_option(:contest_cache, contest_cache)
        , format_option(:contest_temperature, contest_temperature)
        , format_option(:contest_interval, contest_interval) 
        , format_option(:opponents, join(name.(opponents), " "))
@@ -109,16 +116,35 @@ function train!( model
 
   async = isa(model, Async)
 
-  no_contests |= contest_length <= 0
+  no_contest |= contest_length <= 0
 
-  if !no_contests
+  if !no_contest
+
     players = [
       IntuitionPlayer(model, temperature = contest_temperature, name = "current");
       IntuitionPlayer(copy(model), temperature = contest_temperature, name = "initial");
       opponents
     ]
 
-    print_contest_results(players, contest_length, async)
+    if contest_cache > 0
+
+      modelplayers = filter(p -> training_model(p) == training_model(model), players)
+      otherplayers = filter(p -> training_model(p) != training_model(model), players)
+      players = [otherplayers; modelplayers]
+
+      print("# Caching games... ")
+      active = collect(1:length(modelplayers)) .+ length(otherplayers)
+      cache = playouts( otherplayers, contest_cache )
+      print("Done! $(length(cache)) games of $(length(otherplayers)) players cached.\n")
+
+    else
+
+      active = 1:length(players)
+      cache = []
+
+    end
+
+    print_contest_results(players, contest_length, async, active, cache)
   end
 
   set_optimizer!(model, optimizer; kwargs...)
@@ -182,8 +208,8 @@ function train!( model
 
     end
 
-    if (i % contest_interval == 0 || i == epochs) && !no_contests
-      print_contest_results(players, contest_length, async)
+    if (i % contest_interval == 0 || i == epochs) && !no_contest
+      print_contest_results(players, contest_length, async, active, cache)
     end
   end
 

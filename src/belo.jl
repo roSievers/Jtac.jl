@@ -61,12 +61,15 @@ function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500
 
 end
 
+function playouts( players
+                 , game :: Game
+                 , nmax
+                 ; active = 1:length(players)
+                 , async = false )
 
-# Returns a named tuple with entries :elos, :draw, :adv
-function ranking(players, game :: Game, nmax; async = false, kwargs...)
-  
-  k = length(players)
-  n = floor(Int, nmax / binomial(k, 2) / 2)
+  r = length(active)
+  k = length(players) - r
+  n = floor(Int, nmax / (r * (r-1) + 2k*r))
 
   if n == 0
     @warn "nmax too small: every pair gets one game"
@@ -78,7 +81,11 @@ function ranking(players, game :: Game, nmax; async = false, kwargs...)
 
   for (i, p1) in players, (j, p2) in players
 
-    i == j && continue
+    if i == j || !(i in active || j in active)
+      # in this case, we do not play the game, because the players are the same
+      # or none of the players is active
+      continue
+    end
 
     if async
       push!(games, asyncmap(_ -> (i, j, pvp(p1, p2, game)), 1:n))
@@ -88,7 +95,29 @@ function ranking(players, game :: Game, nmax; async = false, kwargs...)
 
   end
 
-  games = vcat(games...)
+  vcat(games...)
+
+end
+
+function playouts(players, nmax; kwargs...)
+  playouts(players, derive_gametype(players)(), nmax; kwargs...)
+end
+
+
+# Returns a named tuple with entries :elos, :draw, :adv
+function ranking( players
+                , game :: Game
+                , nmax
+                ; cache = []
+                , active = 1:length(player)
+                , async = false
+                , kwargs...)
+
+  k = length(players)
+  
+  games = playouts(players, game, nmax; active = active, async = async)
+
+  games = [ games; cache ]
 
   res = estimate(k, games; kwargs...)
 
@@ -97,12 +126,7 @@ function ranking(players, game :: Game, nmax; async = false, kwargs...)
 end
 
 function ranking(players, nmax; kwargs...)
-  G = mapreduce(gametype, typeintersect, players, init = Game)
-
-  @assert G != Union{} "Players do not play compatible games"
-  @assert !isabstracttype(G) "Cannot infere a concrete game"
-
-  ranking(players, G(), nmax; kwargs...)
+  ranking(players, derive_gametype(players)(), nmax; kwargs...)
 end
 
 function print_ranking(players, rk :: NamedTuple; prepend = "")

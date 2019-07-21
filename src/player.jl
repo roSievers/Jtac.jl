@@ -68,6 +68,7 @@ end
 
 name(p :: MCTSPlayer) = p.name
 
+training_model(p :: MCTSPlayer) = training_model(p.model)
 
 # Player that uses the model policy decision directly
 # The temperature controls how strictly/loosely it follows the policy
@@ -112,6 +113,7 @@ end
 
 name(p :: IntuitionPlayer) = p.name
 
+training_model(p :: IntuitionPlayer) = training_model(p.model)
 
 # Human player that queries for interaction
 # Relies on implemented draw() method for the game
@@ -162,14 +164,15 @@ function pvp(p1 :: Player, p2 :: Player, game :: Game)
   status(game)
 end
 
-function pvp(p1 :: Player{G1}, p2 :: Player{G2}) where {G1, G2}
-  # Find the most concrete game type
-  G = typeintersect(G1, G2)
 
-  # Check that it really is a concrete type
-  @assert !isabstracttype(G) "Cannot infere a concrete game"
+function derive_gametype(players)
+  gt = mapreduce(gametype, typeintersect, players, init = Game)
 
-  pvp(p1, p2, G())
+  @assert gt != Union{} "Players do not play compatible games"
+  @assert !isabstracttype(gt) "Cannot infere game from abstract type"
+
+  gt
 end
 
+pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, derive_gametype(players)())
 

@@ -87,6 +87,6 @@ export RandomPlayer, MCTSPlayer,
        pvp, name
 
 include("belo.jl")
-export ranking, print_ranking
+export playouts, ranking, print_ranking
 
 end # module JTac
