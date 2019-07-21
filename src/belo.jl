@@ -109,7 +109,7 @@ function ranking( players
                 , game :: Game
                 , nmax
                 ; cache = []
-                , active = 1:length(player)
+                , active = 1:length(players)
                 , async = false
                 , kwargs...)
 
