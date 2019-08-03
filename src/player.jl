@@ -174,5 +174,5 @@ function derive_gametype(players)
   gt
 end
 
-pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, derive_gametype(players)())
+pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, derive_gametype([p1, p2])())
 
