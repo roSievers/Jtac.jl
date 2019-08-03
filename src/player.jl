@@ -123,7 +123,7 @@ end
 
 HumanPlayer() = HumanPlayer("player")
 
-function think(game :: Game, p :: HumanPlayer) :: ActionIndex
+function think(game :: Game, p :: HumanPlayer)
   println()
   draw(game)
   while true
