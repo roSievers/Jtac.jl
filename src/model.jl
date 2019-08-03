@@ -56,8 +56,19 @@ end
 # Maybe we should think about something more version-stable here,
 # because this can break if AutoGrad, or Knet, or BSON, or Jtac changes
 
-function save_model(fname :: String, model :: Model{G, false}) where {G}
+function save_model(fname :: String, model :: Model{G}) where {G}
+
+  # Create a cpu-based copy of the model
+  model = model |> training_model |> to_cpu |> copy
+
+  # Reset the optimizers, since they will not be saved
+  for p in params(model)
+    p.opt = nothing
+  end
+
+  # Save the model
   BSON.bson(fname * ".jtm", model = model)
+
 end
 
 function load_model(fname :: String)
