@@ -18,7 +18,7 @@ train!(
         power = 500,
         selfplays = 50,
         batchsize = 100,
-        branch_prob = 0.02,
+        branching_prob = 0.02,
         iterations = 10,
         epochs = 100,
         augment = true,

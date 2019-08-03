@@ -54,3 +54,26 @@ function choose_index(probs)
   index
 end
 
+
+# Manipulation of Console output and progress bars
+
+const gray_crayon = Crayons.Crayon(foreground = :dark_gray)
+
+function progressmeter( n, desc
+                      ; dt = 0.5
+                      , kwargs... )
+
+  glyphs = ProgressMeter.BarGlyphs("[=>⋅]")
+  ProgressMeter.Progress( n
+                        , dt = dt
+                        , desc = desc
+                        , barglyphs = glyphs
+                        , kwargs... )
+
+end
+
+progress! = ProgressMeter.next!
+
+clear_output!(p) = ProgressMeter.printover(p.output, "")
+
+

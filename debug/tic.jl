@@ -19,7 +19,7 @@ train!( model
       , power = 500
       , selfplays = 200
       , batchsize = 100
-      , branch_prob = 0.1
+      , branching_prob = 0.1
       , epochs = 10
       , value_weight = 10.
       , regularization_weight = 1e-5

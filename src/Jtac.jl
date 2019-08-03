@@ -3,9 +3,16 @@
 
 module Jtac
 
+# General math and random numbers
+
 using Statistics, LinearAlgebra, Random
 
-# We use machine learning capabilities of the package Knet.jl
+# Pretty printing
+
+import Printf
+import ProgressMeter, Crayons
+
+# Machine learning capabilities of the package Knet
 
 import AutoGrad
 import Knet
@@ -77,14 +84,16 @@ export TicTacToe, MetaTac, TicTac554
 include("learning.jl")
 export DataSet, loss, loss_components, record_selfplay, 
        set_optimizer!, train_step!,
-       minibatch # exports Knet.minibatch
+       minibatch, # exports Knet.minibatch
+       train!
 
 # Players
 
 include("player.jl")
 export RandomPlayer, MCTSPlayer, 
        IntuitionPlayer, HumanPlayer, 
-       pvp, name
+       pvp, name, 
+       think, decide, turn!
 
 include("belo.jl")
 export playouts, ranking, print_ranking

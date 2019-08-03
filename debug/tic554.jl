@@ -17,7 +17,7 @@ train!(
         selfplays = 100,
         batchsize = 100,
         iterations = 10,
-        branch_prob = 0.1,
+        branching_prob = 0.1,
         epochs = 100,
         regularization_weight = 1e-4,
         opponents = [mcts_opponents; self_opponents],
