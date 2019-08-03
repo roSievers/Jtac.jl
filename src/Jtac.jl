@@ -77,7 +77,8 @@ export mctree_turn!
 include("games/tictactoe.jl")
 include("games/tictac554.jl")
 include("games/metatac.jl")
-export TicTacToe, MetaTac, TicTac554
+include("games/nim.jl")
+export TicTacToe, MetaTac, TicTac554, Nim
 
 # Loss and update steps for learning
 
