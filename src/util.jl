@@ -27,7 +27,7 @@ function apply_dihedral_group(matrix :: Array)
     matrix |> dmirror |> hmirror,
     matrix |> hmirror |> dmirror,
     matrix |> vmirror |> hmirror,
-    matrix |> vmirror |> hmirror |> vmirror
+    matrix |> vmirror |> hmirror |> dmirror
   ]
 end
 
@@ -40,7 +40,27 @@ function apply_dihedral_group(action :: Int, s :: Tuple)
     dmirror(hmirror(action, s), s),
     hmirror(dmirror(action, s), s),
     vmirror(hmirror(action, s), s),
-    vmirror(hmirror(vmirror(action, s), s), s)
+    dmirror(hmirror(vmirror(action, s), s), s)
+  ]
+end
+
+# Use this transformation group, if the target matrix is not a square
+function apply_klein_four_group(matrix :: Array)
+  [
+    matrix |> copy,
+    matrix |> hmirror,
+    matrix |> vmirror,
+    matrix |> vmirror |> hmirror
+  ]
+end
+
+# Use this transformation group, if the target matrix is not a square
+function apply_klein_four_group(action :: Int, s :: Tuple)
+  [
+    action,
+    hmirror(action, s),
+    vmirror(action, s),
+    vmirror(hmirror(action, s), s)
   ]
 end
 

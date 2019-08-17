@@ -78,7 +78,8 @@ include("games/tictactoe.jl")
 include("games/tictac554.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
-export TicTacToe, MetaTac, TicTac554, Nim
+include("games/mnkgame.jl")
+export TicTacToe, MetaTac, TicTac554, Nim, MNKGame
 
 # Datasets of game states, policies, and values
 
