@@ -174,12 +174,12 @@ function draw(game :: MetaTac) :: Nothing
     for j in 1:9
       print(" $(symbols[board[j,i]])")
       if j == 3 || j == 6 
-        print(" │") 
+        print(" ║") 
       end
     end
     println()
     if i == 3 || i == 6  
-      println(" $(repeat("─", 21))") 
+      println("═══════╬═══════╬═══════") 
     end
   end
 end
