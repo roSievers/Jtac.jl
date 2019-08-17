@@ -10,6 +10,8 @@ mutable struct MNKGame{M, N, K} <: Game
   status :: Status
 end
 
+const TicTacToe = MNKGame{3, 3, 3}
+
 MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status())
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
