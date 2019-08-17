@@ -80,12 +80,21 @@ include("games/metatac.jl")
 include("games/nim.jl")
 export TicTacToe, MetaTac, TicTac554, Nim
 
+# Datasets of game states, policies, and values
+
+include("dataset.jl")
+export DataSet, augment, minibatch
+
+# Loss types
+
+include("loss.jl")
+export AbstractLoss, Loss, loss, caption
+
 # Loss and update steps for learning
 
 include("learning.jl")
-export DataSet, loss, loss_components, record_selfplay, 
+export loss, loss_components, record_selfplay, 
        set_optimizer!, train_step!,
-       minibatch, # exports Knet.minibatch
        train!
 
 # Players
