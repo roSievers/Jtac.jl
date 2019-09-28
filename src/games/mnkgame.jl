@@ -63,33 +63,30 @@ function apply_action!(game :: MNKGame{M, N, K}, index :: ActionIndex) :: MNKGam
 end
 
 # All possible directions for winning rows, in flat index notation.
-function search_directions() :: Vector{Tuple{Int, Int}}
-  [(1, 0), (0, 1), (1, 1), (1, -1)]
-end
+const search_directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
 
 function bound_check(m, n, fx, fy)
   fx > 0 && fx <= m && fy > 0 && fy <= n
 end
 
 function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionIndex) where {M, N, K}
-  matrix = reshape(game.board, (M, N))
   ci = CartesianIndices((M, N)) 
   x, y = Tuple(ci[changed_index])
   moving_player = game.board[changed_index]
 
-  for (dx, dy) = search_directions()
+  for (dx, dy) in search_directions
     count = 1 # There is always the freshly placed token.
     # forward search along the direction
     # Seek using a focus point at (fx, fy).
     (fx, fy) = (x + dx, y + dy)
-    while bound_check(M, N, fx, fy) && matrix[fx, fy] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
       count += 1
       fx += dx
       fy += dy
     end
     # backward search along the direction
     (fx, fy) = (x - dx, y - dy)
-    while bound_check(M, N, fx, fy) && matrix[fx, fy] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
       count += 1
       fx -= dx
       fy -= dy
