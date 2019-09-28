@@ -8,17 +8,19 @@ mutable struct MNKGame{M, N, K} <: Game
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
   current_player :: Int
   status :: Status
+  move_count :: Int
 end
 
 const TicTacToe = MNKGame{3, 3, 3}
 
-MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status())
+MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
     copy(s.board), 
     s.current_player,
     s.status,
+    s.move_count,
   )
 end
 
@@ -29,7 +31,17 @@ function legal_actions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N
   if is_over(game)
     ActionIndex[]
   else
-    ActionIndex[ index for index in 1:(M*N) if game.board[index] == 0 ]
+    result = Vector{ActionIndex}(undef, M*N - game.move_count)
+    i = 1
+    for j in 1:(M*N)
+      if game.board[j] == 0
+        result[i] = ActionIndex(j)
+        i += 1
+      end
+    end
+    @assert size(result)[1] + 1 == i "There should be $(size(result)[1] + 1) legal actions but we found $(i)."
+
+    result
   end
 end
 
@@ -45,6 +57,7 @@ function apply_action!(game :: MNKGame{M, N, K}, index :: ActionIndex) :: MNKGam
   game.current_player = -game.current_player
   
   # Update the status cache
+  game.move_count += 1
   game.status = tic_tac_mnk_status(game, index)
   game
 end
@@ -88,7 +101,7 @@ function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionInd
   end
 
   # Check if there are empty spaces left.
-  if all(x -> x != 0, matrix)
+  if game.move_count == M*N
     Status(0)
   else
     Status()
