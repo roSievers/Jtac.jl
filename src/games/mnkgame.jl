@@ -128,7 +128,7 @@ end
 function augment(game :: MNKGame{M, N, K}, label :: Vector{Float32}) where {M, N, K}
   if M == N
     boards = apply_dihedral_group(reshape(game.board, (M, N))) 
-    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status) for b in boards ]
+    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status, game.move_count) for b in boards ]
   
     matpol = reshape(label[2:end], (M, N))
     matpols = apply_dihedral_group(matpol)
