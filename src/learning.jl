@@ -120,7 +120,7 @@ function _train!( player
 
     # Generate train and testsets
     trainset = gen_data(cb, playings)
-    testset  = gen_data(cb, test_playings)
+    !quiet && testset  = gen_data(cb, test_playings)
 
     # Print next progress-meter if not quiet
     update_steps = iterations * div(length(trainset), batchsize)
@@ -293,7 +293,7 @@ currently.
 """
 function train_from!( pupil :: Player{G}
                     , teacher
-                    , players = [player, teacher]
+                    , players = [pupil, teacher]
                     ; loss
                     , branching = 0.
                     , augment = true

@@ -27,7 +27,7 @@ are used to convert the logits to values, respectively policies.
 """
 function NeuralModel( :: Type{G}
                     , layer :: Layer{GPU}
-                    , features
+                    , features = Feature[]
                     ; value_conv = Knet.tanh
                     , policy_conv = Knet.softmax
                     ) where {G, GPU}
