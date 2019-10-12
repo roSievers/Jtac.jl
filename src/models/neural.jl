@@ -27,7 +27,7 @@ are used to convert the logits to values, respectively policies.
 """
 function NeuralModel( :: Type{G}
                     , layer :: Layer{GPU}
-                    , features :: Feature ...
+                    , features
                     ; value_conv = Knet.tanh
                     , policy_conv = Knet.softmax
                     ) where {G, GPU}
@@ -55,7 +55,7 @@ function NeuralModel( :: Type{G}
 end
 
 # Low level access to neural models
-function (m :: NeuralModel)(data, use_features = false)
+function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
 
   # Get the general network output used to calculate policy, value, features
   output = m.layer(data)

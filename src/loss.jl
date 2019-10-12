@@ -64,7 +64,6 @@ end
 
 features(l :: Loss) = l.features
 
-
 # -------- Loss Calculation -------------------------------------------------- #
 
 """
@@ -100,23 +99,19 @@ function loss( l :: Loss
   rloss *= l.regularization.weight
 
   # Calculate the feature losses
-  flosses = zeros(Float32, length(features(l)))
 
   if !isnothing(cache.flabel)
 
-    # Iterate over features to get the losses
-    j = 0
-    for (i, f) in enumerate(features(ls))
+    feats = features(l)
+    indices = feature_indices(feats, G)
 
-      l = feature_length(f, G)
-      sel = (j+1:j+l)
-
-      floss = feature_loss(f, f[sel,:], cache.flabel[sel,:])
-      flosses[i] = ls.feature_weights[i] * floss / n
-
-      j += l
-
+    flosses = map(feats, indices, f) do feat, sel, fval
+      feature_loss(feat, fval[sel,:], cache.flabel[sel,:]) / n
     end
+
+  else
+
+    flosses = zeros(Float32, length(features(l)))
 
   end
 

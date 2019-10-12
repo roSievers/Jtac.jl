@@ -189,7 +189,7 @@ function train_self!( player :: MCTSPlayer
 
   # Only use player-enabled features for recording if they are compatible with
   # the loss
-  features = check_features(loss, player) ? features(player) : Feature[]
+  features = check_features(loss, player) ? Jtac.features(player) : Feature[]
 
   # Function to generate datasets through selfplays
   gen_data = (cb, n) -> record_self( player

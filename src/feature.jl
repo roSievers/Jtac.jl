@@ -36,6 +36,17 @@ function feature_length(fs :: Vector{Feature}, G)
   sum(Int[feature_length(f, G) for f in fs])
 end
 
+function feature_indices(fs :: Vector{Feature}, G)
+
+  clengths = cumsum(feature_length.(fs, G))
+
+  start_indices = [1; clengths[1:end-1] .+ 1]
+  end_indices = clengths
+
+  map((i,j) -> i:j, start_indices, end_indices)
+
+end
+
 # -------- Constant Dummy Feature -------------------------------------------- #
 
 """
