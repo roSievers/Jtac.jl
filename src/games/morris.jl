@@ -106,6 +106,8 @@ function apply_action!(game :: Morris, index :: ActionIndex) :: Morris
   # Update the board state
   if game.placements_left > 0
     game.board[index] = game.current_player
+    # update victory condition
+    game.status = morris_status(game, index)
     game.current_player = -game.current_player
     game.placements_left -= 1
   elseif game.lifted == 0
