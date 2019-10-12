@@ -92,7 +92,8 @@ export DataSet, augment, minibatch,
 include("games/mnkgame.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
+include("games/morris.jl")
 
-export TicTacToe, MNKGame, MetaTac, Nim
+export TicTacToe, MNKGame, MetaTac, Nim, Morris
 
 end # module Jtac
