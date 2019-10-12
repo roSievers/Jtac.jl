@@ -159,7 +159,7 @@ function mctree_policy( model, game :: Game
     probs = zeros(Float32, length(root.visit_counter))
     probs[findmax(root.visit_counter)[2]] = 1
   else
-    weighted_counter = root.visit_counter.^(1/temperature)
+    weighted_counter = (root.visit_counter/power).^(1/temperature)
     probs = weighted_counter / sum(weighted_counter)
   end
 
