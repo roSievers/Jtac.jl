@@ -105,8 +105,8 @@ function loss( l :: Loss
     feats = features(l)
     indices = feature_indices(feats, G)
 
-    flosses = map(feats, indices, f) do feat, sel, fval
-      feature_loss(feat, fval[sel,:], cache.flabel[sel,:]) / n
+    flosses = map(feats, indices) do feat, sel
+      feature_loss(feat, f[sel,:], cache.flabel[sel,:]) / n
     end
 
   else

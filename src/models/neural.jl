@@ -83,7 +83,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
     end
 
     # Collect the converted features again
-    fout = vcat(flabels)
+    fout = vcat(flabels...)
 
   else
 
