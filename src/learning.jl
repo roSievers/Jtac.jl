@@ -120,7 +120,7 @@ function _train!( player
 
     # Generate train and testsets
     trainset = gen_data(cb, playings)
-    !quiet && testset  = gen_data(cb, test_playings)
+    !quiet && (testset = gen_data(cb, test_playings))
 
     # Print next progress-meter if not quiet
     update_steps = iterations * div(length(trainset), batchsize)
