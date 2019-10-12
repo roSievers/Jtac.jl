@@ -8,15 +8,19 @@ mutable struct MNKGame{M, N, K} <: Game
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
   current_player :: Int
   status :: Status
+  move_count :: Int
 end
 
-MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status())
+const TicTacToe = MNKGame{3, 3, 3}
+
+MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
     copy(s.board), 
     s.current_player,
     s.status,
+    s.move_count,
   )
 end
 
@@ -27,7 +31,17 @@ function legal_actions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N
   if is_over(game)
     ActionIndex[]
   else
-    ActionIndex[ index for index in 1:(M*N) if game.board[index] == 0 ]
+    result = Vector{ActionIndex}(undef, M*N - game.move_count)
+    i = 1
+    for j in 1:(M*N)
+      if game.board[j] == 0
+        result[i] = ActionIndex(j)
+        i += 1
+      end
+    end
+    @assert size(result)[1] + 1 == i "There should be $(size(result)[1] + 1) legal actions but we found $(i)."
+
+    result
   end
 end
 
@@ -43,38 +57,36 @@ function apply_action!(game :: MNKGame{M, N, K}, index :: ActionIndex) :: MNKGam
   game.current_player = -game.current_player
   
   # Update the status cache
+  game.move_count += 1
   game.status = tic_tac_mnk_status(game, index)
   game
 end
 
 # All possible directions for winning rows, in flat index notation.
-function search_directions() :: Vector{Tuple{Int, Int}}
-  [(1, 0), (0, 1), (1, 1), (1, -1)]
-end
+const search_directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
 
 function bound_check(m, n, fx, fy)
   fx > 0 && fx <= m && fy > 0 && fy <= n
 end
 
 function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionIndex) where {M, N, K}
-  matrix = reshape(game.board, (M, N))
   ci = CartesianIndices((M, N)) 
   x, y = Tuple(ci[changed_index])
   moving_player = game.board[changed_index]
 
-  for (dx, dy) = search_directions()
+  for (dx, dy) in search_directions
     count = 1 # There is always the freshly placed token.
     # forward search along the direction
     # Seek using a focus point at (fx, fy).
     (fx, fy) = (x + dx, y + dy)
-    while bound_check(M, N, fx, fy) && matrix[fx, fy] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
       count += 1
       fx += dx
       fy += dy
     end
     # backward search along the direction
     (fx, fy) = (x - dx, y - dy)
-    while bound_check(M, N, fx, fy) && matrix[fx, fy] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
       count += 1
       fx -= dx
       fy -= dy
@@ -86,7 +98,7 @@ function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionInd
   end
 
   # Check if there are empty spaces left.
-  if all(x -> x != 0, matrix)
+  if game.move_count == M*N
     Status(0)
   else
     Status()
@@ -113,7 +125,7 @@ end
 function augment(game :: MNKGame{M, N, K}, label :: Vector{Float32}) where {M, N, K}
   if M == N
     boards = apply_dihedral_group(reshape(game.board, (M, N))) 
-    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status) for b in boards ]
+    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status, game.move_count) for b in boards ]
   
     matpol = reshape(label[2:end], (M, N))
     matpols = apply_dihedral_group(matpol)

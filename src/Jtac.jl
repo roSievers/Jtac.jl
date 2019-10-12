@@ -89,12 +89,10 @@ export DataSet, augment, minibatch,
 
 
 # Game implementations
-include("games/tictactoe.jl")
-include("games/tictac554.jl")
+include("games/mnkgame.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
-include("games/mnkgame.jl")
 
-export TicTacToe, MetaTac, TicTac554, Nim, MNKGame
+export TicTacToe, MNKGame, MetaTac, Nim
 
 end # module Jtac
