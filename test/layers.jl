@@ -21,12 +21,19 @@ end
 @testset "Models" begin
   for G in [TicTacToe, MetaTac]
     game = G()
-    @test Shallow(G)(game)         |> length == policy_length(G) + 1
-    @test ShallowConv(G, 20)(game) |> length == policy_length(G) + 1
-    @test MLP(G, [200, 50])(game)  |> length == policy_length(G) + 1
+    for model in [Shallow(G), ShallowConv(G, 20), MLP(G, [200, 50])]
+      value, policy = model(game)
+      @test length(value) == 1
+      @test length(policy) == policy_length(G)
+    end
   end
-  chain = @chain MetaTac Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
-  stack = @stack MetaTac Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
-  @test NeuralModel(MetaTac, chain)(MetaTac()) |> length == 82
-  @test NeuralModel(MetaTac, stack)(MetaTac()) |> length == 82
+  for G in [MetaTac]
+    chain = @chain G Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
+    stack = @stack G Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
+    for model in [NeuralModel(G, chain), NeuralModel(G, stack)]
+      value, policy = model(G())
+      @test length(value) == 1
+      @test length(policy) == policy_length(G)
+    end
+  end
 end

@@ -1,8 +1,9 @@
-# Monte Carlo implementation
+
+# -------- MCTS Nodes -------------------------------------------------------- #
 
 mutable struct Node
-    action :: ActionIndex             # How did we get here?
-    parent :: Union{Node, Nothing}    # Where did we get here from?
+    action :: ActionIndex              # How did we get here?
+    parent :: Union{Node, Nothing}     # Where did we get here from?
     children :: Vector{Node}           # Where can we walk?
     visit_counter :: Vector{Float32}   # How often were children visited?
     expected_reward :: Vector{Float32} 
@@ -11,13 +12,14 @@ end
 
 Broadcast.broadcastable(node :: Node) = Ref(node)
 
-function Node(action = 0, parent = nothing ) :: Node
-    Node(action, parent, [], [], [], [])
-end
+Node(action = 0, parent = nothing ) = Node(action, parent, [], [], [], [])
+
+is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 # Find all children for a node and assesses them through the model.
 # The state value predicted by the model is returned.
 function expand!(node :: Node, game :: Game, model :: Model) :: Float32
+
   # We need to first check if the game is still active
   # and only evaluate the model on those games.
   if is_over(game)
@@ -35,13 +37,33 @@ function expand!(node :: Node, game :: Game, model :: Model) :: Float32
   # Filter and normalize the policy vector returned by the network
   node.model_policy = policy[actions] / sum(policy[actions])
   value
+
 end
 
-# Helper function that returns true when a Node is a leaf
-is_leaf(node :: Node) :: Bool = isempty(node.children)
+
+# -------- MCTS Algorithm --------------------------------------------------- #
+
+# The confidence in a node
+function confidence(node; exploration = 1.41) :: Array{Float32}
+
+  result = zeros(Float32, length(node.children))
+  weight = exploration * sqrt(sum(node.visit_counter))
+
+  for i = 1:length(node.children)
+    exploration = weight * node.model_policy[i] / (1 + node.visit_counter[i])
+    result[i] = node.expected_reward[i] + exploration
+  end
+
+  result
+
+end
 
 # Traverse the tree from top to bottom and return a leaf
-function descend_to_leaf!(game :: Game, node :: Node; exploration = 1.41) :: Node
+function descend_to_leaf!( game :: Game
+                         , node :: Node
+                         ; exploration = 1.41
+                         ) :: Node
+
   while !is_leaf(node)
     best_i = findmax(confidence(node, exploration = exploration))[2]
   
@@ -50,31 +72,13 @@ function descend_to_leaf!(game :: Game, node :: Node; exploration = 1.41) :: Nod
   
     node = best_child
   end
+
   node
-end
 
-# The confidence in a node
-# TODO: 1.41 should not be hardcoded
-function confidence(node; exploration = 1.41) :: Array{Float32}
-  exploration_weight = exploration * sqrt(sum(node.visit_counter))
-  result = zeros(Float32, length(node.children))
-  for i = 1:length(node.children)
-    exploration = exploration_weight * node.model_policy[i] / (1 + node.visit_counter[i])
-    result[i] = node.expected_reward[i] + exploration
-  end
-  result
-end
-
-function expand_tree_by_one!(node, game, model; exploration = 1.41)
-  new_game = copy(game)
-  new_node = descend_to_leaf!(new_game, node, exploration = exploration)
-  value = expand!(new_node, new_game, model)
-  # Backpropagate the negative value, since the parent calculates its expected
-  # reward from it.
-  backpropagate!(new_node, -value)
 end
 
 function backpropagate!(node, value) :: Nothing
+
   if node.parent != nothing
     # Since the parent keeps all child-information, we have to access it
     # indirectly
@@ -90,18 +94,28 @@ function backpropagate!(node, value) :: Nothing
     # Continue the backpropagation
     backpropagate!(parent, -value)
   end
+
+end
+
+function expand_tree_by_one!(node, game, model; exploration = 1.41)
+
+  new_game = copy(game)
+  new_node = descend_to_leaf!(new_game, node, exploration = exploration)
+  value = expand!(new_node, new_game, model)
+  # Backpropagate the negative value, since the parent calculates its expected
+  # reward from it.
+  backpropagate!(new_node, -value)
+
 end
 
 # Runs the mcts algorithm, expanding the given root node.
-# This function can be used directy instead of mctree_action if you need
-# detailed information about the mcts decision.
-function run_mcts(model, game :: Game;
-                          root = Node(), # To track the expansion
-                          power = 100,
-                          temperature = 1.,
-                          exploration = 1.41)
+function run_mcts( model
+                 , game :: Game
+                 ; root = Node()      # To track the expansion
+                 , power = 100
+                 , temperature = 1.
+                 , exploration = 1.41 )
   
-  # Expand the root node
   for i = 1:power
     expand_tree_by_one!(root, game, model, exploration = exploration)
   end
@@ -114,14 +128,12 @@ function mctree_policy( model, game :: Game
                       , temperature = 1.
                       , exploration = 1.41 ) :: Vector{Float32}
 
-  run_mcts(
-    model,
-    game,
-    root = root,
-    power = power,
-    temperature = temperature,
-    exploration = exploration
-    )
+  run_mcts( model
+          , game
+          , root = root
+          , power = power
+          , temperature = temperature
+          , exploration = exploration )
 
   
   # The paper states, that during self play we pick a move from the
@@ -144,11 +156,13 @@ function mctree_policy( model, game :: Game
 
 end
 
-function mctree_action(model, game :: Game;
-                       root = Node(), # To track the expansion
-                       power = 100,
-                       temperature = 1.,
-                       exploration = 1.41) :: ActionIndex
+function mctree_action( model
+                      , game :: Game
+                      ; root = Node()
+                      , power = 100
+                      , temperature = 1.
+                      , exploration = 1.41 
+                      ) :: ActionIndex
 
   probs = mctree_policy( model
                        , game
@@ -162,16 +176,23 @@ function mctree_action(model, game :: Game;
 
 end
 
-function mctree_turn!(model, game :: Game; 
-                      power = 100,
-                      temperature = 1.,
-                      exploration = 1.41,) :: Node
+function mctree_turn!( model
+                     , game :: Game
+                     ; power = 100
+                     , temperature = 1.
+                     , exploration = 1.41
+                     ) :: Node
 
   root = Node()
-  action = mctree_action(model, game, power = power, 
-                         temperature = temperature, root = root,
-                         exploration = exploration)
+  action = mctree_action( model
+                        , game
+                        , root = root
+                        , power = power
+                        , temperature = temperature
+                        , exploration = exploration )
+
   apply_action!(game, action)
   root
+
 end
 

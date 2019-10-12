@@ -1,112 +1,100 @@
-# Jtac.jl
-# A julia implementation of the Alpha zero learning design
 
+"""
+Module that implements the Alpha Zero learning design.
+
+The module exports (i) implementations of various two-player board games, like
+tic-tac-toe and generalizations thereof, (ii) functions for creating neural
+networks that act on the states of games, and (iii) functionality to generate
+datasets via the selfplay of a Monte-Carlo Tree Search player assisted by
+a neural model. Aspects (ii) and (iii) of Jtac are kept orthogonal to (i), such
+that it is easy to extend the library with new games.
+"""
 module Jtac
 
-# General math and random numbers
+# Standard Libraries
+using Random, Statistics, LinearAlgebra, Printf
 
-using Statistics, LinearAlgebra, Random
-
-# Pretty printing
-
-import Printf
+# Pretty Printing
 import ProgressMeter, Crayons
 
-# Machine learning capabilities of the package Knet
-
-import AutoGrad
-import Knet
+# Neural Networks
+import AutoGrad, Knet
 import Knet: identity, relu, softmax, minibatch
 
 export AutoGrad, Knet, 
-       minibatch,
-       identity, relu, elu, softmax, tanh, sigm
+       minibatch, identity, relu, elu, softmax, tanh, sigm
 
-# We save models/games via BSON.jl
-
+# Saving models and datasets
 import BSON
 
-# We need functions in Random
+# Optimizing the Bayesian ELO likelihood
+import NLopt
 
-import Random
-
-# Auxiliary functions
+# Utilities
 include("util.jl")
 
-# Interface that games must satisfy and some convenience functions
-
+# Games
 include("game.jl")
+
 export Game, Status, ActionIndex,
        status, current_player, legal_actions, apply_action!, 
        is_action_legal, representation, policy_length, random_playout, 
        augment, draw, is_over, random_turn!
 
-
-# Interface for models
-
+# Models
+include("feature.jl")
+include("element.jl")
+include("layer.jl")
 include("model.jl")
+
+export Feature, ConstantFeature
 export Model, apply, save_model, load_model, 
        to_gpu, to_cpu, swap, on_gpu, training_model
-
-# Building blocks for models
-
-include("layers.jl")
 export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
        Chain, Stack,
        valid_insize, outsize, layers,
        @chain, @stack
 
 # Model implementations
-
 include("models/toy.jl")
-export DummyModel, RandomModel, RolloutModel
-
 include("models/neural.jl")
-export NeuralModel, Shallow, MLP, ShallowConv
-
 include("models/async.jl")
-export Async
 
-# Markov chain tree search with model predictions
+export DummyModel, RandomModel, RolloutModel,
+       NeuralModel, Shallow, MLP, ShallowConv,
+       Async
 
+# MCTS, Players, and Bayesian ELO rankings
 include("mc.jl")
-export mctree_turn!
+include("player.jl")
+include("belo.jl")
+
+export RandomPlayer, MCTSPlayer, 
+       IntuitionPlayer, HumanPlayer, 
+       pvp, name, think, decide, turn!,
+       playouts, ranking, print_ranking
+
+
+# Training
+include("dataset.jl")
+include("loss.jl")
+include("learning.jl")
+
+export DataSet, augment, minibatch, 
+       record_self, record_against,
+       Loss, loss, caption,
+       set_optimizer!, train_step!,
+       train_self!, train_against!, train_from!,
+       with_contest
+
 
 # Game implementations
-
 include("games/tictactoe.jl")
 include("games/tictac554.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
 include("games/mnkgame.jl")
+
 export TicTacToe, MetaTac, TicTac554, Nim, MNKGame
 
-# Datasets of game states, policies, and values
-
-include("dataset.jl")
-export DataSet, augment, minibatch
-
-# Loss types
-
-include("loss.jl")
-export AbstractLoss, Loss, loss, caption
-
-# Loss and update steps for learning
-
-include("learning.jl")
-export loss, loss_components, record_selfplay, 
-       set_optimizer!, train_step!,
-       train!
-
-# Players
-
-include("player.jl")
-export RandomPlayer, MCTSPlayer, 
-       IntuitionPlayer, HumanPlayer, 
-       pvp, name, 
-       think, decide, turn!
-
-include("belo.jl")
-export playouts, ranking, print_ranking
-
-end # module JTac
+end # module Jtac

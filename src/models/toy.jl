@@ -1,6 +1,6 @@
-# Collection of toy models that are mainly used for development and debugging
 
-# Some of the models will return uninformative policies
+# -------- Policies ---------------------------------------------------------- # 
+
 uniform_policy(length) = ones(Float32, length) / length
 
 function random_policy(length)
@@ -9,39 +9,76 @@ function random_policy(length)
   policy
 end
 
-# Dummy Model
-# This model always returns the neutral value 0 and a uniform policy vector.
-# Totally uninformative, and for debugging purposes only
+# -------- Glueing Single Outputs -------------------------------------------- #
+
+function cat_outputs(outputs)
+
+  n = length(outputs)
+  v, p, f = first(outputs)
+
+  vs = zeros(Float32, n)
+  ps = zeros(Float32, length(p), n)
+  fs = zeros(Float32, length(f), n)
+
+  for (i, o) in enumerate(outputs)
+    vs[i]   = o[1]
+    ps[:,i] = o[2]
+    fs[:,i] = o[3]
+  end
+
+  vs, ps, fs
+
+end
+
+# -------- Dummy Model ------------------------------------------------------- # 
+
+"""
+This model returns value 0 and a uniform policy vector for each game state.
+"""
 struct DummyModel <: Model{Game, false} end
 
-(m :: DummyModel)(game :: Game) = Float32[ 0; uniform_policy(policy_length(game)) ]
-(m :: DummyModel)(games :: Vector{G}) where {G <: Game} = hcat(m.(games)...)
+(m :: DummyModel)(g :: Game, args...) = 0f0, uniform_policy(policy_length(g)), Float32[]
+
+(m :: DummyModel)(g :: Vector{<:Game}, args...) = cat_outputs(m.(g, args...))
 
 Base.copy(m :: DummyModel) = m
 
-# Random Model
-# This model proposes a random policy
+
+# -------- Random Model ------------------------------------------------------ #
+
+"""
+This model returns value 0 and a randomly drawn policy vector distribution for
+each game state.
+"""
 struct RandomModel <: Model{Game, false} end
 
-(m :: RandomModel)(game :: Game) = Float32[ 0; random_policy(policy_length(game)) ]
-(m :: RandomModel)(games :: Vector{G}) where {G <: Game} = hcat(m.(games)...)
+(m :: RandomModel)(g :: Game, args...) = 0f0, random_policy(policy_length(g)), Float32[]
+
+(m :: RandomModel)(g :: Vector{<: Game}, args...) = cat_outputs(m.(g, args...))
 
 Base.copy(m :: RandomModel) = m
 
-# Rollout Model
-# This model executes random moves until the game is over and reports the
-# result as chance/value. It always proposes a uniform policy vector.
-# This integrates the usual rollout step of a MCTS in the MC-Model interface.
-# Like DummyModel, this model will not learn anything.
+
+# -------- Rollout Model ----------------------------------------------------- #
+
+"""
+This model executes random moves until the game is over. The result is returned
+as the value of the game state. It always proposes a uniform policy vector.
+By that, the classical rollout step of MCTS is implemented when this model
+is used for the tree search.
+"""
 struct RolloutModel <: Model{Game, false} end
 
-function (m :: RolloutModel)(game :: Game)
-  result = random_playout(game)
-  # We can be sure that is_over(result) holds, thus typeof(status(result)) == Int
-  Float32[ status(result) * current_player(game); uniform_policy(policy_length(game)) ]
+function (m :: RolloutModel)(g :: Game, args...)
+
+  result = random_playout(g)
+  value = status(result) * current_player(g)
+
+  Float32(value), uniform_policy(policy_length(g)), Float32[]
+
 end
 
-(m :: RolloutModel)(games :: Vector{G}) where {G <: Game} = hcat(m.(games)...)
+(m :: RolloutModel)(g :: Vector{<: Game}, args...) = cat_outputs(m.(g, args...))
 
 Base.copy(m :: RolloutModel) = m
 

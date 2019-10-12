@@ -1,31 +1,38 @@
 
-# Layers
-# --------------------------------------------------------------------------- # 
+# -------- Layer ------------------------------------------------------------- # 
 
-# A layer is a functional element that provides a parameterized mapping from
-# data to features. Each subtype of Layer should be callable with 4-d arrays,
-# where the last dimension stands for the batch.
-
+"""
+Layers are the functional units for `NeuralNetworkModels`. They are composable
+and, by the macros `@chain` and `@stack`, allow for the easy creation of neural
+networks that are compatible to a given game.
+"""
 abstract type Layer{GPU} <: Element{GPU} end
 
 valid_insize(:: Layer, _) = error("Not implemented")
 outsize(:: Layer, _) = error("Not implemented")
 
-#
-# Primitive and Composite Layers
-# --------------------------------------------------------------------------- # 
 
-# Primitive layers correspond to single neural network operations that
-# cannot be subdivided canonically. Composite layers encompass several
-# layers that create a composite operation.
+# -------- Primitive / Composite --------------------------------------------- # 
 
+"""
+An atomic neural network operation.
+"""
 abstract type PrimitiveLayer{GPU} <: Layer{GPU} end
+
+"""
+A composed neural network operation
+"""
 abstract type CompositeLayer{GPU} <: Layer{GPU} end
 
+"""
+    layers(clayer)
+
+Get all neural network layers of an the composite layer `clayer`.
+"""
 layers( :: CompositeLayer) = error("Not implemented")
 
-# Auxiliary functions
-# --------------------------------------------------------------------------- # 
+
+# -------- Auxiliary Functions ----------------------------------------------- # 
 
 # Convert (gpu :: Bool) to the underlying representing array type
  
@@ -66,9 +73,11 @@ expand_to_pair(t :: NTuple{2, Int}) = t
 expand_to_pair(t :: Int) = (t, t)
 
 
-# Pointwise operation layer
-# --------------------------------------------------------------------------- # 
+# -------- Pointwise --------------------------------------------------------- # 
 
+"""
+Neural network layer that applies a function pointwisely.
+"""
 struct Pointwise{GPU} <: PrimitiveLayer{GPU}
   f # Activation function
 end
@@ -84,9 +93,11 @@ valid_insize(:: Pointwise, _) = true
 outsize(p :: Pointwise, s) = s
 
 
-# Dense layer
-# --------------------------------------------------------------------------- # 
+# -------- Dense ------------------------------------------------------------- # 
 
+"""
+Dense neural network layer.
+"""
 struct Dense{GPU} <: PrimitiveLayer{GPU}
   w  # Weight matrix 
   b  # Bias vector
@@ -126,9 +137,11 @@ function outsize(d :: Dense, s)
 end
 
 
-# Convolutional layers
-# --------------------------------------------------------------------------- # 
+# ------- Convolution -------------------------------------------------------- # 
 
+"""
+Convolutional neural network layer.
+"""
 struct Conv{GPU} <: PrimitiveLayer{GPU}
   w  # Convolutional kernel
   b  # Bias vector
@@ -187,9 +200,12 @@ function outsize(c :: Conv, s)
   )
 end
 
-# De-convolutional layers
-# --------------------------------------------------------------------------- # 
 
+# -------- Deconvolution ----------------------------------------------------- # 
+
+"""
+De-convolutional neural network layer.
+"""
 struct Deconv{GPU} <: PrimitiveLayer{GPU}
   w  # Deconvolutional kernel
   b  # Bias vector
@@ -243,9 +259,11 @@ function outsize(d :: Deconv, s)
 end
 
 
-# Pooling
-# --------------------------------------------------------------------------- # 
+# -------- Pooling ----------------------------------------------------------- # 
 
+"""
+Pooling layer.
+"""
 struct Pool{GPU} <: PrimitiveLayer{GPU}
   w  # Window size for the pooling operation
   p  # Padding
@@ -281,13 +299,15 @@ function outsize(p :: Pool, s)
 end
 
 
-# Dropout layer
-# --------------------------------------------------------------------------- #
+# -------- Dropout ----------------------------------------------------------- #
 
 # Note that we try to recognize if we are training (dropout is active)
 # or not. This can only be done if the Dropout layer is not the first layer
 # that manipulates the weights
 
+"""
+Dropout layer. This must not be the first layer of the network.
+"""
 struct Dropout{GPU} <: PrimitiveLayer{GPU}
   prob
   f
@@ -310,9 +330,11 @@ valid_insize(:: Dropout, s) = true
 outsize(:: Dropout, s) = s
 
 
-# Batch normalization layer
-# --------------------------------------------------------------------------- #
+# -------- Batch Normalization ----------------------------------------------- #
 
+"""
+Batch normalization layer.
+"""
 struct Batchnorm{GPU} <: PrimitiveLayer{GPU}
   moments
   params
@@ -345,14 +367,11 @@ valid_insize(:: Batchnorm, s) = true
 outsize(:: Batchnorm, s) = s
 
 
-#
-# Container-layers
-#
+# -------- Chain ------------------------------------------------------------- # 
 
-
-# Chain
-# --------------------------------------------------------------------------- # 
-
+"""
+Composition of neural network layers.
+"""
 struct Chain{GPU} <: CompositeLayer{GPU}
   layers
 end
@@ -388,12 +407,12 @@ end
 layers(c :: Chain) = c.layers
 
 
-# Stack
-# --------------------------------------------------------------------------- # 
-#
-# A stack is like a chain, but all intermediate layers are concatenated
-# in the final layer
+# -------- Stack ------------------------------------------------------------- # 
 
+"""
+A stack of neural network layers. It is similar to a chain, but all
+intermediate layers are concatenated in the output of the stack.
+"""
 struct Stack{GPU} <: CompositeLayer{GPU}
   layers
   stack_input :: Bool
@@ -465,8 +484,7 @@ end
 layers(s :: Stack) = s.layers
 
 
-# Macro for composite layers that automatically adapts input sizes
-# --------------------------------------------------------------------------- #
+# -------- Chain/Stack Macro ------------------------------------------------- #
 
 getsize(t :: Int) = t
 getsize(t :: Tuple) = t
@@ -480,7 +498,7 @@ function composite_arguments(symbol :: Symbol, size)
     (size[3],)
   elseif symbol in (:Batchnorm,)
     (size[end],)
-  elseif symbol in (:Chain, :Stack, :Pool, :Dropout)
+  elseif symbol in (:Chain, :Stack, :Pool, :Dropout, :Pointwise)
     ()
   else
     error("$symbol is no valid layer constructor")
@@ -584,10 +602,34 @@ function composite_macro_body(c, ex, layers...)
 
 end
 
+"""
+    @chain(gametype, [kwoptions...,] partial_layer_constructors...)
+
+Macro to comfortably create chains that are consistent with `gametype`.
+
+The layer constructors in the arguments following `gametype` are supposed to
+lack the input dimensions, as they are auto-derived from the gametype and the
+previous layers. Keyword options to the call to `Chain` in the macro can also be
+given.
+
+# Examples
+```julia
+# The following two calls will create the same networks that are compatible
+# with TicTacToe
+
+Chain([ Conv(1, 32, relu), Dense(32, 50) ])
+@chain TicTacToe Conv(32, relu) Dense(50)
+```
+"""
 macro chain(ex, layers...)
   composite_macro_body(:(Jtac.Chain), ex, layers...)
 end
 
+"""
+    @stack(gametype, kwoptions, partial_layer_constructors...)
+
+Stack macro that works analogously to `@chain`.
+"""
 macro stack(ex, layers...)
   composite_macro_body(:(Jtac.Stack), ex, layers...)
 end

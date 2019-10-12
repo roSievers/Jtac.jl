@@ -1,505 +1,480 @@
-# This module collects functions which help us train models.
 
-
-# -------- Datasets ---------------------------------------------------------- #
-
-# Methods: length, merge, split, augment, 
-#          minibatch, save_dataset, load_dataset
-
-# Stores the experience from one or more selfplays in an unstructured form.
-# All labels starts with a number in {-1, 0, 1} to indicate the game result and
-# label[2:end] contains the improved policy found by Monte Carlo tree search.
-mutable struct DataSet{G <: Game}
-  data :: Vector{G}
-  label :: Vector{Vector{Float32}}
-end
-
-# TODO: make sure that data and label must always have the same length!
-function DataSet{G}() where G <: Game
-  DataSet(Vector{G}(), Vector{Vector{Float32}}())
-end
-
-Base.length(d :: DataSet) = length(d.data)
-
-function Base.merge(d :: DataSet{G}, ds...) where G <: Game
-  dataset = DataSet{G}()
-  dataset.data = vcat([d.data, (x.data for x in ds)...]...)
-  dataset.label = vcat([d.label, (x.label for x in ds)...]...)
-  dataset
-end
-
-function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
-  n = length(d)
-  @assert size <= n
-  idx = shuffle ? randperm(n) : 1:n
-  idx1, idx2 = idx[1:size], idx[size+1:end]
-  d1 = DataSet{G}(d.data[idx1], d.label[idx1])
-  d2 = DataSet{G}(d.data[idx2], d.label[idx2])
-  d1, d2
-end
-
-function augment(d :: DataSet{G}) :: DataSet{G} where G <: Game
-  aux(data, label) = DataSet(augment(data, label)...)
-  merge(aux.(d.data, d.label)...)
-end
-
-function Knet.minibatch( d :: DataSet{G}
-                       , batchsize
-                       ; shuffle = false
-                       , partial = true
-                       ) where {G}
-  l = length(d)
-  indices = shuffle ? Random.shuffle(1:l) : collect(1:l)
-  batches = []
-  i, j = 1, batchsize
-  while max(i, j) <= l
-    sel = indices[i:j]
-    ds  = DataSet{G}(d.data[sel], d.label[sel])
-    push!(batches, ds)
-    i += batchsize
-    j += partial ? min(batchsize, l - j) : batchsize
-  end
-  batches
-end
-
-function save_dataset(fname :: String, d :: DataSet)
-  BSON.bson(fname * ".jtd", dataset = dataset) 
-end
-
-function load_dataset(fname :: String)
-  BSON.load(fname * ".jtd")[:dataset]
-end
-
-
-# -------- Generating Datasets ----------------------------------------------- #
-
-# Executes a selfplay and returns the Replay as a Dataset
-function record_selfplay( model :: Model{G, GPU}
-                        , n :: Int = 1
-                        ; game :: T = G()
-                        , power :: Int = 100
-                        , temperature = 1.
-                        , exploration = 1.41
-                        , branching_prob = 0.  # Probability for random branching
-                        , augment = true
-                        , ntasks = 100
-                        , callback :: Function = () -> nothing 
-                        ) :: DataSet{T} where {G, T, GPU}
-
-  @assert (T <: G) "Provided game does not fit model"
-
-  rootgame = game
-
-  function play()
-
-    local game = copy(rootgame)
-    branched_games = []
-    dataset = DataSet{T}()
-
-    while !is_over(game)
-
-      # Random branching
-      # With a certain probability we introduce a branching point with a random
-      # move. This should help the network explore suboptimal situations better.
-      if rand() <= branching_prob
-        push!(branched_games, random_turn!(copy(game)))
-      end
-
-      # Record the current game state and do one mctree_turn
-      push!(dataset.data, copy(game))
-      actions = legal_actions(game)
-      node = mctree_turn!( model
-                         , game
-                         , power = power
-                         , temperature = temperature
-                         , exploration = exploration )
-
-      # The visit counters are stored in a dense array where each entry
-      # corresponds to a legal move. We need the policy over all moves
-      # including zeros for illegal moves. Here we do the transformation.
-
-      # We also add a leading zero which correspond to the outcome prediction.
-      posterior_distribution = node.visit_counter / sum(node.visit_counter)
-      improved_policy = zeros(Float32, 1 + policy_length(game))
-      improved_policy[actions .+ 1] .= posterior_distribution
-      push!(dataset.label, improved_policy)
-    end
-    game_result = status(game)
-    # We left the first entry for each label empty for the game result
-    for i = 1:length(dataset.data)
-      dataset.label[i][1] = current_player(dataset.data[i]) * game_result
-    end
-
-    # We now play all games which were created through random branching
-    branch_datasets = map(branched_games) do branched_game
-      record_selfplay( model
-                     , 1
-                     , game = branched_game
-                     , power = power
-                     , augment = false
-                     , temperature = temperature
-                     , exploration = exploration
-                     , branching_prob = branching_prob )
-    end
-    callback()
-    merge(dataset, branch_datasets...)
-  end
-
-  if !isa(model, Async) || n == 1
-    sets = map(_ -> play(), 1:n)
-  else
-    sets = asyncmap(_ -> play(), 1:n, ntasks = ntasks)
-  end
-
-  if augment
-    merge(sets...) |> Jtac.augment
-  else
-    merge(sets...)
-  end
-end
-
-
-# -------- Loss -------------------------------------------------------------- #
-
-function loss_components( model :: Model{G, GPU}
-                        , dataset :: DataSet{G}
-                        ) where {G, GPU}
-
-  # Dataset size
-  n = length(dataset)
-
-  # Push the label matrix to the gpu if the model lives there
-  at = atype(GPU)
-  label = convert(at, hcat(dataset.label...))
-
-  # Apply the model
-  output = model(dataset.data)
-
-  # Calculate the different loss components
-  
-  # Squared error loss for the value prediction
-  value_loss = sum(abs2, output[1, :] .- label[1, :])
-
-  # Cross entropy loss for the policy prediction
-  policy_loss = -sum(label[2:end, :] .* log.(output[2:end, :]))
-
-  # L2 regularization (weight decay)
-  regularization_loss = sum(Knet.params(model)) do param
-    s = size(param)
-    maximum(s) < prod(s) ? sum(abs2, param) : 0f0
-  end
-
-  ( value = value_loss / n
-  , policy = policy_loss / n
-  , regularization = regularization_loss 
-  )
-
-end
-
-function loss( model :: Model{G, GPU}, dataset :: DataSet{G};
-               value_weight = 1f0, 
-               policy_weight = 1f0, 
-               regularization_weight = 0f0 ) where {G, GPU}
-
-  # Convert all weights to Float32
-  value_weight = convert(Float32, value_weight)
-  policy_weight = convert(Float32, policy_weight)
-  regularization_weight = convert(Float32, regularization_weight)
-
-  l = loss_components(model, dataset)
-
-  # Return the total loss
-  value_weight * l.value +
-  policy_weight * l.policy +
-  regularization_weight * l.regularization
-end
-
-loss(model, data, label) = loss(model, DataSet([data], [label]))
-
-
-# -------- Auxiliary Functions for Training ---------------------------------- #
+# -------- Auxiliary Functions ----------------------------------------------- #
 
 # Set an optimizer for all parameters of a model
 function set_optimizer!(model, opt = Knet.Adam; kwargs...)
+
   for param in Knet.params(model)
-    param.opt = opt(; kwargs...)
+    
+    # Feature heads that are not used have length 0. They do not get an
+    # optimizer.
+    if length(param) > 0
+      param.opt = opt(; kwargs...)
+    end
   end
+
 end
 
 # A single training step, the loss is returned
-function train_step!(model, dataset :: DataSet; kwargs...)
-  tape = Knet.@diff loss(model, dataset; kwargs...)
+function train_step!(l :: Loss, model, dataset :: DataSet)
+
+  tape = Knet.@diff sum(loss(l, model, dataset))
+
   for param in Knet.params(model)
     Knet.update!(Knet.value(param), Knet.grad(tape, param), param.opt)
   end
+
   Knet.value(tape)
-end
-
-
-# -------- Printing Functions for Monitoring the Training -------------------- #
-
-function print_loss( epoch
-                   , loss
-                   , value_loss
-                   , policy_loss
-                   , regularization_loss
-                   , setsize
-                   , crayon = "" )
-
-  str = Printf.@sprintf( "%d %6.3f %6.3f %6.3f %6.3f %d"
-                       , epoch
-                       , loss
-                       , value_loss
-                       , policy_loss
-                       , regularization_loss
-                       , setsize )
-
-  println(crayon, str)
 
 end
 
-format_option(s, v) = Printf.@sprintf "# %-22s %s\n" string(s, ":") v
 
-function print_contest_results(players, contest_length, async, active, cache)
-    println(gray_crayon, "#\n# # --------- Contest -------------------------------- #\n#")
-
-    r = length(active)
-    k = length(players) - r
-    n = (r * (r-1) + 2k*r)
-
-    p = progressmeter(n + 1, "# Contest...")
-
-    rk = ranking( players
-                , contest_length
-                , async = async
-                , active = active
-                , cache = cache
-                , callback = () -> progress!(p) )
-
-    clear_output!(p)
-
-    print(gray_crayon)
-    print_ranking(players, rk, prepend = "#")
-
-    println("#")
-end
-
-
-# -------- Training ---------------------------------------------------------- #
+# -------- Training on Datasets ---------------------------------------------- #
 
 """
-        train!(model; <keyword arguments>)
+    train!(model/player, dataset; loss, <keyword arguments>)
 
-Train the neural network model `model` of type `NeuralModel{G}` via selfplay for
-the game `G`. 
+Train `model`, or the training model of `player`, on `dataset` to optimize
+`loss`.
 
 # Arguments
-
-- `power :: Int = 100`: MCTS power used during selfplays.
-- `epochs :: Int = 10`: Number of epochs used for training.
-- `batchsize :: Int = 200`: Batchsize for iterating through the training data.
-- `selfplays :: Int = 20`: Number of selfplays for dataset creation per epoch.
-- `iterations :: Int = 1`: Number of iterations through the training data per epoch.
-- `temperature :: Real = 1`: MCTS temperature used during selfplays.
-- `exploration :: Real = 1.41`: MCTS exploration parameter.
-- `branching_prob :: Real = 0`: Probability for random branching in selfplays.
-- `augment :: Bool = true`: Augment the dataset after its generation by selfplays.
-- `test_fraction :: Real = 0.1`: Fraction of the dataset used for testing.
-- `policy_weight :: Real = 1.`: Weight for the policy-based loss term.
-- `value_weight :: Real = 1.`: Weight for the value-based loss term.
-- `regularization_weight :: Real = 1.`: Weight for the regularization-based loss term.
-- `opponents = []`: List of players that the model has to face in contests.
-- `contest_temperature :: Real = temperature`: Temperature used for contests.
-- `contest_length :: Int = 250`: Max. number of games played during a contest.
-- `contest_interval :: Int = 10`: Number of epochs between contests.
-- `contest_cache :: Int = 0`: Number of cached games between `model`-independent
-  players. If `contest_cache > 0`, the `model` will only play against 
-  `model`-dependent opponents during contests and use results from the cache 
-  for the total ranking.
-- `no_contest :: Bool = false`: Deactivate contests during the training.
-- `optimizer = Knet.Adam`: Optimization algorithm to use for update steps.
-
-Other keyword arguments may be provided. They are fed to the `optimizer`.
+- `epochs = 10`: Number of iterations through `dataset`.
+- `batchsize = 50`: Batchsize for the update steps.
+- `callback_epoch`: Function called after each epoch.
+- `callback_step`: Function called after each update step.
+- `optimizer = nothing`: Optimizer initialized for each weight in `model`
+- `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
-
 ```julia
-chain = @chain TicTacToe Conv(128, relu) Dense(100, relu)
-model = NeuralModel(TicTacToe, chain)
-
-opponents = [ MCTSPlayer(power = p) for p in [10, 50, 100, 500] ]
-
-train!( model
-      , power = 250
-      , epochs = 10
-      , batchsize = 50
-      , selfplays = 200
-      , iterations = 2
-      , branching_prob = 0.1
-      , value_weight = 10.
-      , regularization_weight = 1e-5
-      , contest_interval = 5
-      , contest_length = 1000
-      , contest_cache = 5000
-      , opponents = opponents )
+set = record_self(MCTSPlayer(), 10, game = TicTacToe()) 
+model = NeuralModel(TicTacToe, @chain TicTacToe Dense(50))
+loss = Loss(policy = 0.15, regularization=1e-4)
+train!(model, set, loss = loss, epochs = 15)
 ```
 
 """
-function train!( model
-               ; power = 100
+function train!( player  :: Union{Player, Model}
+               , trainset :: DataSet
+               ; loss
                , epochs = 10
-               , batchsize = 200
-               , selfplays = 50
-               , iterations = 1
-               , temperature = 1.
-               , exploration = 1.41
-               , branching_prob = 0.
-               , augment = true
-               , test_fraction = 0.1
-               , policy_weight = 1.
-               , value_weight = 1.
-               , regularization_weight = 0.
-               , opponents = []
-               , contest_temperature = temperature
-               , contest_length :: Int = 250
-               , contest_cache :: Int = 0
-               , contest_interval :: Int = 10
-               , no_contest :: Bool = false
-               , optimizer = Knet.Adam
-               , kwargs...
-               )
+               , batchsize = 50
+               , callback_step = (_) -> nothing
+               , callback_epoch = (_) -> nothing
+               , optimizer = nothing
+               , kwargs... )
 
-  print( gray_crayon, "\n"
-       , "# # --------- Options -------------------------------- #\n#\n"
-       , format_option(:epochs, epochs)
-       , format_option(:selfplays, selfplays)
-       , format_option(:batchsize, batchsize)
-       , format_option(:iterations, iterations)
-       , format_option(:power, power)
-       , format_option(:augment, augment)
-       , format_option(:optimizer, optimizer)
-       , format_option(:value_weight, value_weight)
-       , format_option(:policy_weight, policy_weight)
-       , format_option(:regularization_weight, regularization_weight)
-       , format_option(:temperature, temperature)
-       , format_option(:test_fraction, test_fraction)
-       , format_option(:no_contest, no_contest)
-       , format_option(:contest_length, contest_length)
-       , format_option(:contest_cache, contest_cache)
-       , format_option(:contest_temperature, contest_temperature)
-       , format_option(:contest_interval, contest_interval) 
-       , format_option(:opponents, join(name.(opponents), " "))
-       , "#\n" )
+  model = training_model(player)
 
-  async = isa(model, Async)
+  !isnothing(optimizer) && set_optimizer(model, optimizer; kwargs...)
 
-  no_contest |= contest_length <= 0
+  for j in 1:epochs
 
-  if !no_contest
+    batches = minibatch(trainset, batchsize, shuffle = true, partial = false)
 
-    players = [
-      IntuitionPlayer( model
-                     , temperature = contest_temperature
-                     , name = "current" );
-      IntuitionPlayer( copy(model)
-                     , temperature = contest_temperature
-                     , name = "initial" );
-      opponents
-    ]
+    for (i, batch) in enumerate(batches)
 
-    if contest_cache > 0
-
-      modelplayers = filter(p -> training_model(p) == training_model(model), players)
-      otherplayers = filter(p -> training_model(p) != training_model(model), players)
-      players = [otherplayers; modelplayers]
-
-      active = collect(1:length(modelplayers)) .+ length(otherplayers)
-
-      n = length(otherplayers) * (length(otherplayers) - 1)
-      p = progressmeter(n + 1, "# Caching...")
-      cache = playouts( otherplayers, contest_cache, callback = () -> progress!(p))
-      clear_output!(p)
-      println( gray_crayon
-             , "# Cached $(length(cache)) matches from $(length(players)) players")
-
-    else
-
-      active = 1:length(players)
-      cache = []
+      train_step!(loss, model, batch)
+      callback_step(i)
 
     end
 
-    print_contest_results(players, contest_length, async, active, cache)
+    callback_epoch(j)
+
   end
 
-  set_optimizer!(model, optimizer; kwargs...)
+end
 
-  println("# # --------- Training ------------------------------- #\n#")
+
+# -------- Training by Playing ----------------------------------------------- #
+
+function _train!( player
+                , gen_data :: Function
+                ; loss
+                , epochs = 10
+                , playings = 20
+                , iterations = 10
+                , batchsize = 50
+                , testfrac = 0.1
+                , optimizer = Knet.Adam
+                , quiet = false
+                , callback_epoch = (_) -> nothing
+                , callback_iter = (_) -> nothing
+                , kwargs... )
+
+  # How many playings do we do for the purpose of testing?
+  test_playings = ceil(Int, playings * testfrac)
+  total_playings = test_playings + playings
+
+  # Print the loss header if not quiet
+  !quiet && print_loss_header(loss, check_features(loss, player))
+
+  # Set the optimizer for the player's model
+  set_optimizer!(training_model(player), optimizer; kwargs...)
 
   for i in 1:epochs
 
-    # Data generation via selfplays
+    # Print progress-meter if not quiet
+    !quiet && (pm = progressmeter( total_playings + 1, "# Playing..."))
+    cb = () -> quiet ? nothing : progress!(pm)
 
-    p = progressmeter( selfplays + 1, "# Selfplays...")
+    # Generate train and testsets
+    trainset = gen_data(cb, playings)
+    testset  = gen_data(cb, test_playings)
 
-    dataset = record_selfplay( model, selfplays
-                             , power = power
-                             , branching_prob = branching_prob
-                             , augment = augment
-                             , temperature = temperature
-                             , exploration = exploration
-                             , callback = () -> progress!(p) )
+    # Print next progress-meter if not quiet
+    update_steps = iterations * div(length(trainset), batchsize)
+    !quiet && clear_output!(pm)
+    !quiet && (pm = progressmeter(update_steps + 1, "# Learning..."))
+    cb = (_) -> quiet ? nothing : progress!(pm)
 
-    clear_output!(p)
+    # Train the player with the generated dataset
+    train!( player
+          , trainset
+          , loss = loss
+          , epochs = iterations
+          , batchsize = batchsize
+          , callback_step = cb
+          , callback_epoch = callback_iter )
 
-    testlength = round(Int, test_fraction * length(dataset))
-    testset, trainset = split(dataset, testlength, shuffle = true)
+    # Calculate and print loss for this epoch if not quiet
+    !quiet && clear_output!(pm)
+    !quiet && print_loss(loss, player, i, trainset, testset)
 
-    steps = iterations * div(length(trainset), batchsize)
+    # Call callback function
+    callback_epoch(i) 
 
-    p = progressmeter( steps + 1, "# Training...")
+  end 
 
-    for j in 1:iterations
+end
 
-      batches = minibatch(trainset, batchsize, shuffle = true, partial = false)
 
-      for batch in batches
-        train_step!( training_model(model)
-                   , batch
-                   , value_weight = value_weight
-                   , policy_weight = policy_weight
-                   , regularization_weight = regularization_weight
-                   )
-        progress!(p)
-      end
+"""
+    train_self!(player; loss, <keyword arguments>)
+
+Train an MCTS `player` under `loss` via playing against itself.
+
+The training model of `player` learns to predict the MCTS policy, the value of
+game states, and possible features (if `player` supports the same features as
+`loss`). Note that only players with NeuralModel-based training models can
+be trained currently.
+
+# Arguments
+- `epochs = 10`: Number of epochs.
+- `playings = 20`: Games played per `epoch` for training-set generation.
+- `iterations = 10`: Number of training epochs per training-set.
+- `batchsize = 50`: Batchsize during training from the training-set.
+- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
+- `branching = 0.`: Random branching probability.
+- `augment = true`: Whether to use augmentation on the created data sets.
+- `quiet = false`: Whether to suppress logging of training progress.
+- `callback_epoch`: Function called after every epoch.
+- `callback_iter`: Function called after every iteration.
+- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `kwargs...`: Keyword arguments for `optimizer`
+
+# Examples
+```julia
+# Self-train a simple neural network model for 5 epochs
+model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64) Dense(32))
+player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
+train_self!(player, epochs = 5, playings = 100)
+```
+"""
+function train_self!( player :: MCTSPlayer
+                    ; loss
+                    , branching = 0.
+                    , augment = true
+                    , kwargs... )
+
+  # Only use player-enabled features for recording if they are compatible with
+  # the loss
+  features = check_features(loss, player) ? features(player) : Feature[]
+
+  # Function to generate datasets through selfplays
+  gen_data = (cb, n) -> record_self( player
+                                   , n
+                                   , augment = augment
+                                   , branching = branching
+                                   , features = features
+                                   , callback = cb )
+
+  _train!(player, gen_data; loss = loss, kwargs...)
+
+end
+
+
+"""
+    train_against!(player, enemy; loss, <keyword arguments>)
+
+Train an MCTS `player` under `loss` through playing against `enemy`.
+
+The training model of `player` learns to predict the MCTS policy, the value of
+game states, and possible features (if `player` supports the same features as
+`loss`) when playing against `enemy`. If the enemy is too good, this may turn
+out to be a bad learning mode: a player that loses all the time will produce
+very pessimistic value predictions for each single game state, which will
+harm the MCTS algorithm for improved policies. Note that only players with
+NeuralModel-based training models can be trained currently.
+
+# Arguments
+- `start`: Function that (randomly) yields -1 or 1 to fix the starting player.
+- `epochs = 10`: Number of epochs.
+- `playings = 20`: Games played per `epoch` for training-set generation.
+- `iterations = 10`: Number of training epochs per training-set.
+- `batchsize = 50`: Batchsize during training from the training-set.
+- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
+- `branching = 0.`: Random branching probability.
+- `augment = true`: Whether to use augmentation on the created data sets.
+- `quiet = false`: Whether to suppress logging of training progress.
+- `callback_epoch`: Function called after every epoch.
+- `callback_iter`: Function called after every iteration.
+- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `kwargs...`: Keyword arguments for `optimizer`
+
+# Examples
+```julia
+# Train a simple neural network model against an MCTS player for 5 epochs
+model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64) Dense(32))
+player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
+enemy = MCTSPlayer(power = 250)
+train_against!(player, enemy, epochs = 5, playings = 100)
+```
+"""
+function train_against!( player :: MCTSPlayer
+                       , enemy
+                       ; loss
+                       , start :: Function = () -> rand([-1, 1])
+                       , branching = 0.
+                       , augment = true
+                       , kwargs... )
+
+  features = check_features(loss, player) ? features(player) : Feature[]
+
+  gen_data = (cb, n) -> record_against( player
+                                      , enemy
+                                      , n
+                                      , start = start
+                                      , augment = augment
+                                      , branching = branching
+                                      , features = features
+                                      , callback = cb ) 
+
+  _train!(player, gen_data; loss = loss, kwargs...)
+
+end
+
+
+"""
+    train_from!(pupil, teacher [, players]; loss, <keyword arguments>)
+
+Train a `pupil` under `loss` by letting it approximate the predictions of
+`teacher` on game states created by `players`.
+
+In each epoch, two random `players` are chosen (by default, these are the pupil
+and the teacher) to generate a set of game states by playing the game. These
+games are used to create a training set by applying the teachers training model.
+Note that only players with NeuralModel-based training models can be trained
+currently.
+
+# Arguments
+- `epochs = 10`: Number of epochs.
+- `playings = 20`: Games played per `epoch` for training-set generation.
+- `iterations = 10`: Number of training epochs per training-set.
+- `batchsize = 50`: Batchsize during training from the training-set.
+- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
+- `branching = 0.`: Random branching probability.
+- `augment = true`: Whether to use augmentation on the created data sets.
+- `quiet = false`: Whether to suppress logging of training progress.
+- `callback_epoch`: Function called after every epoch.
+- `callback_iter`: Function called after every iteration.
+- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `kwargs...`: Keyword arguments for `optimizer`
+"""
+function train_from!( pupil :: Player{G}
+                    , teacher
+                    , players = [player, teacher]
+                    ; loss
+                    , branching = 0.
+                    , augment = true
+                    , kwargs... 
+                    ) where {G <: Game}
+
+  # Check if pupil and teacher are compatible featurewise
+  use_features = features(pupil) == features(teacher)
+
+  # Function that generates datasets
+  gen_data = (cb, n) -> begin
+
+    # TODO: Async?
+
+    # Construct a list of games by letting two players compete
+    datasets = map(1:n) do _
+
+      # Get two players at random
+      p1, p2 = rand(players, 2)
+
+      # Watch them playing
+      games = pvp_games(p1, p2, G())
+
+      # Force the to 'make errors' sometimes
+      branchpoints = randsubseq(games, branching)
+      branches = map(g -> pvp_games(p1, p2, g), games)
+
+      # Let the teacher model look at all games to generate a dataset
+      ds = record_model( training_model(teacher)
+                       , vcat(games, branches...)
+                       , use_features = use_features
+                       , augment = augment )
+
+      # Give the signal that one playing is complete
+      cb()
+
+      ds
 
     end
 
+    merge(datasets...)
+
+  end
+
+  _train!(pupil, gen_data; loss = loss, kwargs...)
+
+end
+
+
+# -------- Training With Contests -------------------------------------------- #
+
+"""
+    with_contest(train_function, player, <arguments>; <keyword arguments>)
+
+Train `player` according to `train_function` while conducting regular contests
+during the training process.
+
+The argument `train_function` must be one of `train_self!`, `train_against!`, or
+`train_from!`. The function `with_contest` will always at least print the
+results of a contest before training and after training. 
+
+# Arguments
+The non-keyword arguments supported are the non-keyword arguments that are also
+accepted / needed by `train_function`. As keyword arguments, all keyword
+arguments of `train_function` are supported. Additionally, the following
+arguments can be used to adapt the behavior of `with_contest`:
+
+- `interval = 10`: After how many epochs do contests take place.
+- `length = 250`: Number of playings during one contest. 
+- `opponents`: List of opponents for the competition. To this list the
+   two players `current` and `initial` are added, which are IntuitionPlayers
+   with the model (or a copy of the initial model) of `player`.
+- `temperature`: Temperature of the intuition players `current` and `initial`.
+- `cache = 0`: Number of games to be cached. If `cache > 0`, a number
+   of `cache` games between all players that are independent of `player`'s model
+   are conducted and cached for all competitions that follow.
+
+# Examples
+```julia
+
+G = TicTacToe
+loss = Loss(policy = 0.25)
+opponents = [MCTSPlayer(power = 50), MCTSPlayer(power = 500)]
+
+model = NeuralModel(G, @chain G Conv(100, relu) Dense(32, relu))
+player = MCTSPlayer(model, power = 25)
+
+with_contest( train_self!
+            , player
+            , loss = loss
+            , cache = 1000
+            , length = 500
+            , opponents = opponents
+            , interval = 5
+            , epochs = 20
+            , playings = 150 )
+```
+
+"""
+function with_contest( trainf!     # the training function
+                     , player :: MCTSPlayer
+                     , args...
+                     ; opponents = Player[]
+                     , length :: Int = 250
+                     , cache :: Int = 0
+                     , interval :: Int = 10
+                     , temperature = player.temperature
+                     , epochs = 10
+                     , kwargs... )
+
+  # Rename the length keyword argument
+  len = length
+  length = Base.length
+
+  # List of all players that will compete in the contest
+  players = [
+
+    IntuitionPlayer( player.model
+                   , temperature = temperature
+                   , name = "current" );
+    IntuitionPlayer( copy(player.model)
+                   , temperature = temperature
+                   , name = "initial" );
+    opponents
+
+  ]
+
+  # Creating a cache of contest games for all players that do not depend on the
+  # model that will be trained
+  if cache > 0
+
+    # Get the training model
+    model = training_model(player)
+
+    # Reorder players such that the active (i.e., learning) players come last
+    # and passive ones first
+    aplayers = filter(p -> training_model(p) == model, players)
+    pplayers = filter(p -> training_model(p) != model, players)
+    players = [pplayers; aplayers]
+
+    # Get the indices of all active models
+    active = collect(1:length(aplayers)) .+ length(pplayers)
+
+    # Get the progress-meter going
+    n = length(pplayers) * (length(pplayers) - 1)
+    p = progressmeter(n + 1, "# Caching...")
+
+    # Create the cache
+    cache = playouts( pplayers, cache, callback = () -> progress!(p) )
+
+    # Remove the progress bar and leave a message that confirms caching.
     clear_output!(p)
+    println( gray_crayon
+           , "# Cached $(length(cache)) matches by $(length(players)) players" )
 
-    # Calculate loss for this epoch
-    for (set, crayon)  in [(testset, ""), (trainset, gray_crayon)]
-      l = loss_components(model, set)
-      loss = value_weight * l.value + 
-             policy_weight * l.policy + 
-             regularization_weight * l.regularization
+  else
 
-      print_loss( i
-                , loss
-                , l.value * value_weight
-                , l.policy * policy_weight
-                , l.regularization * regularization_weight
-                , length(set)
-                , crayon )
+    # If caching is not activated, regard each player as active
+    active = 1:length(players)
+    cache = []
 
-    end
+  end
 
-    if (i % contest_interval == 0 || i == epochs) && !no_contest
-      print_contest_results(players, contest_length, async, active, cache)
+  # Check if the player's model is async
+  async = isasync(playing_model(player))
+
+  # Create the callback function
+  cb = epoch -> begin
+    if epoch % interval == 0
+      print_contest(players, len, async, active, cache)
     end
   end
 
-  model
+  # Run contest before training
+  cb(0)
+
+  # Train with a contest every interval epochs
+  trainf!(player, args...; callback_epoch = cb, epochs = epochs, kwargs...)
+
+  # Run contest after training, if it was not run in trainf! already
+  epochs % interval == 0 ? nothing : cb(0)
 
 end
 

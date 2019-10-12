@@ -1,6 +1,5 @@
 
-import NLopt
-import Printf
+# -------- Bayes ELO Objective ----------------------------------------------- #
 
 elosigm(d) = 1 / (1 + exp(d/400))
 
@@ -23,14 +22,19 @@ function logprior(elos; mean, std)
 end
 
 function objective(elos, games; mean, std, kwargs...)
-  try
-    loglikelihood(elos, games; kwargs...) + logprior(elos; mean = mean, std = std)
-  catch err
-    show(err)
-  end
+  loglikelihood(elos, games; kwargs...) + 
+  logprior(elos; mean = mean, std = std)
 end
 
-function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500.)
+
+# -------- ELO Estimation ---------------------------------------------------- #
+
+function estimate( k      # number of players
+                 , games  # triples (player1, player2, result)
+                 ; adv = nothing
+                 , draw = nothing
+                 , mean = 0.
+                 , std = 1500. )
 
   # Upper and lower bounds and start values for (adv, draw)
   lb = [-4std, 1]
@@ -46,7 +50,12 @@ function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500
   opt = NLopt.Opt(:LN_BOBYQA, k+2)
 
   # Define the minimization objective function compatible to NLopt
-  f(x, _) = -objective(x[1:k], games; draw = x[k+2], adv = x[k+1], mean = mean, std = std)
+  f(x, _) = -objective( x[1:k]
+                      , games
+                      ; draw = x[k+2]
+                      , adv = x[k+1]
+                      , mean = mean
+                      , std = std )
 
   # Set the objective and set reasonable lower/upper bounds
   NLopt.min_objective!(opt, f)
@@ -61,6 +70,11 @@ function estimate(k, games; adv = nothing, draw = nothing, mean = 0., std = 1500
 
 end
 
+
+# -------- Tournaments ------------------------------------------------------- #
+
+# Number of matches per active player when at most nmax games
+# are to be played.
 function match_repetitions(nmax, players, active)
 
   r = length(active)
@@ -69,14 +83,16 @@ function match_repetitions(nmax, players, active)
 
 end
 
-
+# Create vector of game results (p1, p2, result) for a number of players of type
+# Player. We distinguish between active and inactive players. Two inactive
+# players do not play against one another, but each active player plays against
+# each player.
 function playouts( players
                  , game :: Game
-                 , nmax
+                 , nmax :: Int
                  ; active = 1:length(players)
                  , async = false
-                 #, callback = () -> nothing )
-                 , callback )
+                 , callback = () -> nothing )
 
   n = match_repetitions(nmax, players, active)
 
@@ -84,8 +100,6 @@ function playouts( players
     @warn "nmax too small: every pair gets one game"
     n = 1
   end
-
-  L = 0
 
   games = []
   players = enumerate(players)
@@ -104,7 +118,6 @@ function playouts( players
       push!(games, map(_ -> (i, j, pvp(p1, p2, game)), 1:n))
     end
 
-    L += 1
     callback()
 
   end
@@ -113,13 +126,29 @@ function playouts( players
 
 end
 
-function playouts(players, nmax; kwargs...)
+function playouts(players, nmax :: Int; kwargs...)
   playouts(players, derive_gametype(players)(), nmax; kwargs...)
 end
 
 
-# Ranking based on given playouts
-function ranking( players, playouts :: Vector; kwargs... )
+# -------- Rankings ---------------------------------------------------------- #
+
+"""
+    ranking(players, [game,] nmax; <keyword arguments>)
+
+Create a ranking of `players` competing at `game` with at most `nmax` plays.
+If at least one of the players is specialized to a concrete game type, the
+argument `game` may be left out. Returns a named tuple with entries `:elos`,
+`:adv`, and `:draw`.
+
+# Arguments
+The function takes the following keyword arguments:
+- `active`: A selection of indices of players that are regarded as active.
+- `cache`: Results created by `playouts`, which are considered for the ranking.
+- `async`: Whether to run the pvp playouts via `asyncmap`.
+- `callback`: Function that is called after each match.
+"""
+function ranking(players, playouts :: Vector; kwargs...)
 
   k = length(players)
   res = estimate(k, playouts; kwargs...)
@@ -127,18 +156,23 @@ function ranking( players, playouts :: Vector; kwargs... )
 
 end
 
-# Returns a named tuple with entries :elos, :draw, :adv
 function ranking( players
                 , game :: Game
                 , nmax
-                ; cache = []
+                ; cache = [] # Vector of game results
                 , active = 1:length(players)
                 , async = false
                 , callback = () -> nothing
                 , kwargs...)
 
   k = length(players)
-  games = playouts(players, game, nmax; active = active, async = async, callback = callback)
+  games = playouts( players
+                  , game
+                  , nmax
+                  ; active = active
+                  , async = async
+                  , callback = callback )
+
   ranking(players, [games; cache]; kwargs...)
 
 end
@@ -147,6 +181,15 @@ function ranking(players, nmax; kwargs...)
   ranking(players, derive_gametype(players)(), nmax; kwargs...)
 end
 
+
+# -------- Visualize Rankings ------------------------------------------------ #
+
+"""
+    print_ranking(players, ranking [; prepend])
+
+Print a ranking of `players` given by `ranking`. Optionally, the string
+`prepend` can be prepended to each printed line.
+"""
 function print_ranking(players, rk :: NamedTuple; prepend = "")
 
   i = 1
@@ -159,7 +202,7 @@ function print_ranking(players, rk :: NamedTuple; prepend = "")
     i += 1
   end
 
-  Printf.@printf( "%s\n%s start-advantage: %.2f\n%s draw-bandwidth: %.2f\n"
+  Printf.@printf( "%s\n%s start advantage: %.2f\n%s draw bandwidth:  %.2f\n"
                 , prepend
                 , prepend
                 , rk.adv

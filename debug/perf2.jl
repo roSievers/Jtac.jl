@@ -20,7 +20,7 @@ println("CPU performance for 1000 games")
 @time map(model, games);
 @time asyncmap(amodel, games);
 
-@time record_selfplay(model, branch_prob = bp, power = 100)
+@time record_self(MCTSPlayer(model, power = 100), branching = bp)
 #@time record_selfplay(amodel, 20, branch_prob = bp)
 
 gmodel = model |>  to_gpu
@@ -43,6 +43,6 @@ println("GPU performance for 1000 games")
 @time map(gmodel, games)
 @time asyncmap(gamodel, games) 
 
-@time record_selfplay(gmodel, branch_prob = bp, power = 100)
-@time record_selfplay(gamodel, 20, branch_prob = bp, power = 100)
+@time record_self(MCTSPlayer(gmodel, power = 100), branching = bp)
+@time record_self(MCTSPlayer(gamodel, power = 100), 20, branching = bp)
 

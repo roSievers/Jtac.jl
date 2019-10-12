@@ -1,83 +1,92 @@
 
-# A player is an agent that can change a game by choosing actions to perform
+# -------- Players ----------------------------------------------------------- #
+
+"""
+Players are named entities that can evaluate game states via the `think`
+function to yield policies.
+"""
 abstract type Player{G <: Game} end
 
-# This method yields a probability distribution over all legal actions
-think(game :: Game, p :: Player) :: Vector{Float32} = error("Not implemented")
+"""
+    think(player, game)
 
-# Randomly decide for an action based on the thought out policy
-function decide(game :: Game, p :: Player) :: ActionIndex
-  actions = legal_actions(game)
-  actions[choose_index(think(game, p))]
-end
+Let `player` think about `game` and return a policy to you.
+"""
+think(p :: Player, game :: Game) :: Vector{Float32} = error("Not implemented")
+
+"""
+    decide(player, game)
+
+Let `player` make an action decision about `game`, based on the policy
+`think(player, game)`.
+"""
+decide(p :: Player, game :: Game) = choose_index(think(p, game))
 
 # Convenience function to automatically alter the game
-turn!(game :: Game, p :: Player) = apply_action!(game, decide(game, p))
+turn!(game :: Game, p :: Player) = apply_action!(game, decide(p, game))
 
-# It is nice to have a name for each player if we want to do tournaments etc.
-name(p :: Player) :: String = error("Not implemented")
+# Each player must have a name for comparison in tournaments etc.
+"""
+    name(player)
 
-# A player that always chooses random actions from allowed ones
+The name of a player.
+"""
+name(:: Player) :: String = error("Not implemented")
+
+"""
+    ntasks(player)
+
+How many tasks the player wants to handle via asyncmap.
+"""
+ntasks(:: Player) = 1
+
+# For automatic game interference
+gametype(:: Player{G}) where {G <: Game} = G
+
+# Players with potentially trainable models can be asked to return them
+playing_model(:: Player) = error("Player has no model")
+training_model(:: Player) = error("Player has no trainable model")
+
+# Features that are supported by the player. Used for automatic feature
+# detection during the generation of datasets in selfplays
+features(:: Player) = []
+
+
+# -------- Random Player ----------------------------------------------------- #
+
+"""
+A player with name "random" that always chooses a random (but allowed) action.
+"""
 struct RandomPlayer <: Player{Game} end
 
-function think(game :: Game, :: RandomPlayer)
+function think(:: RandomPlayer, game :: Game)
   l = length(legal_actions(game))
   ones(l) / l
 end
 
 name(p :: RandomPlayer) = "random"
+Base.copy(p :: RandomPlayer) = p
 
-gametype(:: Player{G}) where {G <: Game} = G
 
-# A Markov chain tree search player with a model it can ask for decision making 
-struct MCTSPlayer{G} <: Player{G}
-  model :: Model{G}
-  power :: Int
-  temperature :: Float32
-  exploration :: Float32
-  name :: String
-end
+# -------- Intuition Player -------------------------------------------------- #
 
-function MCTSPlayer( model :: Model{G}
-                   ; power = 100
-                   , temperature = 1.
-                   , exploration = 1.41
-                   , name = nothing 
-                   ) where {G <: Game}
-
-  if isnothing(name)
-    id = Int(div(hash((model, temperature)), Int(1e14)))
-    name = "mcts$(power)-$id"
-  end
-  MCTSPlayer{G}(model, power, temperature, exploration, name)
-
-end
-
-# The default MCTSPlayer uses the RolloutModel
-MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
-
-function think(game :: G , p :: MCTSPlayer{G}) where {G <: Game}
-
-  mctree_policy( p.model
-               , game
-               , power = p.power
-               , temperature = p.temperature
-               , exploration = p.exploration)
-
-end
-
-name(p :: MCTSPlayer) = p.name
-
-training_model(p :: MCTSPlayer) = training_model(p.model)
-
-# Player that uses the model policy decision directly
-# The temperature controls how strictly/loosely it follows the policy
+"""
+A player that relies on the policy returned by a model.
+"""
 struct IntuitionPlayer{G} <: Player{G}
   model :: Model{G}
   temperature :: Float32
   name :: String
 end
 
+"""
+    IntuitionPlayer(model [; temperature, name])
+    IntuitionPlayer(player [; temperature, name])
+
+Intuition player that uses `model` to generate policies which are cooled/heated
+by `temperature` before making a decision. If provided a `player`, the
+IntuitionPlayer shares this player's model and temperature.
+"""
 function IntuitionPlayer( model :: Model{G}
                         ; temperature = 1.
                         , name = nothing
@@ -91,12 +100,24 @@ function IntuitionPlayer( model :: Model{G}
 
 end
 
-function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
+function IntuitionPlayer( player :: Player{G}
+                        ; temperature = player.temperature
+                        , name = nothing
+                        ) where {G <: Game}
+
+  IntuitionPlayer( playing_model(player)
+                 , temperature = temperature
+                 , name = name )
+
+end
+
+function think(p :: IntuitionPlayer{G}, game :: G) where {G <: Game}
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
-  output = p.model(game) |> Array{Float32} # convert potential gpu-output
-  policy = output[actions .+ 1]
+  policy = zeros(Float32, policy_length(game))
+
+  policy[actions] = apply(p.model, game).policy[actions]
   
   # Return the action that the player decides for
   if p.temperature == 0
@@ -112,20 +133,129 @@ function think(game :: G, p :: IntuitionPlayer{G}) where {G <: Game}
 end
 
 name(p :: IntuitionPlayer) = p.name
-
+ntasks(p :: IntuitionPlayer) = ntasks(p.model)
+playing_model(p :: IntuitionPlayer) = p.model
 training_model(p :: IntuitionPlayer) = training_model(p.model)
+features(p :: IntuitionPlayer) = features(training_model(p))
 
-# Human player that queries for interaction
-# Relies on implemented draw() method for the game
+function Base.copy(p :: IntuitionPlayer)
+  IntuitionPlayer(copy(p.model), temperature = temperature, name = name)
+end
+
+
+# -------- MCTS Player ------------------------------------------------------- #
+
+"""
+A player that relies on Markov chain tree search policies that are constructed
+with the support of a model.
+"""
+struct MCTSPlayer{G} <: Player{G}
+
+  model :: Model{G}
+
+  power :: Int
+  temperature :: Float32
+  exploration :: Float32
+
+  name :: String
+
+end
+
+"""
+    MCTSPlayer([model; power, temperature, exploration, name])
+    MCTSPlayer(player [; power, temperature, exploration, name])
+
+MCTS Player powered by `model`, which defaults to `RolloutModel`. The model can
+also be derived from `player` (this does not create a copy of the model).
+"""
+function MCTSPlayer( model :: Model{G}
+                   ; power = 100
+                   , temperature = 1.
+                   , exploration = 1.41
+                   , name = nothing 
+                   ) where {G <: Game}
+
+  if isnothing(name)
+    id = Int(div(hash((model, temperature)), Int(1e14)))
+    name = "mcts$(power)-$id"
+  end
+
+  MCTSPlayer{G}(model, power, temperature, exploration, name)
+
+end
+
+# The default MCTSPlayer uses the RolloutModel
+MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
+
+
+function MCTSPlayer( player :: IntuitionPlayer{G}
+                   ; temperature = player.temperature
+                   , kwargs...
+                   ) where {G <: Game}
+
+  MCTSPlayer(playing_model(player); temperature = temperature, kwargs...)
+
+end
+
+function MCTSPlayer( player :: MCTSPlayer{G}; kwargs... ) where {G <: Game}
+  MCTSPlayer(playing_model(player); kwargs...)
+end
+
+function think(p :: MCTSPlayer{G}, game :: G) where {G <: Game}
+
+  # Improved policy over the allowed actions
+  pol = mctree_policy( p.model
+                     , game
+                     , power = p.power
+                     , temperature = p.temperature
+                     , exploration = p.exploration)
+
+  # Full policy vector
+  policy = zeros(Float32, policy_length(game))
+  policy[legal_actions(game)] = pol
+
+  policy
+
+end
+
+name(p :: MCTSPlayer) = p.name
+ntasks(p :: MCTSPlayer) = ntasks(p.model)
+playing_model(p :: MCTSPlayer) = p.model
+training_model(p :: MCTSPlayer) = training_model(p.model)
+features(p :: MCTSPlayer) = features(training_model(p))
+
+function Base.copy(p :: MCTSPlayer)
+  MCTSPlayer( copy(p.model)
+            , power = power
+            , temperature = temperature
+            , exploration = exploration
+            , name = name )
+end
+
+
+# -------- Human Player ------------------------------------------------------ #
+
+"""
+A player that queries for interaction before making a decision.
+"""
 struct HumanPlayer <: Player{Game}
   name :: String
 end
 
-HumanPlayer() = HumanPlayer("player")
+"""
+    HumanPlayer([; name])
 
-function think(game :: Game, p :: HumanPlayer)
+Human player with name `name`, defaulting to "you".
+"""
+HumanPlayer(; name = "you") = HumanPlayer(name)
+
+function think(p :: HumanPlayer, game :: Game)
+
+  # Draw the game
   println()
   draw(game)
+
+  # Take the user input and return the one-hot policy
   while true
     print("$(p.name): ")
     input = readline()
@@ -134,8 +264,9 @@ function think(game :: Game, p :: HumanPlayer)
       if !is_action_legal(game, action)
         println("Action $input is illegal ($error)")
       else
-        actions = legal_actions(game)
-        return Float32[a == action ? 1. : 0. for a in actions]
+        policy = zeros(Float32, policy_length(game))
+        policy[action] = 1f0
+        return policy
       end
     catch error
       if isa(error, ArgumentError)
@@ -146,14 +277,20 @@ function think(game :: Game, p :: HumanPlayer)
 
     end
   end
+
 end
 
 name(p :: HumanPlayer) = p.name
 
-# Let players play versus players
+Base.copy(p :: HumanPlayer) = p
+
+
+# -------- PvP --------------------------------------------------------------- #
 
 function pvp(p1 :: Player, p2 :: Player, game :: Game)
+
   game = copy(game)
+
   while !is_over(game)
     if current_player(game) == 1
       turn!(game, p1)
@@ -161,18 +298,32 @@ function pvp(p1 :: Player, p2 :: Player, game :: Game)
       turn!(game, p2)
     end
   end
+
   status(game)
-end
 
-
-function derive_gametype(players)
-  gt = mapreduce(gametype, typeintersect, players, init = Game)
-
-  @assert gt != Union{} "Players do not play compatible games"
-  @assert !isabstracttype(gt) "Cannot infere game from abstract type"
-
-  gt
 end
 
 pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, derive_gametype([p1, p2])())
 
+
+function pvp_games(p1 :: Player, p2 :: Player, game :: Game)
+
+  game  = copy(game)
+  games = [copy(game)]
+
+  while !is_over(game)
+    if current_player(game) == 1
+      turn!(game, p1)
+    else
+      turn!(game, p2)
+    end
+    push!(games, copy(game))
+  end
+
+  games
+
+end
+
+function pvp_games(p1 :: Player, p2 :: Player)
+  pvp_games(p1, p2, derive_gametype([p1, p2])())
+end
