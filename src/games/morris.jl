@@ -191,7 +191,7 @@ end
 
 status(game :: Morris) :: Status = game.status
 
-policy_length(:: Morris) :: Int = 9
+policy_length(:: Type{Morris}) :: Int = 9
 
 """
 Size of the data representation of the game
