@@ -73,7 +73,7 @@ function save_model(fname :: String, model :: Model{G}) where {G}
   model = model |> training_model |> to_cpu |> copy
 
   # Reset the optimizers, as they will not be saved
-  for p in params(model)
+  for p in Knet.params(model)
     p.opt = nothing
   end
 
