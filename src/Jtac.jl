@@ -90,7 +90,7 @@ export DataSet, augment, minibatch,
 # Saving and loading games and datasets
 include("io.jl")
 
-export save_model, load_model 
+export save_model, load_model, save_dataset, load_dataset
 
 # Game implementations
 include("games/mnkgame.jl")
