@@ -17,7 +17,6 @@ mutable struct DataSet{G <: Game}
   flabel :: Vector{Vector{Float32}}   # target feature values
 
   features :: Vector{Feature}         # with which features was the ds created
-  cache                               # cache that can store prepared data
 
 end
 
@@ -31,53 +30,18 @@ function DataSet{G}(; features = Feature[]) where {G <: Game}
   DataSet( Vector{G}()
          , Vector{Vector{Float32}}()
          , Vector{Vector{Float32}}()
-         , features
-         , nothing )
+         , features )
 
 end
 
 function DataSet(games, label, flabel; features = Feature[])
 
-  DataSet(games, label, flabel, features, nothing)
+  DataSet(games, label, flabel, features)
 
 end
 
 features(ds :: DataSet) = ds.features
 Base.length(d :: DataSet) = length(d.games)
-
-# Cache binary data blocks used to swiftly calculate the loss
-function prepare_data( ds :: DataSet{G}
-                     ; gpu :: Bool
-                     , use_features :: Bool
-                     ) where {G}
-
-  # Check if we have to update the cache
-  if isnothing(ds.cache) || ds.cache.gpu != gpu ||
-     ds.cache.use_features != use_features
-
-    at = atype(gpu)
-
-    data = convert(at, representation(ds.games))
-
-    vplabel = hcat(ds.label...)
-
-    vlabel = convert(at, vplabel[1, :])
-    plabel = convert(at, vplabel[2:end, :])
-    flabel = use_features ? convert(at, hcat(ds.flabel...)) : nothing
-
-    ds.cache = ( gpu = gpu
-               , use_features = use_features
-               , data = data
-               , vlabel = vlabel
-               , plabel = plabel
-               , flabel = flabel )
-
-  end
-
-  ds.cache
-
-end
-
 
 # -------- Dataset Operations ------------------------------------------------ #
 
@@ -143,54 +107,102 @@ function augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: Game
 
 end
 
-function Knet.minibatch( d :: DataSet{G}
-                       , batchsize
-                       ; shuffle = false
-                       , partial = true
-                       ) where {G}
+# -------- Raw DataSet Representation: Caches -------------------------------- #
 
-  l = length(d)
-  indices = shuffle ? Random.shuffle(1:l) : collect(1:l)
-  batches = []
+struct DataCache{G <: Game, GPU}
 
-  i, j = 1, batchsize
+  data        # game representation data
 
-  while max(i, j) <= l
+  vlabel      # value labels
+  plabel      # policy labels
+  flabel      # feature labels
 
-    sel = indices[i:j]
-    ds  = DataSet( d.games[sel], d.label[sel]
-                 , d.flabel[sel], features = d.features )
+end
 
-    push!(batches, ds)
+function DataCache( ds :: DataSet{G}
+                  ; gpu = false
+                  , use_features = false
+                  ) where {G <: Game}
 
-    i += batchsize
-    j += partial ? min(batchsize, l - j) : batchsize
+  # Preparation
+  at = atype(gpu)
+  vplabel = hcat(ds.label...)
 
+  # Convert to at
+  data = convert(at, representation(ds.games))
+  vlabel = convert(at, vplabel[1, :])
+  plabel = convert(at, vplabel[2:end, :])
+  flabel = use_features ? convert(at, hcat(ds.flabel...)) : nothing
+
+  DataCache{G, gpu}(data, vlabel, plabel, flabel)
+
+end
+
+Base.length(c :: DataCache) = size(c.data)[end]
+
+# -------- Iterating Datasets: Batches --------------------------------------- #
+
+struct Batches{G <: Game, GPU}
+
+  cache :: DataCache{G, GPU}
+
+  batchsize :: Int
+  shuffle :: Bool
+  partial :: Bool
+
+  indices :: Vector{Int}
+
+end
+
+function Batches( d :: DataSet{G}
+                , batchsize
+                ; shuffle = false
+                , partial = true
+                , gpu = false 
+                , use_features = false
+                ) where {G <: Game}
+
+  indices = collect(1:length(d))
+
+  cache = DataCache(d, gpu = gpu, use_features = use_features)
+
+  Batches{G, gpu}(cache, batchsize, shuffle, partial, indices)
+
+end
+
+function Base.length(b :: Batches)
+  n = length(b.cache) / b.batchsize
+  b.partial ? ceil(Int, n) : floor(Int, n)
+end
+
+function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: Game, GPU}
+
+  # Preparations
+  l = length(b.cache)
+  b.shuffle && start == 1 && (b.indices .= randperm(l))
+
+  # start:stop is the range in b.indices that selected
+  stop = min(start + b.batchsize - 1, l)
+
+  # Check for end of iteration
+  if start > l || !b.partial && stop - start < b.batchsize - 1
+    return nothing
   end
 
-  batches
+  # Build the data cache
+  idx = b.indices[start:stop]
+
+  data = b.cache.data[:, :, :, idx]
+  vlabel = b.cache.vlabel[idx]
+  plabel = b.cache.plabel[:, idx]
+  flabel = isnothing(b.cache.flabel) ? nothing : b.cache.flabel[:, idx]
+
+  cache = DataCache{G, GPU}(data, vlabel, plabel, flabel)
+
+  # Return the (cache, new_start) state tuple
+  cache, stop + 1
 
 end
-
-
-# -------- Saving and Loading Datasets --------------------------------------- #
-
-function save_dataset(fname :: String, d :: DataSet)
-  
-  # Temporarily disable the cache for saving
-  cache = d.cache
-  d.cache = nothing
-
-  # Save the file
-  BSON.bson(fname * ".jtd", dataset = dataset) 
-  d.cache = cache
-
-  nothing
-
-end
-
-load_dataset(fname :: String) = BSON.load(fname * ".jtd")[:dataset]
-
 
 # -------- Generating Datasets: Helpers -------------------------------------- #
 

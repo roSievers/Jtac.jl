@@ -9,16 +9,29 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
     # Feature heads that are not used have length 0. They do not get an
     # optimizer.
     if length(param) > 0
-      param.opt = opt(; kwargs...)
+
+      # If opt is given, overwrite every optimizer in param.opt
+      if !isnothing(opt)
+
+        param.opt = opt(; kwargs...)
+
+      # If opt is not given, overwrite only non-existing param.opt with Adam
+      elseif isnothing(opt) && isnothing(param.opt)
+
+        param.opt = Knet.Adam(; kwargs...)
+
+      end
+
     end
+
   end
 
 end
 
 # A single training step, the loss is returned
-function train_step!(l :: Loss, model, dataset :: DataSet)
+function train_step!(l :: Loss, model, cache :: DataCache)
 
-  tape = Knet.@diff sum(loss(l, model, dataset))
+  tape = Knet.@diff sum(loss(l, model, cache))
 
   for param in Knet.params(model)
     Knet.update!(Knet.value(param), Knet.grad(tape, param), param.opt)
@@ -64,17 +77,29 @@ function train!( player  :: Union{Player, Model}
                , optimizer = nothing
                , kwargs... )
 
+  # Get basic info about the player's model
   model = training_model(player)
+  gpu = on_gpu(model)
 
-  !isnothing(optimizer) && set_optimizer(model, optimizer; kwargs...)
+  # Check if features can be enabled
+  use_features = check_features(loss, model, trainset)
 
+  # Set/overwrite optimizers
+  set_optimizer!(model, optimizer; kwargs...)
+
+  # Generate the batch iterator
+  batches = Batches( trainset
+                   , batchsize
+                   , shuffle = true
+                   , partial = false
+                   , gpu = gpu )
+
+  # Iterate through the trainset
   for j in 1:epochs
 
-    batches = minibatch(trainset, batchsize, shuffle = true, partial = false)
+    for (i, cache) in enumerate(batches)
 
-    for (i, batch) in enumerate(batches)
-
-      train_step!(loss, model, batch)
+      train_step!(loss, model, cache)
       callback_step(i)
 
     end
@@ -396,7 +421,8 @@ with_contest( train_self!
 function with_contest( trainf!     # the training function
                      , player :: MCTSPlayer
                      , args...
-                     ; opponents = Player[]
+                     ; loss
+                     , opponents = Player[]
                      , length :: Int = 250
                      , cache :: Int = 0
                      , interval :: Int = 10
@@ -464,6 +490,7 @@ function with_contest( trainf!     # the training function
   cb = epoch -> begin
     if epoch % interval == 0
       print_contest(players, len, async, active, cache)
+      epoch != 0 && print_loss_header(loss, check_features(loss, player))
     end
   end
 
@@ -471,7 +498,12 @@ function with_contest( trainf!     # the training function
   cb(0)
 
   # Train with a contest every interval epochs
-  trainf!(player, args...; callback_epoch = cb, epochs = epochs, kwargs...)
+  trainf!( player
+         , args...
+         ; loss = loss
+         , callback_epoch = cb
+         , epochs = epochs
+         , kwargs... )
 
   # Run contest after training, if it was not run in trainf! already
   epochs % interval == 0 ? nothing : cb(0)

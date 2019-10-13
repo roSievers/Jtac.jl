@@ -149,15 +149,8 @@ Save `dataset` under filename `name` with automatically appended extension
 """
 function save_dataset(fname :: String, d :: DataSet)
   
-  # Temporarily disable the cache for saving
-  cache = d.cache
-  d.cache = nothing
-
   # Save the file
   BSON.bson(fname * ".jtd", dataset = d) 
-  d.cache = cache
-
-  nothing
 
 end
 

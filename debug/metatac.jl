@@ -12,7 +12,7 @@ player = MCTSPlayer(model, power = 250)
 mcts_opponents = [MCTSPlayer(power = p) for p in [10, 50, 100, 200, 500]]
 self_opponents = [MCTSPlayer(model, power = p, name = "current$p") for p in [10, 50]]
 
-loss = Loss(policy = 0.5, regularization = 1e-5)
+loss = Loss(policy = 0.5, reg = 1e-5)
 
 with_contest( train_self!
             , player
