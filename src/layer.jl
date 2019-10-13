@@ -377,7 +377,7 @@ struct Chain{GPU} <: CompositeLayer{GPU}
 end
 
 function Chain(layers :: Layer{GPU}...; gpu = nothing) where {GPU} 
-  c = Chain{GPU}(layers)
+  c = Chain{GPU}(Layer[l for l in layers])
   if !isnothing(gpu)
     gpu != GPU ? swap(c) : c
   else
@@ -421,7 +421,7 @@ end
 function Stack(layers :: Layer{GPU}...; 
                gpu = nothing, stack_input :: Bool = false) where {GPU}
 
-  s = Stack{GPU}(layers, stack_input)
+  s = Stack{GPU}(Layer[l for l in layers], stack_input)
 
   if !isnothing(gpu)
     gpu != GPU ? swap(s) : s

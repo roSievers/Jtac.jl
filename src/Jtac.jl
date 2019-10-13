@@ -19,7 +19,7 @@ import ProgressMeter, Crayons
 
 # Neural Networks
 import AutoGrad, Knet
-import Knet: identity, relu, softmax, minibatch
+import Knet: identity, relu, elu, softmax, tanh, sigm, minibatch
 
 export AutoGrad, Knet, 
        minibatch, identity, relu, elu, softmax, tanh, sigm
@@ -48,7 +48,7 @@ include("layer.jl")
 include("model.jl")
 
 export Feature, ConstantFeature
-export Model, apply, save_model, load_model, 
+export Model, apply, 
        to_gpu, to_cpu, swap, on_gpu, training_model
 export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
        Chain, Stack,
@@ -87,6 +87,10 @@ export DataSet, augment, minibatch,
        train_self!, train_against!, train_from!,
        with_contest
 
+# Saving and loading games and datasets
+include("io.jl")
+
+export save_model, load_model 
 
 # Game implementations
 include("games/mnkgame.jl")

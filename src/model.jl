@@ -1,5 +1,4 @@
 
-
 # -------- Model ------------------------------------------------------------- #
 
 """
@@ -60,36 +59,6 @@ function apply_features(model :: Model{G}, game :: G) where {G <: Game}
   (value = v, policy = p |> to_cpu, features = f |> to_cpu)
 end
 
-"""
-    save_model(name, model)
-
-Save `model` under the filename `name` with automatically appended extension
-".jtm". Note that the model is first converted to a saveable format, i.e., it is
-moved to the CPU and `training_model(model)` is extracted.
-"""
-function save_model(fname :: String, model :: Model{G}) where {G}
-
-  # Create a cpu-based copy of the training model
-  model = model |> training_model |> to_cpu |> copy
-
-  # Reset the optimizers, as they will not be saved
-  for p in Knet.params(model)
-    p.opt = nothing
-  end
-
-  BSON.bson(fname * ".jtm", model = model)
-
-end
-
-"""
-    load_model(name)
-
-Load a model from file `name`, where the extension ".jtm" is automatically
-appended.
-"""
-function load_model(fname :: String)
-  BSON.load(fname * ".jtm")[:model]
-end
 
 """
     ntasks(model)
