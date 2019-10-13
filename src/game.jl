@@ -169,7 +169,7 @@ Returns a tuple `(games, labels)` that are augmented versions of `game` and
 `label` via the game's symmetry group.
 """
 function augment(game :: Game, label :: Array{Float32}) 
-  @warn "Augmentation not implemented for type $(typeof(game))"
+  @warn "Augmentation not implemented for type $(typeof(game))" maxlog = 1
   [game], [label]
 end
 

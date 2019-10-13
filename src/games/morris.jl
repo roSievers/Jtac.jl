@@ -212,7 +212,7 @@ function representation(game :: Morris) :: Array{Float32, 3}
   end
   secondLayer = reshape(secondLayer, (3, 3, 1))
 
-  cat(3, firstLayer, secondLayer)
+  cat(firstLayer, secondLayer, dims = 3)
 end
 
 
