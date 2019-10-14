@@ -6,18 +6,20 @@ compose(d :: Dict{Symbol, Any}) = compose(Val(d[:type]), d)
 
 # -------- Basic Conversions ------------------------------------------------- #
 
-decompose(p :: Int)             = dict(:int, value = p)
-decompose(p :: Float64)         = dict(:float, value = p)
-decompose(p :: String)          = dict(:string, value = p)
+decompose(p :: Int)     = p
+decompose(p :: Float64) = p
+decompose(p :: String)  = p
+
+compose(p :: Int)     = p
+compose(p :: Float64) = p
+compose(p :: String)  = p
+
 decompose(p :: Array)           = dict(:array, value = p)
-decompose(p :: Tuple{Int, Int}) = dict(:pair, value = p)
+decompose(p :: Tuple{Int, Int}) = dict(:pair, a = p[1], b = p[2])
 decompose(p :: Nothing)         = dict(:nothing)
 
-compose(:: Val{:int}, d)     = d[:value]
-compose(:: Val{:float}, d)   = d[:value]
-compose(:: Val{:string}, d)  = d[:value]
 compose(:: Val{:array}, d)   = d[:value]
-compose(:: Val{:pair}, d)    = d[:value]
+compose(:: Val{:pair}, d)    = (d[:a], d[:b])
 compose(:: Val{:nothing}, d) = nothing
 
 # -------- Function Conversion ----------------------------------------------- #
@@ -100,9 +102,9 @@ compose(:: Val{:batchnorm}, d) = @compose Batchnorm{false} d
 compose(:: Val{:chain}, d)     = @compose Chain{false} d
 compose(:: Val{:stack}, d)     = @compose Stack{false} d
 
-# -------- Models ------------------------------------------------------------ #
+# -------- Neural Models ----------------------------------------------------- #
 
-function decompose(m :: Model{G, false}) where {G <: Game}
+function decompose(m :: NeuralModel{G, false}) where {G <: Game}
   d = @decompose :model m
   push!(d, :gametype => decompose(G))
   d
@@ -113,6 +115,25 @@ function compose(:: Val{:model}, d)
   @compose NeuralModel{G, false} d
 end
 
+# -------- Async Models ------------------------------------------------------ #
+
+function decompose(m :: Async{G}) where {G <: Game}
+  @assert !on_gpu(training_model(m)) "Cannot decompose GPU models"
+  dict( :async
+      , model = decompose(m.model)
+      , max_batchsize = decompose(m.max_batchsize)
+      , buffersize = decompose(m.buffersize) )
+end
+
+function compose(:: Val{:async}, d)
+  model = compose(d[:model])
+  max_batchsize = compose(d[:max_batchsize])
+  buffersize = compose(d[:buffersize])
+
+  Async(model, max_batchsize = max_batchsize, buffersize = buffersize)
+end
+
+# -------- Saving Models ----------------------------------------------------- #
 
 """
     save_model(name, model)

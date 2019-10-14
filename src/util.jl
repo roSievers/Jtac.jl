@@ -214,3 +214,11 @@ function check_features(l, model, dataset)
 
 end
 
+
+# ------- Switch Knet Allocator ---------------------------------------------- #
+
+# TODO: This is an ugly hack that should be discussed with the Knet people.
+a = true
+Knet.cuallocator() = a
+switch_knet_allocator() = (global a; a = !a)
+
