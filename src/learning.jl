@@ -77,6 +77,7 @@ function train!( player  :: Union{Player, Model}
                , optimizer = nothing
                , kwargs... )
 
+
   # Get basic info about the player's model
   model = training_model(player)
   gpu = on_gpu(model)
@@ -153,6 +154,9 @@ function _train!( player
     !quiet && (pm = progressmeter(update_steps + 1, "# Learning..."))
     cb = (_) -> quiet ? nothing : progress!(pm)
 
+    # The Knet allocator works better for training but worse for playing
+    switch_knet_allocator()
+
     # Train the player with the generated dataset
     train!( player
           , trainset
@@ -165,6 +169,9 @@ function _train!( player
     # Calculate and print loss for this epoch if not quiet
     !quiet && clear_output!(pm)
     !quiet && print_loss(loss, player, i, trainset, testset)
+
+    # Undo the changes in the Knet allocator
+    switch_knet_allocator()
 
     # Call callback function
     callback_epoch(i) 
