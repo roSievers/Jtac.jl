@@ -48,12 +48,12 @@ end
 
 
 function (m :: Async{G})( game :: G
-                        , activate_features = false
+                        , use_features = false
                         ) where {G <: Game}
 
-  @assert !activate_features "Features should never be activated in Async."
+  @assert !use_features "Features should never be used in Async."
 
-  out_channel = Channel(0)
+  out_channel = Channel(1)
   put!(m.channel, (game, out_channel))
   take!(out_channel)
 
@@ -115,21 +115,11 @@ function worker_thread(channel, model, max_batchsize)
         put!(inputs[i][2], (v[i], p[:,i], f[:,i]))
       end
 
-
-#      if length(inputs) == 1
-#        put!(inputs[1][2], model(inputs[1][1]))
-#      else
-#        outputs = model(first.(inputs))
-#        for i = 1:length(inputs)
-#          put!(inputs[i][2], outputs[:,i])
-#        end
-#      end
-
     end
 
   catch err
 
-    println("Worker died: $err")
+    error("Worker died: $err")
 
   end
 
