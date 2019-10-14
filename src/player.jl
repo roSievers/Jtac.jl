@@ -138,7 +138,9 @@ playing_model(p :: IntuitionPlayer) = p.model
 training_model(p :: IntuitionPlayer) = training_model(p.model)
 features(p :: IntuitionPlayer) = features(training_model(p))
 
-function switch_model(p :: IntuitionPlayer{G}, m :: Model{G}) where {G <: Game} 
+function switch_model( p :: IntuitionPlayer{G}
+                     , m :: Model{H}
+                     ) where {G <: H, H <: Game} 
   IntuitionPlayer(m, temperature = p.temperature, name = p.name)
 end
 
@@ -227,7 +229,8 @@ playing_model(p :: MCTSPlayer) = p.model
 training_model(p :: MCTSPlayer) = training_model(p.model)
 features(p :: MCTSPlayer) = features(training_model(p))
 
-function switch_model(p :: MCTSPlayer{G}, m :: Model{G}) where {G <: Game} 
+function switch_model( p :: MCTSPlayer{G}
+                     , m :: Model{H}) where {G <: H, H <: Game} 
 
   MCTSPlayer( m
             , power = p.power
