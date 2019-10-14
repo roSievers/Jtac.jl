@@ -71,22 +71,25 @@ function (m :: Async{G})( games :: Vector{G}
 
 end
 
-swap(m :: Async) = @warn "Async models cannot be swapped to GPU mode."
-
-function Base.copy(m :: Async)
-
-  Async( copy(m.model)
+function switch_model(m :: Async{G}, model :: Model{G}) where {G <: Game}
+  Async( model
        , max_batchsize = m.max_batchsize
        , buffersize = m.buffersize )
-
 end
+
+swap(m :: Async) = @warn "Async cannot be swapped. Remaining on CPU."
+Base.copy(m :: Async) = switch_model(m, copy(m.model))
 
 ntasks(m :: Async) = m.buffersize
 training_model(m :: Async) = m.model
+worker_model(m :: Async) = m.model
 
 # Async networks cannot calculate features. To get the features of the
 # network on which it is based, access them via training_model(...)
 features(m :: Async) = []
+
+worker_model_to_cpu(m :: Async) = switch_model(m, to_cpu(m.model))
+worker_model_to_gpu(m :: Async) = switch_model(m, to_gpu(m.model))
 
 
 # -------- Async Worker ------------------------------------------------------ #

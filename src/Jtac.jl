@@ -12,7 +12,7 @@ that it is easy to extend the library with new games.
 module Jtac
 
 # Standard Libraries
-using Random, Statistics, LinearAlgebra, Printf
+using Random, Statistics, LinearAlgebra, Printf, Distributed
 
 # Pretty Printing
 import ProgressMeter, Crayons
@@ -86,6 +86,11 @@ export DataSet, augment, minibatch,
        set_optimizer!, train_step!, train!,
        train_self!, train_against!, train_from!,
        with_contest
+
+# Distributed creation of datasets
+include("distributed.jl")
+
+export record_self_distributed
 
 # Saving and loading games and datasets
 include("io.jl")

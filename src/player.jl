@@ -138,9 +138,12 @@ playing_model(p :: IntuitionPlayer) = p.model
 training_model(p :: IntuitionPlayer) = training_model(p.model)
 features(p :: IntuitionPlayer) = features(training_model(p))
 
-function Base.copy(p :: IntuitionPlayer)
-  IntuitionPlayer(copy(p.model), temperature = temperature, name = name)
+function switch_model(p :: IntuitionPlayer{G}, m :: Model{G}) where {G <: Game} 
+  IntuitionPlayer(m, temperature = p.temperature, name = p.name)
 end
+
+Base.copy(p :: IntuitionPlayer) = switch_model(p, copy(p.model))
+swap(p :: IntuitionPlayer) = switch_model(p, swap(p.model))
 
 
 # -------- MCTS Player ------------------------------------------------------- #
@@ -224,13 +227,17 @@ playing_model(p :: MCTSPlayer) = p.model
 training_model(p :: MCTSPlayer) = training_model(p.model)
 features(p :: MCTSPlayer) = features(training_model(p))
 
-function Base.copy(p :: MCTSPlayer)
-  MCTSPlayer( copy(p.model)
-            , power = power
-            , temperature = temperature
-            , exploration = exploration
-            , name = name )
+function switch_model(p :: MCTSPlayer{G}, m :: Model{G}) where {G <: Game} 
+
+  MCTSPlayer( m
+            , power = p.power
+            , temperature = p.temperature
+            , exploration = p.exploration
+            , name = p.name )
 end
+
+Base.copy(p :: MCTSPlayer) = switch_model(p, copy(p.model))
+swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 
 # -------- Human Player ------------------------------------------------------ #
