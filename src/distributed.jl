@@ -1,23 +1,22 @@
 
-# -------- Remove or bring Players from or to GPU # -------------------------- #
+# -------- Serializing (Async) Models ---------------------------------------- #
 
-_cpu_player(p :: Player) = p
-
-function _cpu_player(p :: Union{IntuitionPlayer, MCTSPlayer})
+function _serialize(p :: Union{IntuitionPlayer, MCTSPlayer})
 
   m = playing_model(p)
-  mcpu = isa(m, Async) ? worker_model_to_cpu(m) : to_cpu(m)
-  switch_model(p, mcpu)
+  m = isa(m, Async) ? worker_model_to_cpu(m) : to_cpu(m)
+  p = switch_model(p, training_model(p))
+
+  (p, decompose(m))
 
 end
 
-# Helper that brings a player on the cpu back
+function _deserialize(p :: Union{IntuitionPlayer, MCTSPlayer}, dm)
+  
+  m = compose(dm)
+  m = isa(m, Async) ? worker_model_to_gpu(m) : to_gpu(m)
 
-function _gpu_player(p :: Union{IntuitionPlayer, MCTSPlayer})
-
-  m = playing_model(p)
-  mgpu = isa(m, Async) ? worker_model_to_gpu(m) : to_gpu(m)
-  switch_model(p, mgpu)
+  switch_model(p, m)
 
 end
 
@@ -40,9 +39,8 @@ function record_self_distributed( p :: Player{G}
 
     m > devices && @info "Multiple workers will share one GPU device" maxlog = 1
 
-    # Create a CPU-based copy of player, that can then be converted to the
-    # individual GPUs
-    cpu_player = _cpu_player(p)
+    # Deconstruct the player to be cpu-based and task-free
+    sp = _serialize(p)
 
     # Distribute the tasks to all workers
     ds = pmap(1:m) do worker
@@ -51,8 +49,8 @@ function record_self_distributed( p :: Player{G}
       device = worker % devices
       gpu(device)
 
-      # Get the player on the GPU
-      player = _gpu_player(cpu_player)
+      # Reconstruct the player and bring it on the selected GPU
+      player = _deserialize(sp...)
 
       # Number of games to be played by this worker
       n = ceil(Int, n / m)
