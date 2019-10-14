@@ -102,6 +102,16 @@ compose(:: Val{:batchnorm}, d) = @compose Batchnorm{false} d
 compose(:: Val{:chain}, d)     = @compose Chain{false} d
 compose(:: Val{:stack}, d)     = @compose Stack{false} d
 
+# -------- Base Models ------------------------------------------------------- #
+
+decompose(m :: DummyModel) = dict(:dummy)
+decompose(m :: RandomModel) = dict(:random)
+decompose(m :: RolloutModel) = dict(:rollout)
+
+compose(:: Val{:dummy}, d) = DummyModel()
+compose(:: Val{:random}, d) = RandomModel()
+compose(:: Val{:rollout}, d) = RolloutModel()
+
 # -------- Neural Models ----------------------------------------------------- #
 
 function decompose(m :: NeuralModel{G, false}) where {G <: Game}
