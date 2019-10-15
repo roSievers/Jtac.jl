@@ -6,10 +6,12 @@ compose(d :: Dict{Symbol, Any}) = compose(Val(d[:type]), d)
 
 # -------- Basic Conversions ------------------------------------------------- #
 
+decompose(p :: Bool)    = p
 decompose(p :: Int)     = p
 decompose(p :: Float64) = p
 decompose(p :: String)  = p
 
+compose(p :: Bool)    = p
 compose(p :: Int)     = p
 compose(p :: Float64) = p
 compose(p :: String)  = p

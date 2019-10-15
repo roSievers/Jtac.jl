@@ -74,7 +74,7 @@ Base.copy(p :: RandomPlayer) = p
 A player that relies on the policy returned by a model.
 """
 struct IntuitionPlayer{G} <: Player{G}
-  model :: Model{G}
+  model :: Model
   temperature :: Float32
   name :: String
 end
@@ -140,8 +140,8 @@ features(p :: IntuitionPlayer) = features(training_model(p))
 
 function switch_model( p :: IntuitionPlayer{G}
                      , m :: Model{H}
-                     ) where {G <: H, H <: Game} 
-  IntuitionPlayer(m, temperature = p.temperature, name = p.name)
+                     ) where {H <: Game, G <: H} 
+  IntuitionPlayer{G}(m, p.temperature, p.name)
 end
 
 Base.copy(p :: IntuitionPlayer) = switch_model(p, copy(p.model))
@@ -156,7 +156,7 @@ with the support of a model.
 """
 struct MCTSPlayer{G} <: Player{G}
 
-  model :: Model{G}
+  model :: Model
 
   power :: Int
   temperature :: Float32
@@ -230,13 +230,13 @@ training_model(p :: MCTSPlayer) = training_model(p.model)
 features(p :: MCTSPlayer) = features(training_model(p))
 
 function switch_model( p :: MCTSPlayer{G}
-                     , m :: Model{H}) where {G <: H, H <: Game} 
+                     , m :: Model{H}) where {H <: Game, G <: H} 
 
-  MCTSPlayer( m
-            , power = p.power
-            , temperature = p.temperature
-            , exploration = p.exploration
-            , name = p.name )
+  MCTSPlayer{G}( m
+               , p.power
+               , p.temperature
+               , p.exploration
+               , p.name )
 end
 
 Base.copy(p :: MCTSPlayer) = switch_model(p, copy(p.model))
