@@ -2,8 +2,10 @@
 # -------- Neural Model ------------------------------------------------------ #
 
 """
-Trainable model that uses a neural network to generate predictions for
-the value and policy for a game state.
+Trainable model that uses a neural network to generate the value and policy
+for a game state. Optionally, the network can also predict features by
+applying a dedicated dense layer on the representation used for value and
+policy prediction.
 """
 struct NeuralModel{G, GPU} <: Model{G, GPU}
 
@@ -19,7 +21,7 @@ struct NeuralModel{G, GPU} <: Model{G, GPU}
 end
 
 """
-    NeuralModel(G, layer, features...; convert_value, convert_policy)
+    NeuralModel(G, layer [, features; convert_value, convert_policy])
 
 Constructs a neural model for gametype `G` from the neural network `layer`
 with `features` enabled. The functions `convert_value` and `convert_policy`
@@ -67,6 +69,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
   v  = m.vconv.(vp[1,:])
   p  = m.pconv(vp[2:end,:], dims=1)
 
+  # TODO: rewrite this next part with the feature_indices helper function
   # Apply the feature head, if features are to be calculated
   if use_features
 
@@ -149,7 +152,7 @@ function Shallow(:: Type{G}; kwargs...) where {G <: Game}
 end
 
 
-# -------- Multilayer perception --------------------------------------------- #
+# -------- Multilayer Perceptron --------------------------------------------- #
 
 function MLP(:: Type{G}, hidden, f = Knet.relu; kwargs...) where {G <: Game}
 
