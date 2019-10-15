@@ -40,8 +40,11 @@ function record_self_distributed( p :: Player{G}
   # Deconstruct the player such that it is cpu-based and contains no tasks 
   sp = _serialize(p)
 
-  # Check if the player's training model lives on the GPU
-  if on_gpu(training_model(p))
+  # Get the player's training model
+  tm = training_model(p)
+
+  # Check if it lives on the GPU
+  if !isnothing(tm) && on_gpu(tm)
 
     # See how many graphics cards there are
     devices = Knet.cudaGetDeviceCount()
@@ -108,4 +111,48 @@ function record_self_distributed( p :: Player{G}
   merge(ds...)
 
 end
+
+# -------- Distributed / Async stable Progress Maps -------------------------- #
+
+struct ProgressBar
+
+  length :: Int
+  progress :: ProgressMeter.Progress
+
+  channel :: RemoteChannel
+  thread
+
+end
+
+function ProgressBar(n :: Int, description)
+
+  glyphs = ProgressMeter.BarGlyphs("[=>⋅]")
+  progress = ProgressMeter.Progress( n + 1
+                                   , dt = dt
+                                   , desc = description
+                                   , barglyphs = glpyhs )
+
+  # Remote channel that can be used to signal a step on any process
+  channel = RemoteChannel(() -> Channel{Bool}(10))
+
+  # Thread that manages progressing the progress bar
+  thread = @async begin
+
+    i = 1
+
+    while i <= n && take!(channel)
+      next!(progress)
+      i += 1
+    end
+
+    ProgressMeter.printover(progress.output, "")
+
+  end
+
+  ProgressBar(n, progress, channel, thread)
+
+end
+
+stepper(pb :: ProgressBar) = () -> put!(pb.channel, true)
+wait(pb :: ProgressBar) = @sync pb.thread
 

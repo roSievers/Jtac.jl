@@ -70,10 +70,9 @@ ntasks(:: Model) = 1
 """
     training_model(model)
 
-Extract the part of `model` that can explicitly be trained by stochastic
-gradient descent. This is, for instance, important if `model` is wrapped by
-`Async`, which makes playouts faster but stifles backpropagation.
+Extract the part of `model` that can explicitly be trained by gradient descent.
+This is, for instance, important if `model` is wrapped by `Async`, which makes
+playouts faster but stifles backpropagation.
 """
-training_model(m :: Model) = error("Model $(typeof(m)) is not trainable")
-#training_model(m) = nothing
+training_model(m :: Model) = nothing
 

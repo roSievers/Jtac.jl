@@ -136,7 +136,11 @@ name(p :: IntuitionPlayer) = p.name
 ntasks(p :: IntuitionPlayer) = ntasks(p.model)
 playing_model(p :: IntuitionPlayer) = p.model
 training_model(p :: IntuitionPlayer) = training_model(p.model)
-features(p :: IntuitionPlayer) = features(training_model(p))
+
+function features(p :: IntuitionPlayer) 
+  tm = training_model(p)
+  isnothing(tm) ? Feature[] : features(tm)
+end
 
 function switch_model( p :: IntuitionPlayer{G}
                      , m :: Model{H}
@@ -227,7 +231,11 @@ name(p :: MCTSPlayer) = p.name
 ntasks(p :: MCTSPlayer) = ntasks(p.model)
 playing_model(p :: MCTSPlayer) = p.model
 training_model(p :: MCTSPlayer) = training_model(p.model)
-features(p :: MCTSPlayer) = features(training_model(p))
+
+function features(p :: MCTSPlayer)
+  tm = training_model(p)
+  isnothing(tm) ? Feature[] : features(tm)
+end
 
 function switch_model( p :: MCTSPlayer{G}
                      , m :: Model{H}) where {H <: Game, G <: H} 
