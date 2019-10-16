@@ -213,6 +213,7 @@ function _record( play :: Function # maps game to dataset
                 , ntasks 
                 , augment = true
                 , callback = () -> nothing
+                , merge = true
                 , branching = 0.
                 ) where {G <: Game}
 
@@ -246,27 +247,28 @@ function _record( play :: Function # maps game to dataset
     # Signal that we are done with one iteration
     callback()
 
-    merge(datasets...)
+    Base.merge(datasets...)
 
   end
 
-  # Call play_with_branching n times and merge all datasets
+  # Call play_with_branching n times
   if ntasks == 1 || n == 1
 
     # Asyncmap is assumed to be of disadvantage
-    ds = merge(map(play_with_branching, 1:n)...)
+    ds = map(play_with_branching, 1:n)
 
   else
 
     # Asyncmap is assumed to be of advantage
-    ds = merge(asyncmap(play_with_branching, 1:n, ntasks = ntasks)...)
+    ds = asyncmap(play_with_branching, 1:n, ntasks = ntasks)
 
   end
 
   # Mark the given features as activated
-  ds.features = features
+  for d in ds d.features = features end
 
-  ds
+  # Return one big dataset or the different playings separately?
+  merge ? Base.merge(ds...) : ds
 
 end
 
@@ -370,6 +372,7 @@ game state. The feature labels are calculated by applying the provided features
 - `features`: List of features for which feature labels are created.
 - `augment = true`: Whether to apply augmentation on the generated dataset.
 - `branching = 0.`: Probability for random branching during the playthrough.
+- `merge = true`: Whether to return one merged dataset or `n` seperate ones.
 - `callback`: Function that is called afer each finished playing.
 
 # Examples
@@ -391,7 +394,7 @@ function record_self( p :: Player{G}
                     ; game :: T = G()
                     , features = features(p)
                     , kwargs...
-                    ) :: DataSet{T} where {G, T <: G}
+                    ) where {G, T <: G}
 
   play = game -> begin
 
@@ -439,6 +442,7 @@ The function takes the following arguments:
 - `start`: Function that determines the starting player (-1: enemy, 1: player).
 - `augment`: Whether to apply symmetry augmentation on the generated dataset.
 - `branching`: Probability for random branching during the playthrough.
+- `merge = false`: Whether to return one merged dataset or seperate playings.
 - `callback`: Function that is called afer each finished game.
 """
 function record_against( p :: Player{G}

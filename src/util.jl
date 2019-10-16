@@ -99,30 +99,10 @@ function apply_klein_four_group(action :: Int, s :: Tuple)
 end
 
 
-# -------- Pretty Printing --------------------------------------------------- #
+# -------- Pretty Printing to Monitor Training ------------------------------- #
 
 const gray_crayon = Crayons.Crayon(foreground = :dark_gray)
 const default_crayon = Crayons.Crayon(reset = true)
-
-function progressmeter( n, desc
-                      ; dt = 0.5
-                      , kwargs... )
-
-  glyphs = ProgressMeter.BarGlyphs("[=>⋅]")
-  ProgressMeter.Progress( n
-                        , dt = dt
-                        , desc = desc
-                        , barglyphs = glyphs
-                        , kwargs... )
-
-end
-
-progress! = ProgressMeter.next!
-
-clear_output!(p) = ProgressMeter.printover(p.output, "")
-
-
-# -------- Pretty Printing to Monitor Training ------------------------------- #
 
 function print_loss_header(loss, use_features)
 
@@ -169,7 +149,7 @@ function print_contest(players, contest_length, async, active, cache)
   k = length(players) - r
   n = (r * (r-1) + 2k*r)
 
-  p = progressmeter(n + 1, "# Contest...")
+  step, finish = stepper("# Contest...", n)
 
   # Calculate the ranking and print it
   rk = ranking( players
@@ -177,16 +157,15 @@ function print_contest(players, contest_length, async, active, cache)
               , async = async
               , active = active
               , cache = cache
-              , callback = () -> progress!(p) )
+              , callback = step )
 
-  clear_output!(p)
+  finish()
 
   print(gray_crayon)
   print_ranking(players, rk, prepend = "#")
   println("#")
 
 end
-
 
 
 # -------- Feature Compability ----------------------------------------------- #
@@ -221,4 +200,66 @@ end
 a = true
 Knet.cuallocator() = a
 switch_knet_allocator() = (global a; a = !a)
+
+
+# -------- Parallel-Stable Progress Maps ------------------------------------- #
+
+"""
+    stepper(description, length; <keyword arguments>)
+
+Return a pair of functions `(step, finish)` that control a progress bar with
+title `description` and `length` number of steps. For the keyword arguments, see
+`ProgressMeter.Progress`.
+
+The progress bar is running in its own thread and is communicated with through
+a `RemoteChannel`. This allows calling the `step` function safely under any
+condition. However, you **must** make sure that `step()` is not used after
+`finish()` anymore. This means that all tasks or futures have to be fetched
+before calling `finish`.
+
+# Examples
+
+```julia
+step, finish = stepper("Progress", 15)
+
+# Do some calculations in a parallel fashion
+pmap(1:15) do i 
+  sleep(0.5)
+  step()
+  i
+end
+
+# Since pmap fetches all tasks/futures it creates, we can safely finish
+finish()
+```
+"""
+function stepper(description, n :: Int, kwargs...)
+
+  glyphs = ProgressMeter.BarGlyphs("[=>⋅]")
+  progress = ProgressMeter.Progress( n + 1
+                                   ; dt = 0.1
+                                   , desc = description
+                                   , barglyphs = glyphs
+                                   , kwargs... )
+
+  # Remote channel that can be used to signal a step on any process
+  channel = RemoteChannel(() -> Channel{Bool}(0))
+
+  # Thread that manages progressing the progress bar
+  thread = @async begin
+
+    while take!(channel)
+      ProgressMeter.next!(progress)
+    end
+
+    ProgressMeter.printover(progress.output, "")
+
+  end
+
+  step = () -> (put!(channel, true); yield())
+  finish = () -> (put!(channel, false); fetch(thread))
+
+  step, finish
+
+end
 

@@ -144,6 +144,7 @@ end
 
 features(m :: NeuralModel) = m.features
 
+training_model(m :: NeuralModel) = m
 
 # -------- Linear Neural Model ----------------------------------------------- #
 

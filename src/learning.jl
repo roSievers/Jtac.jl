@@ -114,7 +114,7 @@ end
 
 # -------- Training by Playing ----------------------------------------------- #
 
-function _train!( player
+function _train!( player :: Player{G}
                 , gen_data :: Function
                 ; loss
                 , epochs = 10
@@ -126,11 +126,16 @@ function _train!( player
                 , quiet = false
                 , callback_epoch = (_) -> nothing
                 , callback_iter = (_) -> nothing
-                , kwargs... )
+                , kwargs... 
+                ) where {G <: Game}
 
-  # How many playings do we do for the purpose of testing?
-  test_playings = ceil(Int, playings * testfrac)
-  total_playings = test_playings + playings
+  @assert playings > 0 "Number of playings for training must be positive"
+
+  # If we do not print results, it is not necessary to test
+  quiet || testfrac < 0 && (testfrac = 0.)
+
+  # Get number of total playings, including testing
+  total_playings = playings + ceil(Int, playings * testfrac)
 
   # Print the loss header if not quiet
   !quiet && print_loss_header(loss, check_features(loss, player))
@@ -140,19 +145,27 @@ function _train!( player
 
   for i in 1:epochs
 
-    # Print progress-meter if not quiet
-    !quiet && (pm = progressmeter( total_playings + 1, "# Playing..."))
-    cb = () -> quiet ? nothing : progress!(pm)
+    # Generate callback functions for the progress meter
+    step, finish = stepper("# Playing...", total_playings)
+    cb = quiet ? () -> nothing : step
 
     # Generate train and testsets
-    trainset = gen_data(cb, playings)
-    !quiet && (testset = gen_data(cb, test_playings))
+    datasets = gen_data(cb, total_playings)
+    trainset = merge(datasets[1:playings]...)
 
-    # Print next progress-meter if not quiet
-    update_steps = iterations * div(length(trainset), batchsize)
-    !quiet && clear_output!(pm)
-    !quiet && (pm = progressmeter(update_steps + 1, "# Learning..."))
-    cb = (_) -> quiet ? nothing : progress!(pm)
+    if testfrac > 0
+      testset = merge(datasets[playings+1:total_playings]...)
+    else
+      testset = DataSet{G}() 
+    end
+
+    # Clear the progress bar (if it was printed)
+    finish()
+
+    # Prepare the next progress bar
+    steps = iterations * div(length(trainset), batchsize)
+    step, finish = stepper("# Learning...", steps)
+    cb = (_) -> quiet ? nothing : step()
 
     # The Knet allocator works better for training but worse for playing
     switch_knet_allocator()
@@ -166,8 +179,10 @@ function _train!( player
           , callback_step = cb
           , callback_epoch = callback_iter )
 
+    # Clear the progress bar
+    finish()
+
     # Calculate and print loss for this epoch if not quiet
-    !quiet && clear_output!(pm)
     !quiet && print_loss(loss, player, i, trainset, testset)
 
     # Undo the changes in the Knet allocator
@@ -229,6 +244,7 @@ function train_self!( player :: MCTSPlayer
                                    , augment = augment
                                    , branching = branching
                                    , features = features
+                                   , merge = false
                                    , callback = cb )
 
   _train!(player, gen_data; loss = loss, kwargs...)
@@ -290,6 +306,7 @@ function train_against!( player :: MCTSPlayer
                                       , augment = augment
                                       , branching = branching
                                       , features = features
+                                      , merge = false
                                       , callback = cb ) 
 
   _train!(player, gen_data; loss = loss, kwargs...)
@@ -366,7 +383,7 @@ function train_from!( pupil :: Player{G}
 
     end
 
-    merge(datasets...)
+    datasets
 
   end
 

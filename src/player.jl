@@ -44,8 +44,8 @@ ntasks(:: Player) = 1
 gametype(:: Player{G}) where {G <: Game} = G
 
 # Players with potentially trainable models can be asked to return them
-playing_model(:: Player) = error("Player has no model")
-training_model(:: Player) = error("Player has no trainable model")
+playing_model(:: Player) = nothing
+training_model(:: Player) = nothing
 
 # Features that are supported by the player. Used for automatic feature
 # detection during the generation of datasets in selfplays

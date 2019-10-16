@@ -80,79 +80,39 @@ function record_self_distributed( p :: Player{G}
   # If on the CPU, act differently
   else
 
-    ds = asyncmap(1:m, ntasks = m) do i
+    step, finish = stepper("TEST...", ceil(Int, n / m) * m)
+
+    ds = map(1:m) do i
 
       @spawnat workers[i] begin
 
         # Get the number of corres on the machine
         cores = length(Sys.cpu_info())
-  
+    
         # Set number of BLAS threads 
         threads = max(floor(Int, m/cores), 1)
         LinearAlgebra.BLAS.set_num_threads(threads)
-  
+    
         # Number of games to be played by this worker
         n = ceil(Int, n / m)
-  
+    
         # Reconstruct the player and leave it on the CPU
         cpup = _deserialize(sp..., false)
-  
+
         # Record the games
-        record_self(cpup, n; game = game, kwargs...)
+        record_self(cpup, n; game = game, callback = step, kwargs...)
 
       end
 
     end
-   
+
     ds = asyncmap(fetch, ds, ntasks = m)
+
+    finish()
 
   end
 
   merge(ds...)
 
 end
-
-# -------- Distributed / Async stable Progress Maps -------------------------- #
-
-struct ProgressBar
-
-  length :: Int
-  progress :: ProgressMeter.Progress
-
-  channel :: RemoteChannel
-  thread
-
-end
-
-function ProgressBar(n :: Int, description)
-
-  glyphs = ProgressMeter.BarGlyphs("[=>⋅]")
-  progress = ProgressMeter.Progress( n + 1
-                                   , dt = dt
-                                   , desc = description
-                                   , barglyphs = glpyhs )
-
-  # Remote channel that can be used to signal a step on any process
-  channel = RemoteChannel(() -> Channel{Bool}(10))
-
-  # Thread that manages progressing the progress bar
-  thread = @async begin
-
-    i = 1
-
-    while i <= n && take!(channel)
-      next!(progress)
-      i += 1
-    end
-
-    ProgressMeter.printover(progress.output, "")
-
-  end
-
-  ProgressBar(n, progress, channel, thread)
-
-end
-
-stepper(pb :: ProgressBar) = () -> put!(pb.channel, true)
-wait(pb :: ProgressBar) = @sync pb.thread
 
