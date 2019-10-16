@@ -22,6 +22,7 @@ swap(l :: Element) = error("Not implemented")
 Check whether `element` currently resides on the GPU.
 """
 on_gpu(:: Element{GPU}) where {GPU} = GPU
+on_gpu(:: Nothing) = false
 
 """
   to_cpu(element)

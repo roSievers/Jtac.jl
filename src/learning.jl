@@ -217,13 +217,15 @@ be trained currently.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
+- `distributed = false`: Shall workers be used for self-playings?
+- `tickets = nothing`: Number of tickets if distributed.
 - `optimizer = Adam`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
 ```julia
 # Self-train a simple neural network model for 5 epochs
-model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64) Dense(32))
+model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
 player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 train_self!(player, epochs = 5, playings = 100)
 ```
@@ -232,6 +234,8 @@ function train_self!( player :: MCTSPlayer
                     ; loss
                     , branching = 0.
                     , augment = true
+                    , distributed = false
+                    , tickets = nothing
                     , kwargs... )
 
   # Only use player-enabled features for recording if they are compatible with
@@ -245,7 +249,10 @@ function train_self!( player :: MCTSPlayer
                                    , branching = branching
                                    , features = features
                                    , merge = false
-                                   , callback = cb )
+                                   , callback = cb 
+                                   , distributed = distributed
+                                   , tickets = tickets )
+
 
   _train!(player, gen_data; loss = loss, kwargs...)
 
@@ -277,13 +284,15 @@ NeuralModel-based training models can be trained currently.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
+- `distributed = false`: Shall workers be used for self-playings?
+- `tickets = nothing`: Number of tickets if distributed.
 - `optimizer = Adam`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
 ```julia
 # Train a simple neural network model against an MCTS player for 5 epochs
-model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64) Dense(32))
+model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
 player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 enemy = MCTSPlayer(power = 250)
 train_against!(player, enemy, epochs = 5, playings = 100)
@@ -295,6 +304,8 @@ function train_against!( player :: MCTSPlayer
                        , start :: Function = () -> rand([-1, 1])
                        , branching = 0.
                        , augment = true
+                       , distributed = false
+                       , tickets = nothing
                        , kwargs... )
 
   features = check_features(loss, player) ? features(player) : Feature[]
@@ -307,7 +318,9 @@ function train_against!( player :: MCTSPlayer
                                       , branching = branching
                                       , features = features
                                       , merge = false
-                                      , callback = cb ) 
+                                      , callback = cb
+                                      , distributed = distributed
+                                      , tickets = tickets )
 
   _train!(player, gen_data; loss = loss, kwargs...)
 

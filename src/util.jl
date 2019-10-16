@@ -29,7 +29,6 @@ end
 
 isasync(m) = isa(m, Async) ? true : false
 
-
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])

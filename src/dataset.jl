@@ -374,6 +374,11 @@ game state. The feature labels are calculated by applying the provided features
 - `branching = 0.`: Probability for random branching during the playthrough.
 - `merge = true`: Whether to return one merged dataset or `n` seperate ones.
 - `callback`: Function that is called afer each finished playing.
+- `distributed = false`: Whether to conduct e self-plays on several processes
+   in parallel. If `true`, all available workers are used. Alternatively, a
+   list of worker ids can be passed.
+- `tickets = nothing`: Number of chunks in which the workload is distributed if
+   parallel mode is used.
 
 # Examples
 ```julia
@@ -393,9 +398,28 @@ function record_self( p :: Player{G}
                     , n :: Int = 1
                     ; game :: T = G()
                     , features = features(p)
+                    , distributed = false
+                    , tickets = nothing
                     , kwargs...
                     ) where {G, T <: G}
 
+  # If self-playing is to be distributed, get the list of workers and
+  # cede to the corresponding function in distributed.jl
+  if distributed != false
+
+    workers = distributed == true ? Distributed.workers() : distributed
+    tickets = isnothing(tickets) ? length(workers) : tickets
+
+    return record_self_distributed( p, n
+                                  ; game = game
+                                  , features = features
+                                  , workers = workers
+                                  , tickets = tickets
+                                  , kwargs... )
+
+  end
+
+  # Function that plays a single game of player against itself
   play = game -> begin
 
     dataset = DataSet{T}()
@@ -451,8 +475,27 @@ function record_against( p :: Player{G}
                        ; game :: T = G()
                        , start :: Function = () -> rand([-1, 1])
                        , features = features(p)
+                       , distributed = false
+                       , tickets = nothing
                        , kwargs...
-                       ) :: DataSet{T} where {G, H, T <: typeintersect(G, H)}
+                       ) where {G, H, T <: typeintersect(G, H)}
+
+  # If playing is to be distributed, get the list of workers and
+  # cede to the corresponding function in distributed.jl
+  if distributed != false
+
+    workers = distributed == true ? Distributed.workers() : distributed
+    tickets = isnothing(tickets) ? length(workers) : tickets
+
+    return record_against_distributed( p, enemy, n
+                                     ; game = game
+                                     , start = start
+                                     , features = features
+                                     , workers = workers
+                                     , tickets = tickets
+                                     , kwargs... )
+
+  end
 
   play = game -> begin
 
