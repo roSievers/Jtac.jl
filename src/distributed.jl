@@ -101,13 +101,13 @@ function with_workers( f :: Function
       set_defaults(i, workers[i], _on_gpu(splayers))
 
       # Reconstruct the players
-      players = [_deserialize(p...) for p in splayers]
+      ps = [_deserialize(p...) for p in splayers]
 
       # Wait for a ticket. If we get one, carry it out. If there are no tickets
       # left, the ticket channel is closed and we end the loop.
       while (n = take_ticket!(tic)) != 0
 
-        put!(res, f(players, n, args...; kwargs...))
+        put!(res, f(ps, n, args...; kwargs...))
 
       end
 
