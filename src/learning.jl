@@ -134,8 +134,8 @@ function _train!( player :: Player{G}
   # If we do not print results, it is not necessary to test
   quiet || testfrac < 0 && (testfrac = 0.)
 
-  # Get number of total playings, including testing
-  total_playings = playings + ceil(Int, playings * testfrac)
+  # Get number of playings used for training
+  train_playings = ceil(Int, playings * (1-testfrac))
 
   # Print the loss header if not quiet
   !quiet && print_loss_header(loss, check_features(loss, player))
@@ -146,15 +146,15 @@ function _train!( player :: Player{G}
   for i in 1:epochs
 
     # Generate callback functions for the progress meter
-    step, finish = stepper("# Playing...", total_playings)
+    step, finish = stepper("# Playing...", playings)
     cb = quiet ? () -> nothing : step
 
     # Generate train and testsets
-    datasets = gen_data(cb, total_playings)
-    trainset = merge(datasets[1:playings]...)
+    datasets = gen_data(cb, playings)
+    trainset = merge(datasets[1:train_playings]...)
 
     if testfrac > 0
-      testset = merge(datasets[playings+1:total_playings]...)
+      testset = merge(datasets[train_playings+1:playings]...)
     else
       testset = DataSet{G}() 
     end
@@ -467,6 +467,14 @@ function with_contest( trainf!     # the training function
                      , epochs = 10
                      , kwargs... )
 
+  # One can set length == 0 to access trainf!
+  if length <= 0
+
+    @info "Contests are disabled."
+    return trainf!(player, args...; loss = loss, epochs = epochs, kwargs...)
+
+  end
+
   # Rename the length keyword argument
   len = length
   length = Base.length
@@ -502,15 +510,18 @@ function with_contest( trainf!     # the training function
 
     # Get the progress-meter going
     n = length(pplayers) * (length(pplayers) - 1)
-    p = progressmeter(n + 1, "# Caching...")
+
+    step, finish = stepper("# Caching...", n)
 
     # Create the cache
-    cache = playouts( pplayers, cache, callback = () -> progress!(p) )
+    cache = compete( pplayers, cache, callback = step )
 
-    # Remove the progress bar and leave a message that confirms caching.
-    clear_output!(p)
-    println( gray_crayon
-           , "# Cached $(length(cache)) matches by $(length(players)) players" )
+    # Remove the progress bar
+    finish()
+
+    #  Leave a message that confirms caching.
+    print(gray_crayon)
+    println("# Cached $(length(cache)) matches by $(length(players)) players")
 
   else
 

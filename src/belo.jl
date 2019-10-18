@@ -71,7 +71,7 @@ function estimate( k      # number of players
 end
 
 
-# -------- Tournaments ------------------------------------------------------- #
+# -------- Competing --------------------------------------------------------- #
 
 # Number of matches per active player when at most nmax games
 # are to be played.
@@ -87,12 +87,25 @@ end
 # Player. We distinguish between active and inactive players. Two inactive
 # players do not play against one another, but each active player plays against
 # each player.
-function playouts( players
-                 , game :: Game
-                 , nmax :: Int
-                 ; active = 1:length(players)
-                 , async = false
-                 , callback = () -> nothing )
+
+"""
+  compete(players, [game,] nmax; <keyword arguments>)
+
+Create game results for a number `< nmax` of games between players in the
+collection `players`. The game starts with `game`, which is infered
+automatically from `players` if this is possible.
+
+The returned results are a vector of the form `(p1, p2, res)`, where p1 denotes
+the index of the first, and `p2` the index of the second player in `players`.
+`res` is -1, 0, or 1 and denotes the game result from the perspective of `p1`.
+"""
+
+function compete( players
+                , game :: Game
+                , nmax :: Int
+                ; active = 1:length(players)
+                , async = false
+                , callback = () -> nothing )
 
   n = match_repetitions(nmax, players, active)
 
@@ -126,8 +139,10 @@ function playouts( players
 
 end
 
-function playouts(players, nmax :: Int; kwargs...)
-  playouts(players, derive_gametype(players)(), nmax; kwargs...)
+function compete(players, nmax :: Int; kwargs...)
+
+  compete(players, derive_gametype(players)(), nmax; kwargs...)
+
 end
 
 
@@ -144,14 +159,14 @@ argument `game` may be left out. Returns a named tuple with entries `:elos`,
 # Arguments
 The function takes the following keyword arguments:
 - `active`: A selection of indices of players that are regarded as active.
-- `cache`: Results created by `playouts`, which are considered for the ranking.
-- `async`: Whether to run the pvp playouts via `asyncmap`.
+- `cache`: Results created by `compete`, which are considered for the ranking.
+- `async`: Whether to run the playings via `asyncmap`.
 - `callback`: Function that is called after each match.
 """
-function ranking(players, playouts :: Vector; kwargs...)
+function ranking(players, results :: Vector; kwargs...)
 
   k = length(players)
-  res = estimate(k, playouts; kwargs...)
+  res = estimate(k, results; kwargs...)
   (elos = res[1:k], adv = res[k+1], draw = res[k+2])
 
 end
@@ -166,19 +181,21 @@ function ranking( players
                 , kwargs...)
 
   k = length(players)
-  games = playouts( players
-                  , game
-                  , nmax
-                  ; active = active
-                  , async = async
-                  , callback = callback )
+  games = compete( players
+                 , game
+                 , nmax
+                 ; active = active
+                 , async = async
+                 , callback = callback )
 
   ranking(players, [games; cache]; kwargs...)
 
 end
 
 function ranking(players, nmax; kwargs...)
+
   ranking(players, derive_gametype(players)(), nmax; kwargs...)
+
 end
 
 

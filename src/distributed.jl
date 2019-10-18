@@ -8,9 +8,9 @@ function _serialize(p :: Union{IntuitionPlayer, MCTSPlayer})
   m = isa(m, Async) ? worker_model_to_cpu(m) : to_cpu(m)
 
   # Temporarily replace the model by DummyModel
-  p = switch_model(p, DummyModel()) 
+  pt = switch_model(p, DummyModel()) 
 
-  (p, decompose(m), on_gpu(training_model(p)))
+  (pt, decompose(m), on_gpu(training_model(p)))
 
 end
 
@@ -28,32 +28,6 @@ end
 _on_gpu(splayers) = any(p[3] for p in splayers)
 
 # -------- Distributed Calculations ------------------------------------------ #
-
-
-function set_defaults(i, worker, gpu)
-
-  if gpu
-
-    devices = Knet.cudaGetDeviceCount()
-    m > devices && @info "Multiple workers will share one GPU device" maxlog = 1
-
-    # Set the gpu device for the worker
-    Knet.gpu((i-1) % devices)
-
-  else
-
-    # TODO: Setting the number of BLAS threads here kills the process
-
-    # Get the number of cores on the machine
-    # cores = Sys.CPU_THREADS
-
-    # Set number of BLAS threads 
-    # threads = max(floor(Int, m/cores), 1)
-    # LinearAlgebra.BLAS.set_num_threads(threads)
-
-  end
-
-end
 
 function ticket_sizes(n, m)
   ns = zeros(Int, m)
@@ -92,13 +66,22 @@ function with_workers( f :: Function
   # Serialize the players
   splayers = _serialize.(players)
 
+  # Count the GPUs
+  devices = Knet.cudaGetDeviceCount()
+  m > devices && @info "Multiple workers will share one GPU device" maxlog = 1
+
   # Start let the workers work on the tickets
   map(1:m) do i
 
     @spawnat workers[i] begin
 
       # Make adjustments to the environment, like number of threads or GPU id
-      set_defaults(i, workers[i], _on_gpu(splayers))
+      # TODO: This does not seem to work, as Knet.gpu is not known on the process
+      # if this call is hidden in set_defaults.
+      # set_defaults(i, devices, _on_gpu(splayers))
+      if _on_gpu(splayers)
+        Knet.gpu((i-1) % devices)
+      end
 
       # Reconstruct the players
       ps = [_deserialize(p...) for p in splayers]
@@ -142,7 +125,6 @@ end
 function record_self_distributed( p :: Player
                                 , n :: Int = 1
                                 ; workers = workers()
-                                , tickets = length(workers)
                                 , merge = false
                                 , kwargs... )
 
@@ -176,4 +158,8 @@ function record_against_distributed( p :: Player
 
 end
 
+
 # -------- Distributed Contesting -------------------------------------------- #
+
+
+
