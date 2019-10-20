@@ -135,34 +135,15 @@ function print_loss(l, p, epoch, train, test)
   
 end
 
-log_option(s, v) = Printf.@sprintf "# %-22s %s\n" string(s, ":") v
-
-function print_contest(players, contest_length, async, active, cache)
+function print_ranking(rk)
 
   # Log that a contest comes next
   print(gray_crayon)
-  println("#\n# Contest with $(length(players)) players:\n#")
+  println("#\n# Contest with $(length(rk.players)) players:\n#")
 
-  # Get the length of the progress bar
-  r = length(active)
-  k = length(players) - r
-  n = (r * (r-1) + 2k*r)
-
-  step, finish = stepper("# Contest...", n)
-
-  # Calculate the ranking and print it
-  rk = ranking( players
-              , contest_length
-              , async = async
-              , active = active
-              , cache = cache
-              , callback = step )
-
-  finish()
-
-  print(gray_crayon)
-  print_ranking(players, rk, prepend = "#")
-  println("#")
+  # Get the summary of the contest and print it
+  s = "# " * replace(summary(rk), "\n" => "\n# ") * "\n#"
+  println(s)
 
 end
 

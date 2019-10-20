@@ -72,7 +72,7 @@ include("belo.jl")
 export RandomPlayer, MCTSPlayer, 
        IntuitionPlayer, HumanPlayer, 
        pvp, name, think, decide, turn!,
-       playouts, ranking, print_ranking
+       compete, Ranking, summary
 
 
 # Training

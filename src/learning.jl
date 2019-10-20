@@ -464,14 +464,20 @@ function with_contest( trainf!     # the training function
                      , cache :: Int = 0
                      , interval :: Int = 10
                      , temperature = player.temperature
+                     , distributed = false
                      , epochs = 10
                      , kwargs... )
 
-  # One can set length == 0 to access trainf!
+  # One can set length == 0 to access trainf! without contests
   if length <= 0
 
     @info "Contests are disabled."
-    return trainf!(player, args...; loss = loss, epochs = epochs, kwargs...)
+    return trainf!( player
+                  , args...
+                  ; loss = loss
+                  , epochs = epochs
+                  , distributed = distributed
+                  , kwargs... )
 
   end
 
@@ -501,44 +507,58 @@ function with_contest( trainf!     # the training function
 
     # Reorder players such that the active (i.e., learning) players come last
     # and passive ones first
-    aplayers = filter(p -> training_model(p) == model, players)
-    pplayers = filter(p -> training_model(p) != model, players)
-    players = [pplayers; aplayers]
+    active = filter(p -> training_model(p) == model, players)
+    passive = filter(p -> training_model(p) != model, players)
+    players = [passive; active]
+
+    # Get the respective numbers of players
+    n  = length(players)
+    np = length(passive)
+    na = length(active)
 
     # Get the indices of all active models
-    active = collect(1:length(aplayers)) .+ length(pplayers)
+    aidx = collect(1:na) .+ np
 
     # Get the progress-meter going
-    n = length(pplayers) * (length(pplayers) - 1)
+    step, finish = stepper("# Caching...", cache)
 
-    step, finish = stepper("# Caching...", n)
-
-    # Create the cache
-    cache = compete( pplayers, cache, callback = step )
+    # Create the cache for games between passive players
+    cache_results = zeros(Int, n, n, 3)
+    cache_results[1:np,1:np,:] = compete(passive, cache, callback = step)
 
     # Remove the progress bar
     finish()
 
     #  Leave a message that confirms caching.
     print(gray_crayon)
-    println("# Cached $(length(cache)) matches by $(length(players)) players")
+    println("# Cached $cache matches by $n players")
 
   else
 
     # If caching is not activated, regard each player as active
-    active = 1:length(players)
-    cache = []
+    aidx = 1:length(players)
+    cache_results = zeros(Int, length(players), length(players), 3)
 
   end
-
-  # Check if the player's model is async
-  async = isasync(playing_model(player))
 
   # Create the callback function
   cb = epoch -> begin
     if epoch % interval == 0
-      print_contest(players, len, async, active, cache)
-      epoch != 0 && print_loss_header(loss, check_features(loss, player))
+
+      step, finish = stepper("# Contest...", len)
+
+      results = compete( players
+                       , len
+                       , aidx
+                       , distributed = distributed
+                       , callback = step )
+
+      finish()
+
+      print_ranking(Ranking(players, results + cache_results))
+
+      0 < epoch < epochs && print_loss_header(loss, check_features(loss, player))
+
     end
   end
 
@@ -551,10 +571,11 @@ function with_contest( trainf!     # the training function
          ; loss = loss
          , callback_epoch = cb
          , epochs = epochs
+         , distributed = distributed
          , kwargs... )
 
   # Run contest after training, if it was not run in trainf! already
-  epochs % interval == 0 ? nothing : cb(0)
+  epochs % interval == 0 ? nothing : cb(epochs)
 
 end
 

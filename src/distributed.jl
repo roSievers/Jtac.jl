@@ -67,8 +67,9 @@ function with_workers( f :: Function
   splayers = _serialize.(players)
 
   # Count the GPUs
+  gpu = _on_gpu(splayers)
   devices = Knet.cudaGetDeviceCount()
-  m > devices && @info "Multiple workers will share one GPU device" maxlog = 1
+  m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 
   # Start let the workers work on the tickets
   map(1:m) do i
@@ -79,7 +80,7 @@ function with_workers( f :: Function
       # TODO: This does not seem to work, as Knet.gpu is not known on the process
       # if this call is hidden in set_defaults.
       # set_defaults(i, devices, _on_gpu(splayers))
-      if _on_gpu(splayers)
+      if gpu
         Knet.gpu((i-1) % devices)
       end
 
@@ -115,7 +116,7 @@ function with_workers( f :: Function
   close(res); close(tic)
 
   # Return the data
-  vcat(data...)
+  data
 
 end
 
@@ -134,6 +135,7 @@ function record_self_distributed( p :: Player
   end
 
   ds = with_workers(record, [p], n; workers = workers, kwargs...)
+  ds = vcat(ds...)
 
   merge ? Base.merge(ds) : ds
 
@@ -153,6 +155,7 @@ function record_against_distributed( p :: Player
   end
 
   ds = with_workers(record, [p, enemy], n; workers = workers, kwargs...)
+  ds = vcat(ds...)
 
   merge ? Base.merge(ds) : ds
 
@@ -162,4 +165,8 @@ end
 # -------- Distributed Contesting -------------------------------------------- #
 
 
+function compete_distributed(args...; kwargs...) 
 
+  sum(with_workers(compete, args...; kwargs...))
+
+end

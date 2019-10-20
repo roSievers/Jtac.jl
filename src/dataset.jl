@@ -374,11 +374,11 @@ game state. The feature labels are calculated by applying the provided features
 - `branching = 0.`: Probability for random branching during the playthrough.
 - `merge = true`: Whether to return one merged dataset or `n` seperate ones.
 - `callback`: Function that is called afer each finished playing.
-- `distributed = false`: Whether to conduct e self-plays on several processes
-   in parallel. If `true`, all available workers are used. Alternatively, a
-   list of worker ids can be passed.
-- `tickets = nothing`: Number of chunks in which the workload is distributed if
-   parallel mode is used.
+- `distributed = false`: Whether to conduct the self-playings on several
+   processes in parallel. If `true`, all available workers are used. Alternatively,
+   a list of worker ids can be passed.
+- `tickets`: Number of chunks in which the workload is distributed if
+   `distributed != false`. By default, it is set to the number of workers.
 
 # Examples
 ```julia
