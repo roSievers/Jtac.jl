@@ -305,7 +305,7 @@ Base.copy(p :: HumanPlayer) = p
 
 # -------- PvP --------------------------------------------------------------- #
 
-function pvp(p1 :: Player, p2 :: Player, game :: Game)
+function pvp(p1 :: Player, p2 :: Player, game :: Game; callback = (_) -> nothing)
 
   game = copy(game)
 
@@ -315,6 +315,7 @@ function pvp(p1 :: Player, p2 :: Player, game :: Game)
     else
       turn!(game, p2)
     end
+    callback(game)
   end
 
   status(game)
