@@ -524,7 +524,10 @@ function with_contest( trainf!     # the training function
 
     # Create the cache for games between passive players
     cache_results = zeros(Int, n, n, 3)
-    cache_results[1:np,1:np,:] = compete(passive, cache, callback = step)
+    cache_results[1:np,1:np,:] = compete( passive
+                                        , cache
+                                        , distributed = distributed
+                                        , callback = step )
 
     # Remove the progress bar
     finish()

@@ -20,7 +20,7 @@ end
 default_loss(x, y :: Union{Vector, Knet.KnetVector}) = sum(abs2, x .- y)
 
 # Default policy loss
-default_loss(x, y :: Union{Matrix, Knet.KnetMatrix}) = -sum(y .* log.(x))
+default_loss(x, y :: Union{Matrix, Knet.KnetMatrix}) = -sum(y .* log.(x.+1e-10))
 
 # Default regularization loss for parameters
 default_loss(param) = sum(abs2, param)
