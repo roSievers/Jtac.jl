@@ -92,7 +92,7 @@ function match_repetitions(n, pairings)
 
 end
 
-pairings(l, a) = l * l - (l-a)*(l-a)
+pairings(l, a) = l * l - (l-a)*(l-a) - a
 
 
 """
@@ -250,7 +250,22 @@ function Base.summary(rk :: Ranking, matrix = false)
   perm = sortperm(rk.elos) |> reverse
 
   ranks = map(1:length(perm), rk.players[perm], rk.elos[perm]) do i, p, elo
-    Printf.@sprintf "%2d. %10.2f  %-s" i elo name(p)
+    Printf.@sprintf "%2d. %10.2f  %15s" i elo name(p)
+  end
+
+  # TODO: variable widths of the matrix entries, based on the length of the
+  # wins/losses
+  if matrix
+
+    mat = rk.results[perm, perm, 3] - rk.results[perm, perm, 1]
+
+    for (i,r) in enumerate(ranks)
+      vals = map(mat[i,:], 1:length(perm)) do (x, j)
+        i == j ? "    ●" : Printf.@sprintf("%5.0f", x)
+      end
+      ranks[i] = r * "  " * join(vals)
+    end
+
   end
 
   start = Printf.@sprintf "start advantage: %.2f" rk.start

@@ -142,7 +142,7 @@ function print_ranking(rk)
   println("#\n# Contest with $(length(rk.players)) players:\n#")
 
   # Get the summary of the contest and print it
-  s = "# " * replace(summary(rk), "\n" => "\n# ") * "\n#"
+  s = "# " * replace(summary(rk, true), "\n" => "\n# ") * "\n#"
   println(s)
 
 end
