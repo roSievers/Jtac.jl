@@ -19,10 +19,10 @@ import ProgressMeter, Crayons
 
 # Neural Networks
 import AutoGrad, Knet
-import Knet: identity, relu, elu, softmax, tanh, sigm, minibatch
+import Knet: identity, relu, elu, softmax, tanh, sigm
 
 export AutoGrad, Knet, 
-       minibatch, identity, relu, elu, softmax, tanh, sigm
+       identity, relu, elu, softmax, tanh, sigm
 
 # Saving models and datasets
 import BSON
@@ -90,7 +90,9 @@ export DataSet, augment, minibatch,
 # Distributed creation of datasets
 include("distributed.jl")
 
-export record_self_distributed
+export record_self_distributed,
+       record_against_distributed,
+       compete_distributed
 
 # Saving and loading games and datasets
 include("io.jl")
