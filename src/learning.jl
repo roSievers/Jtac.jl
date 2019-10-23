@@ -362,6 +362,9 @@ function train_from!( pupil :: Player{G}
                     , kwargs... 
                     ) where {G <: Game}
 
+  # Complement the branching options (before, during, steps)
+  branching = branch_options(branching)
+
   # Check if pupil and teacher are compatible featurewise
   use_features = features(pupil) == features(teacher)
 
@@ -371,17 +374,17 @@ function train_from!( pupil :: Player{G}
     # TODO: Async?
 
     # Construct a list of games by letting two players compete
-    datasets = map(1:n) do _
+    datasets = asyncmap(1:n) do _
 
       # Get two players at random
       p1, p2 = rand(players, 2)
 
       # Watch them playing
-      games = pvp_games(p1, p2, G())
+      games = pvp_games(p1, p2, branch(G(), branching))[1:end-1]
 
-      # Force the to 'make errors' sometimes
-      branchpoints = randsubseq(games, branching)
-      branches = map(g -> pvp_games(p1, p2, g), games)
+      # Force the players to 'make errors' sometimes
+      branchgames = branch(games, branching)
+      branches = map(g -> pvp_games(p1, p2, g), branchgames)
 
       # Let the teacher model look at all games to generate a dataset
       ds = record_model( training_model(teacher)

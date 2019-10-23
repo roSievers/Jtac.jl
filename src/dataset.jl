@@ -217,18 +217,18 @@ function _record( play :: Function # maps game to dataset
                 , branching = 0.
                 ) where {G <: Game}
 
+  # Complete the branching options, can be a tuple (before, during, steps)
+  branching = branch_options(branching)
+
   # Extend the provided play function by random branching 
   # and the call to callback
   play_with_branching = _ -> begin
 
     # Play through the game once without branching
-    dataset = play(copy(root))
+    dataset = play(branch(root, branching))
     
     # Create branchpoints and play them
-    branchpoints = randsubseq(dataset.games[1:end-1], branching)
-    branches = map(branchpoints) do game
-      play(random_turn!(copy(game)))
-    end
+    branches = play.(branch(dataset.games[1:end-1], branching))
 
     # Filter branches where the random turn lead us to the end of the game
     filter!(x -> length(x) > 0, branches)
@@ -237,9 +237,7 @@ function _record( play :: Function # maps game to dataset
     datasets = [dataset; branches]
 
     # Augment the datasets (if desired)
-    if augment
-      datasets = mapreduce(Jtac.augment, vcat, datasets)
-    end
+    augment && (datasets = mapreduce(Jtac.augment, vcat, datasets))
     
     # Calculate features (if there are any)
     datasets = map(d -> _record_features!(d, features), datasets)
@@ -392,7 +390,6 @@ model = NeuralModel(TicTacToe, @chain TicTacToe Dense(50))
 player = MCTSPlayer(model, power = 50)
 dataset = record_self(player, 10, augment = false)
 ```
-
 """
 function record_self( p :: Player{G}
                     , n :: Int = 1

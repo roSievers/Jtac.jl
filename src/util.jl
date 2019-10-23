@@ -243,3 +243,25 @@ function stepper(description, n :: Int, kwargs...)
 
 end
 
+# -------- Random Branching -------------------------------------------------- #
+
+branch_options(br :: Real) = (before = 0., during = br, steps = 1)
+branch_options((b, d, s)) = (before = b, during = d, steps = s)
+
+function branch(game :: Game, br)
+
+  game = copy(game)
+  rand() < br.before && foreach(_ -> random_turn!(game), 1:rand(1:br.steps))
+  game
+
+end
+
+function branch(games :: Vector{<: Game}, br)
+
+  map(randsubseq(games, br.during)) do game
+    game = copy(game)
+    foreach(_ -> random_turn!(game), 1:rand(1:br.maxsteps))
+    game
+  end
+
+end
