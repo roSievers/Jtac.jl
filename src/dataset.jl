@@ -225,7 +225,7 @@ function _record( play :: Function # maps game to dataset
   play_with_branching = _ -> begin
 
     # Play through the game once without branching
-    dataset = play(branch(root, branching))
+    dataset = play(branch_root(root, branching))
     
     # Create branchpoints and play them
     branches = play.(branch(dataset.games[1:end-1], branching))

@@ -248,7 +248,7 @@ end
 branch_options(br :: Real) = (before = 0., during = br, steps = 1)
 branch_options((b, d, s)) = (before = b, during = d, steps = s)
 
-function branch(game :: Game, br)
+function branch_root(game, br)
 
   game = copy(game)
   rand() < br.before && foreach(_ -> random_turn!(game), 1:rand(1:br.steps))
@@ -256,7 +256,7 @@ function branch(game :: Game, br)
 
 end
 
-function branch(games :: Vector{<: Game}, br)
+function branch(games :: Vector, br)
 
   map(randsubseq(games, br.during)) do game
     game = copy(game)

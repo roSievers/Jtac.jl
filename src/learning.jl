@@ -380,7 +380,7 @@ function train_from!( pupil :: Player{G}
       p1, p2 = rand(players, 2)
 
       # Watch them playing
-      games = pvp_games(p1, p2, branch(G(), branching))[1:end-1]
+      games = pvp_games(p1, p2, branch_root(G(), branching))[1:end-1]
 
       # Force the players to 'make errors' sometimes
       branchgames = branch(games, branching)
