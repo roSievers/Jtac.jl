@@ -13,7 +13,9 @@ end
 
 const TicTacToe = MNKGame{3, 3, 3}
 
-MNKGame{M, N, K}() where {M, N, K} = MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
+function MNKGame{M, N, K}() where {M, N, K}
+  MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
+end
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
@@ -39,18 +41,24 @@ function legal_actions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N
         i += 1
       end
     end
-    @assert size(result)[1] + 1 == i "There should be $(size(result)[1] + 1) legal actions but we found $(i)."
+    @assert size(result)[1] + 1 == i "There should be " *
+            "$(size(result)[1] + 1) legal actions but we found $(i)."
 
     result
   end
 end
 
 # A action is legal, if the board position is still empty
-function is_action_legal(game :: MNKGame{M, N}, index :: ActionIndex) :: Bool where {M, N}
+function is_action_legal( game :: MNKGame{M, N}
+                        , index :: ActionIndex
+                        ) :: Bool where {M, N}
   game.board[index] == 0 && !is_over(game)
 end
 
-function apply_action!(game :: MNKGame{M, N, K}, index :: ActionIndex) :: MNKGame{M, N, K} where {M, N, K}
+function apply_action!( game :: MNKGame{M, N, K}
+                      , index :: ActionIndex
+                      ) :: MNKGame{M, N, K} where {M, N, K}
+
   @assert is_action_legal(game, index) "Action $index is not allowed."
   # Update the board state
   game.board[index] = game.current_player
@@ -60,40 +68,42 @@ function apply_action!(game :: MNKGame{M, N, K}, index :: ActionIndex) :: MNKGam
   game.move_count += 1
   game.status = tic_tac_mnk_status(game, index)
   game
+
 end
 
 # All possible directions for winning rows, in flat index notation.
 const search_directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
 
-function bound_check(m, n, fx, fy)
-  fx > 0 && fx <= m && fy > 0 && fy <= n
-end
+bound_check(m, n, fx, fy) = (fx > 0 && fx <= m && fy > 0 && fy <= n)
 
-function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionIndex) where {M, N, K}
+function tic_tac_mnk_status( game :: MNKGame{M, N, K}
+                           , changed_index :: ActionIndex
+                           ) where {M, N, K}
+
   ci = CartesianIndices((M, N)) 
   x, y = Tuple(ci[changed_index])
-  moving_player = game.board[changed_index]
+  moving = game.board[changed_index]
 
   for (dx, dy) in search_directions
     count = 1 # There is always the freshly placed token.
     # forward search along the direction
     # Seek using a focus point at (fx, fy).
     (fx, fy) = (x + dx, y + dy)
-    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving
       count += 1
       fx += dx
       fy += dy
     end
     # backward search along the direction
     (fx, fy) = (x - dx, y - dy)
-    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving_player
+    while bound_check(M, N, fx, fy) && game.board[fx + (fy - 1) * M] == moving
       count += 1
       fx -= dx
       fy -= dy
     end
 
     if count >= K
-      return Status(moving_player)
+      return Status(moving)
     end
   end
 
@@ -103,6 +113,7 @@ function tic_tac_mnk_status(game :: MNKGame{M, N, K}, changed_index :: ActionInd
   else
     Status()
   end
+
 end
 
 status(game :: MNKGame) :: Status = game.status
@@ -121,27 +132,51 @@ function representation(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
   reshape(game.current_player .* game.board, (M, N, 1))
 end
 
+# Augment single games
+function augment(game :: MNKGame{M, N, K}) where {M, N, K}
 
-function augment(game :: MNKGame{M, N, K}, label :: Vector{Float32}) where {M, N, K}
   if M == N
     boards = apply_dihedral_group(reshape(game.board, (M, N))) 
-    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status, game.move_count) for b in boards ]
-  
+    map(boards) do b
+      MNKGame{M, N, K}( reshape(b, (M * N,))
+                      , game.current_player
+                      , game.status
+                      , game.move_count )
+    end
+
+  else
+    boards = apply_klein_four_group(reshape(game.board, (M, N))) 
+    map(boards) do b
+      MNKGame{M, N, K}( reshape(b, (M * N,))
+                      , game.current_player
+                      , game.status
+                      , game.move_count )
+    end
+
+  end
+
+end
+
+# Augment game/label pairs
+function augment( game :: MNKGame{M, N, K}
+                , label :: Vector{Float32}
+                ) where {M, N, K}
+  if M == N
+
     matpol = reshape(label[2:end], (M, N))
     matpols = apply_dihedral_group(matpol)
     labels = [ vcat(label[1], reshape(mp, (M * N,))) for mp in matpols ]
   
-    games, labels
   else
-    boards = apply_klein_four_group(reshape(game.board, (M, N))) 
-    games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status) for b in boards ]
-  
+
     matpol = reshape(label[2:end], (M, N))
     matpols = apply_klein_four_group(matpol)
     labels = [ vcat(label[1], reshape(mp, (M * N,))) for mp in matpols ]
   
-    games, labels
   end
+
+  augment(game), labels
+
 end
 
 
@@ -162,3 +197,4 @@ function draw(game :: MNKGame{M, N}) :: Nothing where {M, N}
     end
   end
 end
+
