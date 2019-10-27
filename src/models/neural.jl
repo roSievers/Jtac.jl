@@ -126,7 +126,7 @@ function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
   NeuralModel{G, !GPU}( swap(m.layer)
                       , m.features
                       , swap(m.vphead)
-                      , swap(m.fhead)
+                      , isnothing(m.fhead) ? nothing : swap(m.fhead)
                       , m.vconv
                       , m.pconv )
 
