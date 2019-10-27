@@ -328,10 +328,10 @@ end
 
 
 """
-    train_from!(pupil, teacher [, players]; loss, <keyword arguments>)
+    train_from_model!(pupil, teacher [, players]; loss, <keyword arguments>)
 
 Train a `pupil` under `loss` by letting it approximate the predictions of
-`teacher` on game states created by `players`.
+`teacher`'s model on game states created by `players`.
 
 In each epoch, two random `players` are chosen (by default, these are the pupil
 and the teacher) to generate a set of game states by playing the game. These
@@ -353,14 +353,14 @@ currently.
 - `optimizer = Adam`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 """
-function train_from!( pupil :: Player{G}
-                    , teacher
-                    , players = [pupil, teacher]
-                    ; loss
-                    , branching = 0.
-                    , augment = true
-                    , kwargs... 
-                    ) where {G <: Game}
+function train_from_model!( pupil :: Player{G}
+                          , teacher :: Union{Model{H}, Player{H}}
+                          , players = [pupil]
+                          ; loss
+                          , branching = 0.
+                          , augment = true
+                          , kwargs... 
+                          ) where {H <: Game, G <: H}
 
   # Complement the branching options (before, during, steps)
   branching = branch_options(branching)
@@ -380,7 +380,7 @@ function train_from!( pupil :: Player{G}
       p1, p2 = rand(players, 2)
 
       # Watch them playing
-      games = pvp_games(p1, p2, branch_root(G(), branching))[1:end-1]
+      games = pvp_games(p1, p2, game = branch_root(G(), branching))[1:end-1]
 
       # Force the players to 'make errors' sometimes
       branchgames = branch(games, branching)

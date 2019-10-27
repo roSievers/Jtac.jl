@@ -247,6 +247,7 @@ function switch_model( p :: MCTSPlayer{G}
                , p.power
                , p.temperature
                , p.exploration
+               , p.dilution
                , p.name )
 end
 
@@ -316,7 +317,10 @@ Conduct one match between `player1` and `player2`. The `game` that
 `callback(current_game)` is called after each turn. The game outcome from
 perspective of `player1` (-1, 0, 1) is returned.
 """
-function pvp(p1 :: Player, p2 :: Player; game :: Game, callback = (_) -> nothing)
+function pvp( p1 :: Player
+            , p2 :: Player
+            ; game :: Game = derive_gametype([p1, p2])()
+            , callback = (_) -> nothing )
 
   game = copy(game)
 
@@ -333,9 +337,6 @@ function pvp(p1 :: Player, p2 :: Player; game :: Game, callback = (_) -> nothing
 
 end
 
-pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, game = derive_gametype([p1, p2])())
-
-
 """
     pvp_games(player1, player2 [; game, callback])
 
@@ -346,7 +347,7 @@ states is returned.
 """
 function pvp_games( p1 :: Player
                   , p2 :: Player
-                  ; game :: Game
+                  ; game :: Game = derive_gametype([p1, p2])()
                   , callback = (_) -> nothing )
 
   game  = copy(game)
@@ -364,9 +365,5 @@ function pvp_games( p1 :: Player
 
   games
 
-end
-
-function pvp_games(p1 :: Player, p2 :: Player)
-  pvp_games(p1, p2, game = derive_gametype([p1, p2])())
 end
 

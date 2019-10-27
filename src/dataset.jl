@@ -540,14 +540,18 @@ function record_model( model :: Model{G}
 
   games = augment ? mapreduce(Jtac.augment, vcat, games) : games
 
-  label = map(games) do game
+  labels = map(games) do game
+    l = model(game, use_features)
     callback()
-    model(game, use_features)
+    l
   end
 
-  features = use_features ? model.features : Features[]
+  vplabel = map(l -> vcat(l[1], l[2]), labels)
+  flabel = map(l -> l[3], labels)
 
-  DataSet{T}(games, label, features = features)
+  features = use_features ? Jtac.features(model) : Features[]
+
+  DataSet(games, vplabel, flabel, features = features)
 
 end
 

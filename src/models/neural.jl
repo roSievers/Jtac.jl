@@ -76,7 +76,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
     fout = m.fhead(output)
 
     j = 0
-    flabels = []
+    flabels = Array{Float32}[]
     
     # Apply the feature converters
     for f in features(m)
@@ -86,7 +86,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
     end
 
     # Collect the converted features again
-    fout = vcat(flabels...)
+    fout = isempty(flabels) ? similar(p, 0, length(v)) : vcat(flabels...)
 
   else
 

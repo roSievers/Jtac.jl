@@ -84,7 +84,7 @@ export DataSet, augment, minibatch,
        record_self, record_against,
        Loss, loss, caption,
        set_optimizer!, train_step!, train!,
-       train_self!, train_against!, train_from!,
+       train_self!, train_against!, train_from_model!,
        with_contest
 
 # Distributed creation of datasets
