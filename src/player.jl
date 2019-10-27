@@ -116,7 +116,7 @@ end
 
 function think( p :: IntuitionPlayer{G}
               , game :: G
-              ) where {G <: Game} :: Vector{Float32}
+              ) :: Vector{Float32} where {G <: Game} 
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
@@ -220,7 +220,7 @@ end
 
 function think( p :: MCTSPlayer{G}
               , game :: G
-              ) where {G <: Game} :: Vector{Float32}
+              ) :: Vector{Float32} where {G <: Game}
 
   # Improved policy over the allowed actions
   pol = mctree_policy( p.model
