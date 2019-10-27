@@ -63,8 +63,10 @@ A player with name "random" that always chooses a random (but allowed) action.
 struct RandomPlayer <: Player{Game} end
 
 function think(:: RandomPlayer, game :: Game)
-  l = length(legal_actions(game))
-  ones(Float32, l) / l
+  actions = legal_actions(game)
+  policy = zeros(Float32, policy_length(game))
+  policy[actions] = 1f0 / length(actions)
+  policy
 end
 
 name(p :: RandomPlayer) = "random"
