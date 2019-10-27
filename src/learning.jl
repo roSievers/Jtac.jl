@@ -366,7 +366,7 @@ function train_from_model!( pupil :: Player{G}
   branching = branch_options(branching)
 
   # Check if pupil and teacher are compatible featurewise
-  use_features = features(pupil) == features(teacher) != Features[]
+  use_features = features(pupil) == features(teacher) != Feature[]
 
   # Function that generates datasets
   gen_data = (cb, n) -> begin

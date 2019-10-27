@@ -525,7 +525,7 @@ end
 
 
 """
-    record_model(model, games [; use_features, callback])
+    record_model(model, games [; use_features])
 
 Record a dataset by applying `model` to `games`. The features enabled for
 `model` are recorded if `use_features` is true. `callback` is a function that is
@@ -535,21 +535,21 @@ function record_model( model :: Model{G}
                      , games :: Vector{T}
                      ; use_features = true
                      , augment = false
-                     , callback = () -> nothing
                      ) where {G, T <: G}
 
   games = augment ? mapreduce(Jtac.augment, vcat, games) : games
 
-  labels = map(games) do game
-    l = model(game, use_features)
-    callback()
-    l
+  vplabel = Vector{Float32}[]
+  flabel  = Vector{Float32}[]
+
+  v, p, f = apply_features(model, game)
+
+  for i in 1:length(games)
+    push!(vplabel, vcat(v[i], p[:,i]))
+    use_features ? push!(flabel, f[:,i]) : push!(flabel, similar(f[:,i], 0))
   end
 
-  vplabel = map(l -> vcat(l[1], l[2]), labels)
-  flabel = map(l -> l[3], labels)
-
-  features = use_features ? Jtac.features(model) : Features[]
+  features = use_features ? Jtac.features(model) : Feature[]
 
   DataSet(games, vplabel, flabel, features = features)
 
