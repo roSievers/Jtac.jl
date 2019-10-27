@@ -123,6 +123,7 @@ function _train!( player :: Player{G}
                 , batchsize = 50
                 , testfrac = 0.1
                 , optimizer = Knet.Adam
+                , replays = 0
                 , quiet = false
                 , callback_epoch = (_) -> nothing
                 , callback_iter = (_) -> nothing
@@ -143,16 +144,27 @@ function _train!( player :: Player{G}
   # Set the optimizer for the player's model
   set_optimizer!(training_model(player), optimizer; kwargs...)
 
+  # Save the last `replay` generated datasets and use them for training
+  replay_buffer = []
+
   for i in 1:epochs
 
     # Generate callback functions for the progress meter
     step, finish = stepper("# Playing...", playings)
     cb = quiet ? () -> nothing : step
 
-    # Generate train and testsets
+    # Generate new datasets for this generation
     datasets = gen_data(cb, playings)
-    trainset = merge(datasets[1:train_playings]...)
 
+    # Create the training set by merging with the last `playing` generations of
+    # datasets that are stored in the replay_buffer
+    trainset = merge(datasets[1:train_playings]...)
+    for set in replay_buffer
+      trainset = merge(trainset, set...)
+    end
+
+    # Create the testing set by collecting the remaining datasets generated
+    # in this epoche
     if testfrac > 0
       testset = merge(datasets[train_playings+1:playings]...)
     else
@@ -188,6 +200,12 @@ function _train!( player :: Player{G}
     # Undo the changes in the Knet allocator
     switch_knet_allocator()
 
+    # Bring the full dataset from this epoche in the replay buffer
+    push!(replay_buffer, datasets)
+
+    # Remove the oldest item from the replay buffer if it is to large
+    length(replay_buffer) >= replays+1 && deleteat!(replay_buffer, 1)
+
     # Call callback function
     callback_epoch(i) 
 
@@ -214,6 +232,7 @@ be trained currently.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
 - `branching = 0.`: Random branching probability.
 - `augment = true`: Whether to use augmentation on the created data sets.
+- `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
@@ -281,6 +300,7 @@ NeuralModel-based training models can be trained currently.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
 - `branching = 0.`: Random branching probability.
 - `augment = true`: Whether to use augmentation on the created data sets.
+- `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
@@ -347,6 +367,7 @@ currently.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
 - `branching = 0.`: Random branching probability.
 - `augment = true`: Whether to use augmentation on the created data sets.
+- `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
