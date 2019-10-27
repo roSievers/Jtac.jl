@@ -275,3 +275,12 @@ function Base.summary(rk :: Ranking, matrix = false)
 
 end
 
+
+# -------- Distributed Contesting -------------------------------------------- #
+
+
+function compete_distributed(args...; kwargs...) 
+
+  sum(with_workers(compete, args...; kwargs...))
+
+end

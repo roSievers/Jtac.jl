@@ -1,5 +1,5 @@
 
-# -------- Serializing (Async) Models ---------------------------------------- #
+# -------- Serializing (Async) Players --------------------------------------- #
 
 function _serialize(p :: Union{IntuitionPlayer, MCTSPlayer})
 
@@ -120,53 +120,3 @@ function with_workers( f :: Function
 
 end
 
-
-# -------- Distributed Recording --------------------------------------------- #
-
-function record_self_distributed( p :: Player
-                                , n :: Int = 1
-                                ; workers = workers()
-                                , merge = false
-                                , kwargs... )
-
-  # Create the record function
-  record = (ps, n; kwargs...) -> begin
-    record_self(ps[1], n; merge = merge, kwargs...)
-  end
-
-  ds = with_workers(record, [p], n; workers = workers, kwargs...)
-  ds = vcat(ds...)
-
-  merge ? Base.merge(ds) : ds
-
-end
-
-
-function record_against_distributed( p :: Player
-                                   , enemy :: Player
-                                   , n :: Int = 1
-                                   ; workers = workers()
-                                   , merge = false
-                                   , kwargs... )
-
-  # Create the record function
-  record = (ps, n; kwargs...) -> begin
-    record_against(ps[1], ps[2], n; merge = merge, kwargs...)
-  end
-
-  ds = with_workers(record, [p, enemy], n; workers = workers, kwargs...)
-  ds = vcat(ds...)
-
-  merge ? Base.merge(ds) : ds
-
-end
-
-
-# -------- Distributed Contesting -------------------------------------------- #
-
-
-function compete_distributed(args...; kwargs...) 
-
-  sum(with_workers(compete, args...; kwargs...))
-
-end

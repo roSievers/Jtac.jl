@@ -401,7 +401,7 @@ function record_self( p :: Player{G}
                     ) where {G, T <: G}
 
   # If self-playing is to be distributed, get the list of workers and
-  # cede to the corresponding function in distributed.jl
+  # cede to the corresponding distributed function, defined below
   if distributed != false
 
     workers = distributed == true ? Distributed.workers() : distributed
@@ -550,4 +550,45 @@ function record_model( model :: Model{G}
   DataSet{T}(games, label, features = features)
 
 end
+
+# -------- Distributed Recording --------------------------------------------- #
+
+function record_self_distributed( p :: Player
+                                , n :: Int = 1
+                                ; workers = workers()
+                                , merge = false
+                                , kwargs... )
+
+  # Create the record function
+  record = (ps, n; kwargs...) -> begin
+    record_self(ps[1], n; merge = merge, kwargs...)
+  end
+
+  ds = with_workers(record, [p], n; workers = workers, kwargs...)
+  ds = vcat(ds...)
+
+  merge ? Base.merge(ds) : ds
+
+end
+
+
+function record_against_distributed( p :: Player
+                                   , enemy :: Player
+                                   , n :: Int = 1
+                                   ; workers = workers()
+                                   , merge = false
+                                   , kwargs... )
+
+  # Create the record function
+  record = (ps, n; kwargs...) -> begin
+    record_against(ps[1], ps[2], n; merge = merge, kwargs...)
+  end
+
+  ds = with_workers(record, [p, enemy], n; workers = workers, kwargs...)
+  ds = vcat(ds...)
+
+  merge ? Base.merge(ds) : ds
+
+end
+
 
