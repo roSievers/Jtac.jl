@@ -168,7 +168,7 @@ function mctree_policy( model
 
     # Weighted policy with temperature
     weights = (root.visit_counter/power).^(1/temperature)
-    convert(Array{Float32}, weights / sum(weights))
+    weights / sum(weights)
 
   end
 

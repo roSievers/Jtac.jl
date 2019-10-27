@@ -22,10 +22,13 @@ Let `player` make an action decision about `game`, based on the policy
 """
 decide(p :: Player, game :: Game) = choose_index(think(p, game))
 
-# Convenience function to automatically alter the game
+"""
+    turn!(game, player)
+
+Modify `game` by letting `player` take one turn.
+"""
 turn!(game :: Game, p :: Player) = apply_action!(game, decide(p, game))
 
-# Each player must have a name for comparison in tournaments etc.
 """
     name(player)
 
@@ -61,7 +64,7 @@ struct RandomPlayer <: Player{Game} end
 
 function think(:: RandomPlayer, game :: Game)
   l = length(legal_actions(game))
-  ones(l) / l
+  ones(Float32, l) / l
 end
 
 name(p :: RandomPlayer) = "random"
@@ -111,7 +114,9 @@ function IntuitionPlayer( player :: Player{G}
 
 end
 
-function think(p :: IntuitionPlayer{G}, game :: G) where {G <: Game}
+function think( p :: IntuitionPlayer{G}
+              , game :: G
+              ) where {G <: Game} :: Vector{Float32}
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
@@ -120,15 +125,16 @@ function think(p :: IntuitionPlayer{G}, game :: G) where {G <: Game}
   policy[actions] = apply(p.model, game).policy[actions]
   
   # Return the action that the player decides for
-  if p.temperature == 0
-    probs = zeros(Float32, length(policy))
-    probs[findmax(policy)[2]] = 1.
-  else
-    weighted_policy = policy.^(1/p.temperature)
-    probs = weighted_policy / sum(weighted_policy)
-  end
+  if p.temperature == 0f0
 
-  probs
+    one_hot(length(policy), findmax(policy)[2])
+
+  else
+
+    weights = policy.^(1/p.temperature)
+    weights / sum(weights)
+
+  end
 
 end
 
@@ -212,7 +218,9 @@ function MCTSPlayer( player :: MCTSPlayer{G}; kwargs... ) where {G <: Game}
   MCTSPlayer(playing_model(player); kwargs...)
 end
 
-function think(p :: MCTSPlayer{G}, game :: G) where {G <: Game}
+function think( p :: MCTSPlayer{G}
+              , game :: G
+              ) where {G <: Game} :: Vector{Float32}
 
   # Improved policy over the allowed actions
   pol = mctree_policy( p.model
