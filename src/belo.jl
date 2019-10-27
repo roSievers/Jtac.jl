@@ -260,7 +260,7 @@ function Base.summary(rk :: Ranking, matrix = false)
     mat = rk.results[perm, perm, 3] - rk.results[perm, perm, 1]
 
     for (i,r) in enumerate(ranks)
-      vals = map(mat[i,:], 1:length(perm)) do (x, j)
+      vals = map(mat[i,:], 1:length(perm)) do x, j
         i == j ? "    ●" : Printf.@sprintf("%5.0f", x)
       end
       ranks[i] = r * "  " * join(vals)

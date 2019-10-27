@@ -227,7 +227,7 @@ be trained currently.
 # Self-train a simple neural network model for 5 epochs
 model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
 player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-train_self!(player, epochs = 5, playings = 100)
+train_self!(player, loss = Loss(), epochs = 5, playings = 100)
 ```
 """
 function train_self!( player :: MCTSPlayer

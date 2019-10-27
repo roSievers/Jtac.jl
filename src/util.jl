@@ -29,6 +29,19 @@ end
 
 isasync(m) = isa(m, Async) ? true : false
 
+# Use the logit of a normal distribution instead of Dirichlet for diluting the
+# root prior policy
+function logit_normal(n)
+  ey = exp.(randn(Float32, n))
+  ey / sum(ey)
+end
+
+function one_hot(n, k)
+  r = zeros(Float32, n)
+  r[k] = 1f0
+  r
+end
+
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])

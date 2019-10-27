@@ -20,7 +20,7 @@ end
 default_loss(x, y :: Union{Vector, Knet.KnetVector}) = sum(abs2, x .- y)
 
 # Default policy loss
-default_loss(x, y :: Union{Matrix, Knet.KnetMatrix}) = -sum(y .* log.(x.+1e-10))
+default_loss(x, y :: Union{Matrix, Knet.KnetMatrix}) = -sum(y .* log.(x.+1f-10))
 
 # Default regularization loss for parameters
 default_loss(param) = sum(abs2, param)
@@ -109,7 +109,7 @@ function loss( l :: Loss
 end
 
 """
-    loss(l, model, dataset[; maxbatch = 1000])
+    loss(l, model, dataset [; maxbatch = 1024])
 
 Calculate the loss determined by `l` for `model` on `dataset` while evaluating
 model with at most `maxbatch` game states at once.
@@ -117,7 +117,7 @@ model with at most `maxbatch` game states at once.
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
              , dataset :: DataSet{G}
-             ; maxbatch = 1000
+             ; maxbatch = 1024
              ) where {G, GPU}
 
   # Check if features can be used
@@ -138,9 +138,9 @@ end
 
 Calculate the loss determined by `l` between `label` and `model(game)` 
 """
-function loss(l :: Loss, model :: Model, data, label)
+function loss(l :: Loss, model :: Model, game, label)
 
-  loss(l, model, DataSet([game], [label]))
+  loss(l, model, DataSet([game], [label], [zeros(Float32, 0)]))
 
 end
 

@@ -11,9 +11,8 @@ mutable struct Node
     model_policy :: Vector{Float32}    
 end
 
-Broadcast.broadcastable(node :: Node) = Ref(node)
-
 Node(action = 0, parent = nothing ) = Node(action, 0, parent, [], [], [], [])
+Broadcast.broadcastable(node :: Node) = Ref(node)
 
 is_leaf(node :: Node) :: Bool = isempty(node.children)
 
@@ -27,9 +26,7 @@ function expand!(node :: Node, game :: Game, model :: Model) :: Float32
 
   # We need to first check if the game is still active
   # and only evaluate the model on those games.
-  if is_over(game)
-    return status(game)
-  end
+  is_over(game) && return status(game)
 
   actions = legal_actions(game)
   # This value variable is from the perspective of current_player(game)
@@ -49,14 +46,20 @@ end
 # -------- MCTS Algorithm --------------------------------------------------- #
 
 # The confidence in a node
-function confidence(node; exploration = 1.41) :: Array{Float32}
+function confidence(node; dilution = 0.2, exploration = 1.41) :: Array{Float32}
 
-  result = zeros(Float32, length(node.children))
   weight = exploration * sqrt(sum(node.visit_counter))
 
-  for i = 1:length(node.children)
-    exploration = weight * node.model_policy[i] / (1 + node.visit_counter[i])
-    result[i] = node.expected_reward[i] + exploration
+  result = map(1:length(node.children)) do i
+    explore = weight * node.model_policy[i] / (1 + node.visit_counter[i])
+    node.expected_reward[i] + explore
+  end
+
+  # At the root, we blur the policy with a logit normal distribution
+  # Note: In the original alpha zero implementation, dirichlet noise is used
+  # instead.
+  if isnothing(node.parent)
+    result[:] = (1-dilution) * result + dilution * logit_normal(length(result))
   end
 
   result
@@ -69,11 +72,11 @@ While this is done, the game is mutated.
 """
 function descend_to_leaf!( game :: Game
                          , node :: Node
-                         ; exploration = 1.41
+                         ; kwargs...
                          ) :: Node
 
   while !is_leaf(node)
-    best_i = findmax(confidence(node, exploration = exploration))[2]
+    best_i = findmax(confidence(node; kwargs...))[2]
   
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
@@ -87,7 +90,7 @@ end
 
 function backpropagate!(node, p1_value) :: Nothing
 
-  if node.parent != nothing
+  if !isnothing(node.parent)
     # Since the parent keeps all child-information, we have to access it
     # indirectly
     parent = node.parent
@@ -106,11 +109,11 @@ function backpropagate!(node, p1_value) :: Nothing
 
 end
 
-function expand_tree_by_one!(node, game, model; exploration = 1.41)
+function expand_tree_by_one!(node, game, model; kwargs...)
   new_game = copy(game)
   # Decending to a leaf also changes the new_game value. This value then
   # corresponds to the game state at the leaf.
-  new_node = descend_to_leaf!(new_game, node, exploration = exploration)
+  new_node = descend_to_leaf!(new_game, node; kwargs...)
   p1_value = expand!(new_node, new_game, model)
 
   # Backpropagate the negative value, since the parent calculates its expected
@@ -123,29 +126,27 @@ function run_mcts( model
                  , game :: Game
                  ; root = Node()      # To track the expansion
                  , power = 100
-                 , temperature = 1.
-                 , exploration = 1.41 )
+                 , kwargs...
+                 ) :: Node
+
   root.current_player = current_player(game)
   
   for i = 1:power
-    expand_tree_by_one!(root, game, model, exploration = exploration)
+    expand_tree_by_one!(root, game, model; kwargs...)
   end
+
+  root
 
 end
 
-function mctree_policy( model, game :: Game
-                      ; root = Node()
-                      , power = 100
+function mctree_policy( model
+                      , game :: Game
+                      ; power = 100
                       , temperature = 1.
-                      , exploration = 1.41 ) :: Vector{Float32}
+                      , kwargs...
+                      ) :: Vector{Float32}
 
-  run_mcts( model
-          , game
-          , root = root
-          , power = power
-          , temperature = temperature
-          , exploration = exploration )
-
+  root = run_mcts(model, game; power = power, kwargs... )
   
   # The paper states, that during self play we pick a move from the
   # improved stochastic policy root.visit_counter at random.
@@ -156,52 +157,32 @@ function mctree_policy( model, game :: Game
   # not only during learning. Think about this!
 
   if temperature == 0
-    probs = zeros(Float32, length(root.visit_counter))
-    probs[findmax(root.visit_counter)[2]] = 1
+
+    # One hot policy
+    one_hot(length(root.visit_counter), findmax(root.visit_counter)[2])
+
   else
-    weighted_counter = (root.visit_counter/power).^(1/temperature)
-    probs = weighted_counter / sum(weighted_counter)
+
+    # Weighted policy with temperature
+    weights = (root.visit_counter/power).^(1/temperature)
+    convert(Array{Float32}, weights / sum(weights))
+
   end
 
-  probs
+end
+
+function mctree_action(model, game :: Game; kwargs...) :: ActionIndex
+
+  probs = mctree_policy(model, game; kwargs...)
+  index = choose_index(probs)
+  root.children[index].action
 
 end
 
-function mctree_action( model
-                      , game :: Game
-                      ; root = Node()
-                      , power = 100
-                      , temperature = 1.
-                      , exploration = 1.41 
-                      ) :: ActionIndex
-
-  probs = mctree_policy( model
-                       , game
-                       , root = root
-                       , power = power
-                       , temperature = temperature
-                       , exploration = exploration )
-  
-  chosen_i = choose_index(probs)
-  root.children[chosen_i].action
-
-end
-
-function mctree_turn!( model
-                     , game :: Game
-                     ; power = 100
-                     , temperature = 1.
-                     , exploration = 1.41
-                     ) :: Node
+function mctree_turn!(model, game :: Game; kwargs...) :: Node
 
   root = Node()
-  action = mctree_action( model
-                        , game
-                        , root = root
-                        , power = power
-                        , temperature = temperature
-                        , exploration = exploration )
-
+  action = mctree_action(model, game; root = root, kwargs...)
   apply_action!(game, action)
   root
 
