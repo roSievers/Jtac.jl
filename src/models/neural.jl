@@ -45,7 +45,8 @@ function NeuralModel( :: Type{G}
   # and feature outputs
   os = outsize(layer, size(G))
   vphead = Dense(prod(os), pl + 1, gpu = GPU)
-  fhead = Dense(prod(os), fl, gpu = GPU)
+
+  fhead = fl > 0 ? Dense(prod(os), fl, gpu = GPU) : nothing
 
   NeuralModel{G, GPU}( layer
                      , features
@@ -71,7 +72,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
 
   # TODO: rewrite this next part with the feature_indices helper function
   # Apply the feature head, if features are to be calculated
-  if use_features
+  if use_features && !isnothing(m.fhead)
 
     fout = m.fhead(output)
 
