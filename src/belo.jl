@@ -158,7 +158,7 @@ function compete( players
     if i != j && (i in active || j in active)
 
       asyncmap(1:matches[l]) do _
-        k = pvp(p1, p2, game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+        k = pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
         results[i, j, k] += 1
         callback()
       end

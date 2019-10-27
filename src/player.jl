@@ -92,7 +92,7 @@ function IntuitionPlayer( model :: Model{G}
                         , name = nothing
                         ) where {G <: Game}
   if isnothing(name)
-    id = Int(div(hash((model, temperature)), Int(1e14)))
+    id = get_id(model, temperature) 
     name = "intuition-$id"
   end
 
@@ -165,6 +165,7 @@ struct MCTSPlayer{G} <: Player{G}
   power :: Int
   temperature :: Float32
   exploration :: Float32
+  dilution :: Float32
 
   name :: String
 
@@ -181,15 +182,16 @@ function MCTSPlayer( model :: Model{G}
                    ; power = 100
                    , temperature = 1.
                    , exploration = 1.41
+                   , dilution = 0.0
                    , name = nothing 
                    ) where {G <: Game}
 
   if isnothing(name)
-    id = Int(div(hash((model, temperature)), Int(1e14)))
+    id = get_id(model, temperature, exploration, dilution)
     name = "mcts$(power)-$id"
   end
 
-  MCTSPlayer{G}(model, power, temperature, exploration, name)
+  MCTSPlayer{G}(model, power, temperature, exploration, dilution, name)
 
 end
 
@@ -217,7 +219,8 @@ function think(p :: MCTSPlayer{G}, game :: G) where {G <: Game}
                      , game
                      , power = p.power
                      , temperature = p.temperature
-                     , exploration = p.exploration)
+                     , exploration = p.exploration
+                     , dilution = p.dilution )
 
   # Full policy vector
   policy = zeros(Float32, policy_length(game))
@@ -305,7 +308,15 @@ Base.copy(p :: HumanPlayer) = p
 
 # -------- PvP --------------------------------------------------------------- #
 
-function pvp(p1 :: Player, p2 :: Player, game :: Game; callback = (_) -> nothing)
+"""
+    pvp(player1, player2 [; game, callback])
+
+Conduct one match between `player1` and `player2`. The `game` that
+`player1` starts with is infered automatically if possible.
+`callback(current_game)` is called after each turn. The game outcome from
+perspective of `player1` (-1, 0, 1) is returned.
+"""
+function pvp(p1 :: Player, p2 :: Player; game :: Game, callback = (_) -> nothing)
 
   game = copy(game)
 
@@ -322,10 +333,21 @@ function pvp(p1 :: Player, p2 :: Player, game :: Game; callback = (_) -> nothing
 
 end
 
-pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, derive_gametype([p1, p2])())
+pvp(p1 :: Player, p2 :: Player) = pvp(p1, p2, game = derive_gametype([p1, p2])())
 
 
-function pvp_games(p1 :: Player, p2 :: Player, game :: Game)
+"""
+    pvp_games(player1, player2 [; game, callback])
+
+Conduct one match between `player1` and `player2`. The `game` that
+`player1` starts with is infered automatically if possible.
+`callback(current_game)` is called after each turn. The vector of played game
+states is returned.
+"""
+function pvp_games( p1 :: Player
+                  , p2 :: Player
+                  ; game :: Game
+                  , callback = (_) -> nothing )
 
   game  = copy(game)
   games = [copy(game)]
@@ -337,6 +359,7 @@ function pvp_games(p1 :: Player, p2 :: Player, game :: Game)
       turn!(game, p2)
     end
     push!(games, copy(game))
+    callback(game)
   end
 
   games
@@ -344,5 +367,6 @@ function pvp_games(p1 :: Player, p2 :: Player, game :: Game)
 end
 
 function pvp_games(p1 :: Player, p2 :: Player)
-  pvp_games(p1, p2, derive_gametype([p1, p2])())
+  pvp_games(p1, p2, game = derive_gametype([p1, p2])())
 end
+

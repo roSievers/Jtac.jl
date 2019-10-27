@@ -46,7 +46,10 @@ end
 # -------- MCTS Algorithm --------------------------------------------------- #
 
 # The confidence in a node
-function confidence(node; dilution = 0.2, exploration = 1.41) :: Array{Float32}
+function confidence( node
+                   ; dilution :: Float32 = 0.25
+                   , exploration :: Float32 = 1.41
+                   ) :: Array{Float32}
 
   weight = exploration * sqrt(sum(node.visit_counter))
 

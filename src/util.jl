@@ -42,6 +42,8 @@ function one_hot(n, k)
   r
 end
 
+get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
+
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])
