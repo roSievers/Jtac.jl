@@ -137,7 +137,7 @@ function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
   NeuralModel{G, GPU}( copy(m.layer)
                      , copy(m.features)
                      , copy(m.vphead)
-                     , copy(m.fhead)
+                     , isnothing(m.fhead) ? nothing : copy(m.fhead)
                      , m.vconv
                      , m.pconv )
 
