@@ -21,16 +21,20 @@ struct NeuralModel{G, GPU} <: Model{G, GPU}
 end
 
 """
-    NeuralModel(G, layer [, features; convert_value, convert_policy])
+    NeuralModel(G, layer [, features; vphead, fhead, value_conv, policy_conv])
 
 Constructs a neural model for gametype `G` from the neural network `layer`
-with `features` enabled. The functions `convert_value` and `convert_policy`
-are used to convert the logits to values, respectively policies.
+with `features` enabled. `vphead` and `fhead` are optional neural network layers
+that output logits for the value/policy or the features. The functions
+`value_conv` and `policy_conv` are used to convert the logits to values,
+respectively policies.  
 """
 function NeuralModel( :: Type{G}
                     , layer :: Layer{GPU}
                     , features = Feature[]
-                    ; value_conv = Knet.tanh
+                    ; vphead = nothing
+                    , fhead = nothing
+                    , value_conv = Knet.tanh
                     , policy_conv = Knet.softmax
                     ) where {G, GPU}
 
@@ -41,12 +45,38 @@ function NeuralModel( :: Type{G}
   pl = policy_length(G)
   fl = feature_length(features, G)
 
-  # Create dense layers that operate on `layer` as heads to create value/policy
-  # and feature outputs
   os = outsize(layer, size(G))
-  vphead = Dense(prod(os), pl + 1, gpu = GPU)
 
-  fhead = fl > 0 ? Dense(prod(os), fl, gpu = GPU) : nothing
+  # If no value/policy head is provided, we just use one plain dense layer.
+  # If something is provided, we check its sanity
+  if isnothing(vphead)
+
+    vphead = Dense(prod(os), pl + 1, gpu = GPU)
+
+  else
+
+    @assert valid_insize(vphead, os) "Value/policy head incompatible with trunk"
+    @assert outsize(vphead, os) == (pl+1,) "Value/policy head incompatible with $G"
+    vphead = (gpu(vphead) == GPU) ? vphead : swap(vphead)
+
+  end
+
+  # The same for the feature head
+  if isnothing(fhead) && fl > 0
+
+    fhead = Dense(prod(os), fl, gpu = GPU)
+
+  elseif fl > 0
+
+    @assert valid_insize(fhead, os) "Feature head incompatible with trunk"
+    @assert outsize(fhead, os) == (fl+1,) "Feature head incompatible with $G"
+    fhead = (gpu(fhead) == GPU) ? fhead : swap(fhead)
+
+  else
+
+    fhead = nothing
+
+  end
 
   NeuralModel{G, GPU}( layer
                      , features

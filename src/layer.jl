@@ -484,6 +484,43 @@ end
 layers(s :: Stack) = s.layers
 
 
+# -------- Residual ---------------------------------------------------------- # 
+
+"""
+Residual block that wraps a chain. The input to the residual block is added
+to the output of the chain (on the same input). Note that the chain must be
+shape-conserving.
+"""
+struct Residual{GPU} <: CompositeLayer{GPU}
+  chain :: Chain{GPU}
+  function Residual(c :: Chain{GPU}; gpu = GPU) where {GPU}
+    new{gpu}(gpu == GPU ? c : swap(c))
+  end
+end
+
+function Residual(layers :: Layer{GPU}...; gpu = GPU) where {GPU}
+  ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
+  Residual{gpu}(Chain(ls...))
+end
+
+(r :: Residual)(x) = r.chain(x) .+ x
+
+swap(r :: Residual{GPU}) where {GPU} = Residual(swap(r.layer))
+Base.copy(r :: Residual{GPU}) where {GPU} = Residual(copy(r.layer))
+
+function valid_insize(r :: Residual, s)
+  outsize(r.chain, s) != s && error("Residual layer is ill-constructed")
+  valid_insize(r.chain, s)
+end
+
+function outsize(r :: Residual, s)
+  os = outsize(r.chain, s)
+  os != s && error("Residual layer is ill-constructed")
+  os
+end
+
+layers(r :: Residual) = layers(r.chain)
+
 # -------- Chain/Stack Macro ------------------------------------------------- #
 
 getsize(t :: Int) = t
@@ -626,7 +663,7 @@ macro chain(ex, layers...)
 end
 
 """
-    @stack(gametype, kwoptions, partial_layer_constructors...)
+    @stack(gametype, [kwoptions...,] partial_layer_constructors...)
 
 Stack macro that works analogously to `@chain`.
 """
@@ -634,3 +671,12 @@ macro stack(ex, layers...)
   composite_macro_body(:(Jtac.Stack), ex, layers...)
 end
 
+"""
+    @residual(gametype, [kwoptions...,] partial_layer_constructors...)
+
+Macro to comfortably create residual blocks.
+"""
+macro residual(ex, layers...)
+  # TODO: Check consistency!!!
+  composite_macro_body(:(Jtac.Residual), ex, layers...)
+end
