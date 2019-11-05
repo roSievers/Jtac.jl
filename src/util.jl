@@ -280,3 +280,23 @@ function branch(games :: Vector, br)
   end
 
 end
+
+# -------- Neural Network Head Creation -------------------------------------- #
+
+function prepare_head(head, s, l, gpu)
+
+  if isnothing(head)
+
+    head = Dense(prod(s), l, gpu = gpu)
+
+  else
+
+    @assert valid_insize(head, s) "Head incompatible with trunk."
+    @assert outsize(head, os) == (l,) "Head incompatible with game."
+    head = (Jtac.gpu(head) == gpu) ? head : swap(head)
+
+  end
+
+  head
+
+end

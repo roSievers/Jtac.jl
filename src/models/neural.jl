@@ -9,11 +9,12 @@ policy prediction.
 """
 struct NeuralModel{G, GPU} <: Model{G, GPU}
 
-  layer :: Layer{GPU}           # Takes input and returns layer before logits
+  trunk :: Layer{GPU}           # Takes input and returns layer before logits
   features :: Vector{Feature}   # Features that the network must predict
 
-  vphead                        # value/policy head
-  fhead                         # feature head
+  vhead :: Layer{GPU}                  # value head
+  phead :: Layer{GPU}                  # policy head
+  fhead :: Union{Nothing, Layer{GPU}}  # feature head
 
   vconv                         # Converts value-logit to value
   pconv                         # Converts policy-logits to policy
@@ -21,111 +22,71 @@ struct NeuralModel{G, GPU} <: Model{G, GPU}
 end
 
 """
-    NeuralModel(G, layer [, features; vphead, fhead, value_conv, policy_conv])
+    NeuralModel(G, trunk [, features; vhead, phead, fhead, vconv, pconv])
 
-Constructs a neural model for gametype `G` from the neural network `layer`
-with `features` enabled. `vphead` and `fhead` are optional neural network layers
-that output logits for the value/policy or the features. The functions
-`value_conv` and `policy_conv` are used to convert the logits to values,
-respectively policies.  
+Construct a model for gametype `G` based on the neural network `trunk`,
+optionally with `features` enabled. The heads `vhead`, `phead`, and `fhead` are
+optional neural network layers that produce "logits" for the value, policy and
+feature prediction. The functions `vconv` and `pconv` are used to map the
+"logits" to values and policies. The respective feature converters are contained
+in `features`.
 """
 function NeuralModel( :: Type{G}
-                    , layer :: Layer{GPU}
+                    , trunk :: Layer{GPU}
                     , features = Feature[]
-                    ; vphead = nothing
-                    , fhead = nothing
-                    , value_conv = Knet.tanh
-                    , policy_conv = Knet.softmax
+                    ; vhead :: Union{Nothing, Layer{GPU}} = nothing
+                    , phead :: Union{Nothing, Layer{GPU}} = nothing
+                    , fhead :: Union{Nothing, Layer{GPU}} = nothing
+                    , vconv = Knet.tanh
+                    , pconv = Knet.softmax
                     ) where {G, GPU}
 
-  @assert valid_insize(layer, size(G)) "Input layer does not fit the game"
+  @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
 
   features = check_features(Feature[features...])
 
   pl = policy_length(G)
   fl = feature_length(features, G)
+  os = outsize(trunk, size(G))
 
-  os = outsize(layer, size(G))
+  # Check the given heads and create linear default heads if not specified
+  vhead = prepare_head(vhead, os, 1, GPU)
+  phead = prepare_head(phead, os, pl, GPU)
+  fhead = fl > 0 ? prepare_head(fhead, os, fl, GPU) : nothing
 
-  # If no value/policy head is provided, we just use one plain dense layer.
-  # If something is provided, we check its sanity
-  if isnothing(vphead)
-
-    vphead = Dense(prod(os), pl + 1, gpu = GPU)
-
-  else
-
-    @assert valid_insize(vphead, os) "Value/policy head incompatible with trunk"
-    @assert outsize(vphead, os) == (pl+1,) "Value/policy head incompatible with $G"
-    vphead = (gpu(vphead) == GPU) ? vphead : swap(vphead)
-
-  end
-
-  # The same for the feature head
-  if isnothing(fhead) && fl > 0
-
-    fhead = Dense(prod(os), fl, gpu = GPU)
-
-  elseif fl > 0
-
-    @assert valid_insize(fhead, os) "Feature head incompatible with trunk"
-    @assert outsize(fhead, os) == (fl+1,) "Feature head incompatible with $G"
-    fhead = (gpu(fhead) == GPU) ? fhead : swap(fhead)
-
-  else
-
-    fhead = nothing
-
-  end
-
-  NeuralModel{G, GPU}( layer
-                     , features
-                     , vphead
-                     , fhead
-                     , value_conv
-                     , policy_conv )
+  NeuralModel{G, GPU}(trunk, features, vhead, phead, fhead, vconv, pconv) 
 
 end
 
 # Low level access to neural models
 function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
 
-  # Get the general network output used to calculate policy, value, features
-  output = m.layer(data)
-
-  # Apply the value / policy head
-  vp = m.vphead(output)
+  # Get the trunk output to calculate policy, value, features
+  out = m.trunk(data)
 
   # Apply the converters for value and policy
-  v  = m.vconv.(vp[1,:])
-  p  = m.pconv(vp[2:end,:], dims=1)
+  v = reshape(m.vconv.(m.vhead(out)), :)
+  p = m.pconv(m.phead(out), dims=1)
 
-  # TODO: rewrite this next part with the feature_indices helper function
-  # Apply the feature head, if features are to be calculated
+  # Apply the feature head if features are to be calculated
   if use_features && !isnothing(m.fhead)
 
-    fout = m.fhead(output)
+    f = m.fhead(out)
 
-    j = 0
-    flabels = Array{Float32}[]
-    
-    # Apply the feature converters
-    for f in features(m)
-      l = feature_length(f, G)
-      push!(flabels, feature_conv(f, fout[j+1:j+l,:]))
-      j += l
+    fs = map(features(l), feature_indices(features(l), G)) do feat, sel
+      feature_conv(feat, f[sel,:])
     end
 
-    # Collect the converted features again
-    fout = isempty(flabels) ? similar(p, 0, length(v)) : vcat(flabels...)
+    # Collect the converted features
+    f = isempty(fs) ? similar(p, 0, length(v)) : vcat(fs...)
 
   else
 
-    fout = similar(p, 0, length(v))
+    f = similar(p, 0, length(v))
 
   end
 
-  (v, p, fout)
+  (v, p, f)
 
 end
 
@@ -153,9 +114,10 @@ end
 
 function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
   
-  NeuralModel{G, !GPU}( swap(m.layer)
+  NeuralModel{G, !GPU}( swap(m.trunk)
                       , m.features
-                      , swap(m.vphead)
+                      , swap(m.vhead)
+                      , swap(m.phead)
                       , isnothing(m.fhead) ? nothing : swap(m.fhead)
                       , m.vconv
                       , m.pconv )
@@ -164,9 +126,10 @@ end
 
 function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
 
-  NeuralModel{G, GPU}( copy(m.layer)
+  NeuralModel{G, GPU}( copy(m.trunk)
                      , copy(m.features)
-                     , copy(m.vphead)
+                     , copy(m.vhead)
+                     , copy(m.phead)
                      , copy(m.fhead)
                      , m.vconv
                      , m.pconv )
@@ -197,7 +160,7 @@ function MLP(:: Type{G}, hidden, f = Knet.relu; kwargs...) where {G <: Game}
 end
 
 
-# -------- Shallow Convolutional Networrk ------------------------------------ #
+# -------- Shallow Convolutional Network ------------------------------------ #
 
 function ShallowConv( :: Type{G}
                     , filters
