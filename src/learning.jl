@@ -45,12 +45,12 @@ end
 # -------- Training on Datasets ---------------------------------------------- #
 
 """
-    train!(model/player, dataset; loss, <keyword arguments>)
+    train!(model/player, dataset; <keyword arguments>)
 
-Train `model`, or the training model of `player`, on `dataset` to optimize
-`loss`.
+Train `model`, or the training model of `player`, on `dataset`.
 
 # Arguments
+' `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of iterations through `dataset`.
 - `batchsize = 50`: Batchsize for the update steps.
 - `callback_epoch`: Function called after each epoch.
@@ -69,7 +69,7 @@ train!(model, set, loss = loss, epochs = 15)
 """
 function train!( player  :: Union{Player, Model}
                , trainset :: DataSet
-               ; loss
+               ; loss = Loss()
                , epochs = 10
                , batchsize = 50
                , callback_step = (_) -> nothing
@@ -116,7 +116,7 @@ end
 
 function _train!( player :: Player{G}
                 , gen_data :: Function
-                ; loss
+                ; loss = Loss()
                 , epochs = 10
                 , playings = 20
                 , iterations = 10
@@ -215,16 +215,17 @@ end
 
 
 """
-    train_self!(player; loss, <keyword arguments>)
+    train_self!(player; <keyword arguments>)
 
-Train an MCTS `player` under `loss` via playing against itself.
+Train an MCTS `player` via playing against itself.
 
 The training model of `player` learns to predict the MCTS policy, the value of
 game states, and possible features (if `player` supports the same features as
-`loss`). Note that only players with NeuralModel-based training models can
-be trained currently.
+the keyword argument `loss`). Note that only players with NeuralModel-based
+training models can be trained currently.
 
 # Arguments
+- `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of epochs.
 - `playings = 20`: Games played per `epoch` for training-set generation.
 - `iterations = 10`: Number of training epochs per training-set.
@@ -246,11 +247,11 @@ be trained currently.
 # Self-train a simple neural network model for 5 epochs
 model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
 player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-train_self!(player, loss = Loss(), epochs = 5, playings = 100)
+train_self!(player, epochs = 5, playings = 100)
 ```
 """
 function train_self!( player :: MCTSPlayer
-                    ; loss
+                    ; loss = Loss()
                     , branching = 0.
                     , augment = true
                     , distributed = false
@@ -279,19 +280,20 @@ end
 
 
 """
-    train_against!(player, enemy; loss, <keyword arguments>)
+    train_against!(player, enemy; <keyword arguments>)
 
 Train an MCTS `player` under `loss` through playing against `enemy`.
 
 The training model of `player` learns to predict the MCTS policy, the value of
 game states, and possible features (if `player` supports the same features as
-`loss`) when playing against `enemy`. If the enemy is too good, this may turn
-out to be a bad learning mode: a player that loses all the time will produce
-very pessimistic value predictions for each single game state, which will
-harm the MCTS algorithm for improved policies. Note that only players with
-NeuralModel-based training models can be trained currently.
+the keyword argument `loss`) when playing against `enemy`. If the enemy is too
+good, this may turn out to be a bad learning mode: a player that loses all the
+time will produce very pessimistic value predictions for each single game state,
+which will harm the MCTS algorithm for improved policies. Note that only players
+with NeuralModel-based training models can be trained currently.
 
 # Arguments
+- `loss = Loss()`: Loss used for training.
 - `start`: Function that (randomly) yields -1 or 1 to fix the starting player.
 - `epochs = 10`: Number of epochs.
 - `playings = 20`: Games played per `epoch` for training-set generation.
@@ -320,7 +322,7 @@ train_against!(player, enemy, epochs = 5, playings = 100)
 """
 function train_against!( player :: MCTSPlayer
                        , enemy
-                       ; loss
+                       ; loss = Loss()
                        , start :: Function = () -> rand([-1, 1])
                        , branching = 0.
                        , augment = true
@@ -348,9 +350,9 @@ end
 
 
 """
-    train_from_model!(pupil, teacher [, players]; loss, <keyword arguments>)
+    train_from_model!(pupil, teacher [, players]; <keyword arguments>)
 
-Train a `pupil` under `loss` by letting it approximate the predictions of
+Train a `pupil` by letting it approximate the predictions of
 `teacher`'s model on game states created by `players`.
 
 In each epoch, two random `players` are chosen (by default, these are the pupil
@@ -360,6 +362,7 @@ Note that only players with NeuralModel-based training models can be trained
 currently.
 
 # Arguments
+- `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of epochs.
 - `playings = 20`: Games played per `epoch` for training-set generation.
 - `iterations = 10`: Number of training epochs per training-set.
@@ -377,7 +380,7 @@ currently.
 function train_from_model!( pupil :: Player{G}
                           , teacher :: Union{Model{H}, Player{H}}
                           , players = [pupil]
-                          ; loss
+                          ; loss = Loss()
                           , branching = 0.
                           , augment = true
                           , kwargs... 
@@ -482,7 +485,7 @@ with_contest( train_self!
 function with_contest( trainf!     # the training function
                      , player :: MCTSPlayer
                      , args...
-                     ; loss
+                     ; loss = Loss()
                      , opponents = Player[]
                      , length :: Int = 250
                      , cache :: Int = 0
