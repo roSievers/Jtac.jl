@@ -53,7 +53,7 @@ export Model, apply,
 export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
        Chain, Stack,
        valid_insize, outsize, layers,
-       @chain, @stack
+       @chain, @stack, @residual
 
 # Model implementations
 include("models/toy.jl")

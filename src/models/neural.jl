@@ -64,14 +64,18 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: Game}
   # Get the trunk output to calculate policy, value, features
   out = m.trunk(data)
 
-  # Apply the converters for value and policy
-  v = reshape(m.vconv.(m.vhead(out)), :)
-  p = m.pconv(m.phead(out), dims=1)
+  bs = size(out)[end]                 # batchsize
+  pl = policy_length(G)               # policy length
+  fl = feature_length(m.features, G)  # feature length
+
+  # Apply the converters for value and policy on suitable reshapes
+  v = m.vconv.(reshape(m.vhead(out), bs))
+  p = m.pconv(reshape(m.phead(out), pl, bs), dims=1)
 
   # Apply the feature head if features are to be calculated
   if use_features && !isnothing(m.fhead)
 
-    f = m.fhead(out)
+    f = reshape(m.fhead(out), fl, bs)
 
     fs = map(features(l), feature_indices(features(l), G)) do feat, sel
       feature_conv(feat, f[sel,:])

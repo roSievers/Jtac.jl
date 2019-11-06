@@ -500,7 +500,7 @@ end
 
 function Residual(layers :: Layer{GPU}...; gpu = GPU) where {GPU}
   ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
-  Residual{gpu}(Chain(ls...))
+  Residual(Chain(ls...))
 end
 
 (r :: Residual)(x) = r.chain(x) .+ x
@@ -509,13 +509,14 @@ swap(r :: Residual{GPU}) where {GPU} = Residual(swap(r.layer))
 Base.copy(r :: Residual{GPU}) where {GPU} = Residual(copy(r.layer))
 
 function valid_insize(r :: Residual, s)
-  outsize(r.chain, s) != s && error("Residual layer is ill-constructed")
+  os = outsize(r.chain, s)
+  os != s && error("Residual layer is not shape-conserving: $os != $s.")
   valid_insize(r.chain, s)
 end
 
 function outsize(r :: Residual, s)
   os = outsize(r.chain, s)
-  os != s && error("Residual layer is ill-constructed")
+  os != s && error("Residual layer is not shape-conserving: $os != $s.")
   os
 end
 
@@ -563,7 +564,7 @@ function composite_macro_body(c, ex, layers...)
 
   ssym = gensym("s")
   names = []
-  body = [:(local $ssym = $s)]
+  body = Any[:(local $ssym = $s)]
 
   # Expand begin-end blocks
   layers = mapreduce(vcat, layers) do layer
@@ -631,8 +632,11 @@ function composite_macro_body(c, ex, layers...)
 
   end
 
+  name = gensym("l")
   # Join all defined layers to a chain
-  push!(body, :($c($(Expr(:vect, names...))...; $(Expr(:vect, kwargs...))...)))
+  push!(body, :(local $name = $c($(Expr(:vect, names...))...; $(Expr(:vect, kwargs...))...)))
+  push!(body, :(@assert valid_insize($name, $s) "Macro failed to respect input size. This should not happen."))
+  push!(body, :($name))
 
   # Return the created block of code
   esc(Expr(:block, body...))
