@@ -275,7 +275,7 @@ function branch(games :: Vector, br)
 
   map(randsubseq(games, br.during)) do game
     game = copy(game)
-    foreach(_ -> random_turn!(game), 1:rand(1:br.maxsteps))
+    foreach(_ -> random_turn!(game), 1:rand(1:br.steps))
     game
   end
 
