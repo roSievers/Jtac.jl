@@ -135,14 +135,16 @@ end
 policy_length(:: Type{MetaTac}) :: Int = 81
 
 # Size of the data representation of the game
-Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 2)
+Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 3)
 
 # Data representation of the game as layered 2d image
 function representation(game :: MetaTac) :: Array{Float32, 3}
-  data = zeros(Float32, 81, 2)
-  data[:, 1] = game.current_player .* game.board
-  data[legal_actions(game), 2] .= 1
-  reshape(data, (9, 9, 2))
+  data = zeros(Float32, 81, 3)
+  board = game.current_player .* game.board
+  data[board .== 1, 1] .= 1
+  data[board .== -1, 2] .= 1
+  data[legal_actions(game), 3] .= 1
+  reshape(data, (9, 9, 3))
 end
 
 function augment(game :: MetaTac)

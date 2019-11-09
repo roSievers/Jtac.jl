@@ -95,6 +95,8 @@ decompose(l :: Pool{false})      = @decompose :pool l
 decompose(l :: Batchnorm{false}) = @decompose :batchnorm l
 decompose(l :: Chain{false})     = @decompose :chain l
 decompose(l :: Stack{false})     = @decompose :stack l
+decompose(l :: Residual{false})  = @decompose :residual l
+
 
 compose(:: Val{:pointwise}, d) = @compose Pointwise{false} d
 compose(:: Val{:dense}, d)     = @compose Dense{false} d
@@ -105,6 +107,7 @@ compose(:: Val{:pool}, d)      = @compose Pool{false} d
 compose(:: Val{:batchnorm}, d) = @compose Batchnorm{false} d
 compose(:: Val{:chain}, d)     = @compose Chain{false} d
 compose(:: Val{:stack}, d)     = @compose Stack{false} d
+compose(:: Val{:residual}, d)  = @compose Residual{false} d
 
 # -------- Base Models ------------------------------------------------------- #
 

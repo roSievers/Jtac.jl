@@ -266,7 +266,11 @@ branch_options((b, d, s)) = (before = b, during = d, steps = s)
 function branch_root(game, br)
 
   game = copy(game)
-  rand() < br.before && foreach(_ -> random_turn!(game), 1:rand(1:br.steps))
+  if rand() < br.before
+    for _ in 1:rand(1:br.steps)
+      !is_over(game) && random_turn!(game)
+    end
+  end
   game
 
 end
@@ -275,7 +279,9 @@ function branch(games :: Vector, br)
 
   map(randsubseq(games, br.during)) do game
     game = copy(game)
-    foreach(_ -> random_turn!(game), 1:rand(1:br.steps))
+    for _ in 1:rand(1:br.steps)
+      !is_over(game) && random_turn!(game)
+    end
     game
   end
 
@@ -292,8 +298,8 @@ function prepare_head(head, s, l, gpu)
   else
 
     @assert valid_insize(head, s) "Head incompatible with trunk."
-    @assert outsize(head, os) == (l,) "Head incompatible with game."
-    head = (Jtac.gpu(head) == gpu) ? head : swap(head)
+    @assert prod(outsize(head, s)) == l "Head incompatible with game."
+    head = (on_gpu(head) == gpu) ? head : swap(head)
 
   end
 

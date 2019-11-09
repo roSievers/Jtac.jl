@@ -493,10 +493,11 @@ shape-conserving.
 """
 struct Residual{GPU} <: CompositeLayer{GPU}
   chain :: Chain{GPU}
-  function Residual(c :: Chain{GPU}; gpu = GPU) where {GPU}
-    new{gpu}(gpu == GPU ? c : swap(c))
-  end
 end
+
+#function Residual(c :: Chain{GPU}; gpu = GPU) where {GPU}
+#  new{gpu}(gpu == GPU ? c : swap(c))
+#end
 
 function Residual(layers :: Layer{GPU}...; gpu = GPU) where {GPU}
   ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
@@ -505,13 +506,20 @@ end
 
 (r :: Residual)(x) = r.chain(x) .+ x
 
-swap(r :: Residual{GPU}) where {GPU} = Residual(swap(r.layer))
-Base.copy(r :: Residual{GPU}) where {GPU} = Residual(copy(r.layer))
+swap(r :: Residual{GPU}) where {GPU} = Residual{!GPU}(swap(r.chain))
+Base.copy(r :: Residual{GPU}) where {GPU} = Residual{GPU}(copy(r.chain))
 
 function valid_insize(r :: Residual, s)
-  os = outsize(r.chain, s)
-  os != s && error("Residual layer is not shape-conserving: $os != $s.")
-  valid_insize(r.chain, s)
+
+  valid = valid_insize(r.chain, s)
+
+  if valid
+    os = outsize(r.chain, s)
+    os != s && error("Residual chain is not shape-conserving: $os != $s.")
+  end
+  
+  valid
+  
 end
 
 function outsize(r :: Residual, s)
@@ -681,6 +689,5 @@ end
 Macro to comfortably create residual blocks.
 """
 macro residual(ex, layers...)
-  # TODO: Check consistency!!!
   composite_macro_body(:(Jtac.Residual), ex, layers...)
 end

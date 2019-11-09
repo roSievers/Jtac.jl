@@ -224,10 +224,10 @@ function _record( play :: Function # maps game to dataset
   # and the call to callback
   play_with_branching = _ -> begin
 
-    # Play through the game once without branching
+    # Play through the game once without branching inbetween
     dataset = play(branch_root(root, branching))
     
-    # Create branchpoints and play them
+    # Create branchpoints and play them, too
     branches = play.(branch(dataset.games[1:end-1], branching))
 
     # Filter branches where the random turn lead us to the end of the game
