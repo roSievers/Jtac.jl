@@ -86,7 +86,7 @@ worker_model(m :: Async) = m.model
 
 # Async networks cannot calculate features. To get the features of the
 # network on which it is based, access them via training_model(...)
-features(m :: Async) = []
+features(m :: Async) = Feature[]
 
 worker_model_to_cpu(m :: Async) = switch_model(m, to_cpu(m.model))
 worker_model_to_gpu(m :: Async) = switch_model(m, to_gpu(m.model))

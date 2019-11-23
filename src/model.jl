@@ -75,3 +75,9 @@ is not trainable.
 """
 training_model(m :: Model) = nothing
 
+"""
+    gametype(model)
+
+Get the julia type `G <: Game` that `model` can be applied to.
+"""
+gametype(model :: Model{G}) where {G <: Game} = G

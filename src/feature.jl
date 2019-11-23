@@ -38,6 +38,8 @@ end
 
 function feature_indices(fs :: Vector{Feature}, G)
 
+  isempty(fs) && return []
+
   clengths = cumsum(feature_length.(fs, G))
 
   start_indices = [1; clengths[1:end-1] .+ 1]
