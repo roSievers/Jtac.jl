@@ -1,5 +1,8 @@
 
 using ArgParse
+using HTTP
+using JSON2
+using Jtac
 
 # -------- Keyword Arguments ------------------------------------------------- #
 
@@ -21,10 +24,6 @@ s = ArgParseSettings()
 end
 
 args = parse_args(s)
-
-using HTTP
-using JSON2
-using Jtac
 
 # -------- Request and Response Types ---------------------------------------- #
 
