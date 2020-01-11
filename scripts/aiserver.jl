@@ -8,7 +8,7 @@ using Jtac
 
 s = ArgParseSettings()
 @add_arg_table s begin
-  "--ip"
+    "--ip"
     help = "IP address that the server listens to"
     default = "127.0.0.1"
   "--port"
@@ -28,34 +28,34 @@ args = parse_args(s)
 # -------- Request and Response Types ---------------------------------------- #
 
 struct PlayerRequest
-  model :: String
-  power :: Int
-  exploration :: Float64
+  model::String
+  power::Int
+  exploration::Float64
 end
 
 struct GameRequest
-  game :: Game
+  game::Game
 end
 
-function GameRequest(; typ :: String, kwargs...)
+function GameRequest(; typ::String, kwargs...)
   if     typ == "TicTacToe" GameRequest(TicTacToe(; kwargs...))
   elseif typ == "MNKGame"   GameRequest(MNKGame(; kwargs...))
   elseif typ == "MetaTac"   GameRequest(MetaTac(; kwargs...))
   elseif typ == "Morris"    GameRequest(Morris(; kwargs...))
   end
-end
+    end
 
 JSON2.@format GameRequest keywordargs
 
 struct ApplyRequest
-  player :: PlayerRequest
-  game :: GameRequest
+  player::PlayerRequest
+  game::GameRequest
 end
 
 struct ApplyResponse
-  value :: Float32
-  policy :: Vector{Float32}
-  features :: Dict{String, Vector{Float32}}
+  value::Float32
+  policy::Vector{Float32}
+  features::Dict{String,Vector{Float32}}
 end
 
 # -------- Auxiliary Functions ----------------------------------------------- #
@@ -68,20 +68,20 @@ function load_models(dir, gpu)
   files = readdir(dir)
 
   # Extract the files with '.jtm' ending and load them as async (gpu) models
-  models = map(filter(x -> length(x) > 4 && x[end-3:end] == ".jtm", files)) do fname
-    name = fname[1:end-4] # strip '.jtm'
+  models = map(filter(x->length(x) > 4 && x[end - 3:end] == ".jtm", files)) do fname
+    name = fname[1:end - 4] # strip '.jtm'
     path = joinpath(dir, name)
     model = gpu ? load_model(path) |> to_gpu : load_model(path)
     name => Async(model)
   end
 
-  Dict{String, Model}("rollout"=>RolloutModel(), "random"=>RandomModel(), models...)
+  Dict{String,Model}("rollout" => RolloutModel(), "random" => RandomModel(), models...)
 
 end
 
 # -------- HTTP Server ------------------------------------------------------- #
 
-function get_reload(req :: HTTP.Request, dir, models)
+function get_reload(req::HTTP.Request, dir, gpu, models)
 
   # Remove previous models
   empty!(models)
@@ -89,26 +89,23 @@ function get_reload(req :: HTTP.Request, dir, models)
   # Add new ones
   # TODO: We should be more efficient here and only look for newly added
   # / deleted models
-  merge!(models, load_models(model_dir, gpu))
+  merge!(models, load_models(dir, gpu))
 
   "Successfully loaded $(length(models)) models"
 
 end
 
-function get_models(req :: HTTP.Request, models)
+function get_models(req::HTTP.Request, models)
   map(collect(models)) do (name, model)
-    Dict( "name"     => name
-        , "game"     => string(gametype(model))
-        , "params"   => sum([0; length.(Knet.params(model))])
-        , "features" => Jtac.feature_name.(Jtac.features(model)) )
+    Dict("name"     => name, "game"     => string(gametype(model)), "params"   => sum([0; length.(Knet.params(model))]), "features" => Jtac.feature_name.(Jtac.features(model)))
   end
-end
+    end
 
-function get_games(req :: HTTP.Request, models)
+function get_games(req::HTTP.Request, models)
   ["MNKGame", "MetaTac", "Morris"]
 end
 
-function post_apply(req :: HTTP.Request, models)
+function post_apply(req::HTTP.Request, models)
 
   # Parse the json sent via POST
   req = JSON2.read(IOBuffer(HTTP.payload(req)), ApplyRequest)
@@ -132,10 +129,8 @@ function post_apply(req :: HTTP.Request, models)
 
   # Extract features in nicer dict-format
   feats = Jtac.features(tmodel)
-  fdict = Dict{String, Vector{Float32}}(
-            Jtac.feature_name(feat) => Jtac.feature_conv(feat, f[idx])
-            for (feat, idx) in zip(feats, Jtac.feature_indices(feats, typeof(game)))
-          )
+  fdict = Dict{String,Vector{Float32}}(Jtac.feature_name(feat) => Jtac.feature_conv(feat, f[idx])
+            for (feat, idx) in zip(feats, Jtac.feature_indices(feats, typeof(game))))
   
   ApplyResponse(v, p, fdict)
 
@@ -152,10 +147,10 @@ function main(ip, port, dir, gpu)
   router = HTTP.Router()
 
   # Register the addresses
-  HTTP.@register router "GET"  "/reload" (r -> wrap(get_reload, r, dir, models))
-  HTTP.@register router "GET"  "/models" (r -> wrap(get_models, r, models))
-  HTTP.@register router "GET"  "/games"  (r -> wrap(get_games, r, models))
-  HTTP.@register router "POST" "/apply"  (r -> wrap(post_apply, r, models))
+  HTTP.@register router "GET"  "/reload" (r->wrap(get_reload, r, dir, gpu, models))
+  HTTP.@register router "GET"  "/models" (r->wrap(get_models, r, models))
+  HTTP.@register router "GET"  "/games"  (r->wrap(get_games, r, models))
+  HTTP.@register router "POST" "/apply"  (r->wrap(post_apply, r, models))
 
   # Start the server
   println("Server listens at $ip:$port.")
