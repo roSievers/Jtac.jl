@@ -18,6 +18,8 @@ rest of Jtac's functionality.
 # Usage
 Some tutorial will soon follow here
 
+We are also writing a frontend in Elm to help with inspecting models. It lives at https://github.com/kreibaum/Jtac-frontend
+
 # Links
 
 - [Blogpost by Surag Nair](https://web.stanford.edu/~surag/posts/alphazero.html)
