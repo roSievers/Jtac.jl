@@ -4,26 +4,7 @@ using HTTP
 using JSON2
 using Jtac
 
-# -------- Keyword Arguments ------------------------------------------------- #
-
-s = ArgParseSettings()
-@add_arg_table s begin
-    "--ip"
-    help = "IP address that the server listens to"
-    default = "127.0.0.1"
-  "--port"
-    help = "port number that the server listens to"
-    arg_type = Int
-    default = 4242
-  "--dir"
-    help = "directory path that is searched for '.jtm' model files"
-    default = "."
-  "--gpu"
-    help = "whether the GPU will be used if CUDA is supported"
-    action = :store_true
-end
-
-args = parse_args(s)
+include("rencoder.jl")
 
 # -------- Request and Response Types ---------------------------------------- #
 
@@ -43,7 +24,7 @@ function GameRequest(; typ::String, kwargs...)
   elseif typ == "MetaTac"   GameRequest(MetaTac(; kwargs...))
   elseif typ == "Morris"    GameRequest(Morris(; kwargs...))
   end
-    end
+end
 
 JSON2.@format GameRequest keywordargs
 
@@ -91,18 +72,20 @@ function get_reload(req::HTTP.Request, dir, gpu, models)
   # / deleted models
   merge!(models, load_models(dir, gpu))
 
-  "Successfully loaded $(length(models)) models"
+  "Successfully loaded $(length(models)) models."
 
 end
 
 function get_models(req::HTTP.Request, models)
   map(collect(models)) do (name, model)
-    Dict("name"     => name, "game"     => string(gametype(model)), "params"   => sum([0; length.(Knet.params(model))]), "features" => Jtac.feature_name.(Jtac.features(model)))
+    Dict( "name"     => name, "game"     => string(gametype(model))
+        , "params"   => sum([0; length.(Knet.params(model))])
+        , "features" => Jtac.feature_name.(Jtac.features(model)))
   end
-    end
+end
 
 function get_games(req::HTTP.Request, models)
-  ["MNKGame", "MetaTac", "Morris"]
+  ["TicTacToe", "MNKGame", "MetaTac", "Morris"]
 end
 
 function post_apply(req::HTTP.Request, models)
@@ -125,12 +108,13 @@ function post_apply(req::HTTP.Request, models)
 
   # TODO: Get (improved) value of state from player
   v, _, f = apply_features(tmodel, game) # get value and features
-  p = think(player, game)               # get improved policy
+  p = think(player, game)                # get improved policy
 
   # Extract features in nicer dict-format
   feats = Jtac.features(tmodel)
-  fdict = Dict{String,Vector{Float32}}(Jtac.feature_name(feat) => Jtac.feature_conv(feat, f[idx])
-            for (feat, idx) in zip(feats, Jtac.feature_indices(feats, typeof(game))))
+  fdict = Dict{String,Vector{Float32}}(
+            Jtac.feature_name(feat) => Jtac.feature_conv(feat, f[idx])
+            for (feat, idx) in zip(feats, Jtac.feature_indices(feats, typeof(game))) )
   
   ApplyResponse(v, p, fdict)
 
@@ -139,6 +123,27 @@ end
 # -------- Main -------------------------------------------------------------- #
 
 function main(ip, port, dir, gpu)
+
+  # Keyword Arguments
+
+  s = ArgParseSettings()
+  @add_arg_table s begin
+      "--ip"
+      help = "IP address that the server listens to"
+      default = "127.0.0.1"
+    "--port"
+      help = "port that the server listens to"
+      arg_type = Int
+      default = 4242
+    "--dir"
+      help = "directory path that is searched for '.jtm' model files"
+      default = "."
+    "--gpu"
+      help = "whether the GPU will be used if CUDA is supported"
+      action = :store_true
+  end
+
+  args = parse_args(s)
 
   # Load models from model_dir
   models = load_models(dir, gpu)
