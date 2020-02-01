@@ -68,12 +68,33 @@ The number of tasks that should be applied if the model is called with `asyncmap
 ntasks(:: Model) = 1
 
 """
-    training_model(model)
+    base_model(model)
+    training_model(player)
 
-Extract the component of `model` that can be trained. Returns nothing if `model`
-is not trainable.
+Extract the model on which `model` or `player` is based. Except for explicit
+wrapper models like `Async`, this usually returns the model itself.
+"""
+base_model(m :: Model) = m
+
+"""
+    training_model(model)
+    training_model(player)
+
+Extract the component of `model` or `player` that can be trained. Returns
+nothing if `model` is not trainable.
 """
 training_model(m :: Model) = nothing
+
+"""
+    playing_model(model)
+    playing_model(player)
+
+Extract the model in `model` or `player` that is most suitable for playing.
+On models, this always returns the model itself. Can return `nothing` if
+`player` does not use a model.
+
+"""
+playing_model(m :: Model) = m
 
 """
     gametype(model)

@@ -47,7 +47,8 @@ ntasks(:: Player) = 1
 gametype(:: Player{G}) where {G <: Game} = G
 
 # Players with potentially trainable models can be asked to return them
-playing_model(:: Player) = nothing
+base_model(p :: Player)   = nothing
+playing_model(:: Player)  = nothing
 training_model(:: Player) = nothing
 
 # Features that are supported by the player. Used for automatic feature
@@ -142,6 +143,8 @@ end
 
 name(p :: IntuitionPlayer) = p.name
 ntasks(p :: IntuitionPlayer) = ntasks(p.model)
+
+base_model(p :: IntuitionPlayer) = base_model(p.model)
 playing_model(p :: IntuitionPlayer) = p.model
 training_model(p :: IntuitionPlayer) = training_model(p.model)
 
@@ -243,6 +246,7 @@ end
 name(p :: MCTSPlayer) = p.name
 ntasks(p :: MCTSPlayer) = ntasks(p.model)
 playing_model(p :: MCTSPlayer) = p.model
+base_model(p :: MCTSPlayer) = base_model(p.model)
 training_model(p :: MCTSPlayer) = training_model(p.model)
 
 function features(p :: MCTSPlayer)

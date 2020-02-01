@@ -81,6 +81,7 @@ swap(m :: Async) = @warn "Async cannot be swapped. Remaining on CPU."
 Base.copy(m :: Async) = switch_model(m, copy(m.model))
 
 ntasks(m :: Async) = m.buffersize
+base_model(m :: Async) = m.model
 training_model(m :: Async) = m.model
 worker_model(m :: Async) = m.model
 
