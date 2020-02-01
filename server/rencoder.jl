@@ -1,33 +1,18 @@
 
-using JSON2 
-using Jtac
-
-# Explicitly typed values for json encoding
+# -------- Explicitly Typed values for automated json encoding --------------- #
 
 struct Typed{T}
   typ :: String
   value :: T 
+
+  # Overwrite default constructor
+  Typed(value) = new{typeof(value)}(typeof(value) |> string |> lowercase, value)
 end
 
-Typed(value :: T) where {T} = Typed{T}(string(T) |> lowercase, value)
 
-convert(::Type{Typed{T}}, v :: T) where {T} = Typed(v)
-
-# Images and Layers
+# -------- Individual Layers that compose an Image --------------------------- #
 
 abstract type Layer end
-
-struct Image
-  layers :: Vector{Typed{L} where {L <: Layer}} 
-  width :: Int
-  height :: Int
-  name :: String
-  value :: Union{Float32, Nothing}
-end
-
-Image(layers :: Vector{Layer}, kwargs...) = Image(Typed.(layers), kwargs...)
-
-# Specific layers
 
 struct Heatmap <: Layer
   data :: Vector{Float32}
@@ -43,24 +28,47 @@ struct Tokens <: Layer
   style :: String
 end
 
+function Tokens(game :: Union{MNKGame, MetaTac}; name = "tokens", style = "black")
+  tokens = Dict(1  => "X", -1 => "O", 0  => "")
+  Tokens(map(x -> tokens[x], game.board), name, style)
+end
+
+
 struct Actions <: Layer
   data :: Vector{Int}
   name :: String
 end
 
-# Game states and network outputs to Images
-
-function Image(game :: TicTacToe, policy :: Vector{Float32}, value :: Float32)
-  tokens = map(game.board) do x
-    x == 1 ? "X" : (x == -1 ? "O" : "")
-  end
-
+function Actions(game :: Union{MNKGame, MetaTac}; name = "actions")
   actions = legal_actions(game)
-  action_data = -ones(Int, length(game.board))
+  action_data = -ones(Int, policy_length(game))
   action_data[actions] = actions
+  Actions(action_data, name)
+end
 
-  Image([ Heatmap(policy, "policy", "greyscale", 0., 1.)
-        , Tokens(tokens, "tokens", "black")
-        , Actions(action_data, "actions") ], 3, 3, "TicTacToe", value)
+
+# -------- An image as a stack of layers with some geometry ------------------ #
+
+struct Image
+  layers
+  width :: Int
+  height :: Int
+  name :: String
+  value :: Union{Float32, Nothing}
+
+  # Overwrite default constructor
+  Image(layers :: Vector{Layer}, args...) = new(Typed.(layers), args...)
+end
+
+function Image( game :: Union{MNKGame, MetaTac}
+              , policy :: Vector{Float32}
+              , value :: Float32 )
+
+  m, n = size(game)[1:2]
+
+  heatmap = Heatmap(policy, "policy", "greyscale", 0., 1.)
+  name = typeof(game) |> string |> lowercase
+
+  Image([heatmap, Tokens(game), Actions(game) ], m, n, name, value)
 end
 
