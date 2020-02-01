@@ -48,8 +48,12 @@ include("layer.jl")
 include("model.jl")
 
 export Feature, ConstantFeature
+
 export Model, apply, apply_features,
-       to_gpu, to_cpu, swap, on_gpu, training_model, gametype
+       to_gpu, to_cpu, swap, on_gpu,
+       base_model, playing_model, training_model,
+       gametype
+
 export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
        Chain, Stack,
        valid_insize, outsize, layers,
