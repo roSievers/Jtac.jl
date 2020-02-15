@@ -87,6 +87,7 @@ end
 function ApplyRequest(; game, model, power, temperature, exploration)
   ApplyRequest(game, model, power, temperature, exploration)
 end
+
 JSON2.@format ApplyRequest keywordargs
 
 struct ApplyResponse

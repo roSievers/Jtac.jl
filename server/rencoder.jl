@@ -14,12 +14,37 @@ end
 
 abstract type Layer end
 
+const Point = Tuple{Float32, Float32}
+
+struct Lines <: Layer
+  data :: Vector{Tuple{Point, Point}}
+  name :: String
+  style :: String
+end
+
+Lines(data; name = "lines", style = "black") = Lines(data, name, style)
+
+function Lines(xs, ys; kwargs...)
+  data = map(xs, ys) do x, y
+    ((x[1], y[1]), (x[2], y[2]))
+  end
+  Lines(data; kwargs...)
+end
+
 struct Heatmap <: Layer
   data :: Vector{Float32}
   name :: String
   style :: String
   min :: Float32
   max :: Float32
+end
+
+function Heatmap( data
+                ; min = minimum(data)
+                , max = maximum(data)
+                , name = "heatmap"
+                , style = "grey" )
+  Heatmap(data, name, style, min, max)
 end
 
 struct Tokens <: Layer
@@ -66,9 +91,17 @@ function Image( game :: Union{MNKGame, MetaTac}
 
   m, n = size(game)[1:2]
 
-  heatmap = Heatmap(policy, "policy", "greyscale", 0., 1.)
+  heatmap = Heatmap(policy, min = 0., max = 1.)
   name = typeof(game) |> string |> lowercase
 
-  Image([heatmap, Tokens(game), Actions(game) ], m, n, name, value)
+  layers = [heatmap, Tokens(game), Actions(game)]
+
+  if isa(game, MetaTac)
+    x = Point[(3, 3), (6, 6), (0, 9), (0, 9)] 
+    y = Point[(0, 9), (0, 9), (3, 3), (6, 6)]
+    push!(layers, Lines(x, y))
+  end
+
+  Image(layers, m, n, name, value)
 end
 

@@ -11429,6 +11429,9 @@ var $author$project$Image$layerName = function (layer) {
 		case 'ImageLayerTokens':
 			var value = layer.a;
 			return value.name;
+		case 'ImageLayerActions':
+			var value = layer.a;
+			return value.name;
 		default:
 			var value = layer.a;
 			return value.name;
@@ -11502,6 +11505,9 @@ var $author$project$Layer$DisplayLayerInt = F2(
 	function (a, b) {
 		return {$: 'DisplayLayerInt', a: a, b: b};
 	});
+var $author$project$Layer$DisplayLayerLines = function (a) {
+	return {$: 'DisplayLayerLines', a: a};
+};
 var $author$project$Layer$DisplayLayerString = F2(
 	function (a, b) {
 		return {$: 'DisplayLayerString', a: a, b: b};
@@ -11627,7 +11633,7 @@ var $author$project$Main$prepareImageLayer = F2(
 					$author$project$Layer$tokenRenderer(
 						{color: 'black'}),
 					{data: value.data, height: image.value.height, width: image.value.width});
-			default:
+			case 'ImageLayerActions':
 				var value = layer.a;
 				return A2(
 					$author$project$Layer$DisplayLayerInt,
@@ -11638,6 +11644,10 @@ var $author$project$Main$prepareImageLayer = F2(
 							}
 						}),
 					{data: value.data, height: image.value.height, width: image.value.width});
+			default:
+				var value = layer.a;
+				return $author$project$Layer$DisplayLayerLines(
+					{data: value.data, height: image.value.height, name: value.name, width: image.value.width});
 		}
 	});
 var $author$project$Main$prepareImage = F2(
@@ -11674,10 +11684,13 @@ var $author$project$Layer$heightDisplayLayer = function (layer) {
 			var renderer = layer.a;
 			var data = layer.b;
 			return data.height * renderer.cellWidth;
-		default:
+		case 'DisplayLayerInt':
 			var renderer = layer.a;
 			var data = layer.b;
 			return data.height * renderer.cellWidth;
+		default:
+			var data = layer.a;
+			return data.height * 100;
 	}
 };
 var $elm$core$List$drop = F2(
@@ -11749,6 +11762,39 @@ var $author$project$Layer$renderOne = F2(
 				},
 				$author$project$Layer$indexedData(data)));
 	});
+var $elm$svg$Svg$line = $elm$svg$Svg$trustedNode('line');
+var $elm$svg$Svg$Attributes$style = _VirtualDom_attribute('style');
+var $elm$svg$Svg$Attributes$x1 = _VirtualDom_attribute('x1');
+var $elm$svg$Svg$Attributes$x2 = _VirtualDom_attribute('x2');
+var $elm$svg$Svg$Attributes$y1 = _VirtualDom_attribute('y1');
+var $elm$svg$Svg$Attributes$y2 = _VirtualDom_attribute('y2');
+var $author$project$Layer$renderOneSegment = function (segment) {
+	var y2 = segment.end.y * 100;
+	var y1 = segment.begin.y * 100;
+	var x2 = segment.end.x * 100;
+	var x1 = segment.begin.x * 100;
+	return A2(
+		$elm$svg$Svg$line,
+		_List_fromArray(
+			[
+				$elm$svg$Svg$Attributes$x1(
+				$elm$core$String$fromFloat(x1)),
+				$elm$svg$Svg$Attributes$x2(
+				$elm$core$String$fromFloat(x2)),
+				$elm$svg$Svg$Attributes$y1(
+				$elm$core$String$fromFloat(y1)),
+				$elm$svg$Svg$Attributes$y2(
+				$elm$core$String$fromFloat(y2)),
+				$elm$svg$Svg$Attributes$style('stroke:rgb(0,0,0);stroke-width:5')
+			]),
+		_List_Nil);
+};
+var $author$project$Layer$renderOneLines = function (lines) {
+	return A2(
+		$elm$svg$Svg$g,
+		_List_Nil,
+		A2($elm$core$List$map, $author$project$Layer$renderOneSegment, lines.data));
+};
 var $author$project$Layer$renderDisplayLayer = function (layer) {
 	switch (layer.$) {
 		case 'DisplayLayerFloat':
@@ -11759,10 +11805,13 @@ var $author$project$Layer$renderDisplayLayer = function (layer) {
 			var renderer = layer.a;
 			var data = layer.b;
 			return A2($author$project$Layer$renderOne, renderer, data);
-		default:
+		case 'DisplayLayerInt':
 			var renderer = layer.a;
 			var data = layer.b;
 			return A2($author$project$Layer$renderOne, renderer, data);
+		default:
+			var linesData = layer.a;
+			return $author$project$Layer$renderOneLines(linesData);
 	}
 };
 var $elm$svg$Svg$svg = $elm$svg$Svg$trustedNode('svg');
@@ -11777,10 +11826,13 @@ var $author$project$Layer$widthDisplayLayer = function (layer) {
 			var renderer = layer.a;
 			var data = layer.b;
 			return data.width * renderer.cellWidth;
-		default:
+		case 'DisplayLayerInt':
 			var renderer = layer.a;
 			var data = layer.b;
 			return data.width * renderer.cellWidth;
+		default:
+			var data = layer.a;
+			return data.width * 100;
 	}
 };
 var $author$project$Layer$renderMany = function (displayLayer) {
@@ -13089,6 +13141,44 @@ var $author$project$Image$decodeHeatmap = A2(
 	$elm$json$Json$Decode$map,
 	$author$project$Image$ImageLayerHeatmap,
 	A2($elm$json$Json$Decode$field, 'value', $author$project$Image$decodeHeatmapValue));
+var $author$project$Image$ImageLayerLines = function (a) {
+	return {$: 'ImageLayerLines', a: a};
+};
+var $author$project$Image$LinesValue = F2(
+	function (data, name) {
+		return {data: data, name: name};
+	});
+var $author$project$Image$LineSegment = F2(
+	function (begin, end) {
+		return {begin: begin, end: end};
+	});
+var $author$project$Image$Float2D = F2(
+	function (x, y) {
+		return {x: x, y: y};
+	});
+var $elm$json$Json$Decode$index = _Json_decodeIndex;
+var $author$project$Image$decodeFloat2D = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Image$Float2D,
+	A2($elm$json$Json$Decode$index, 0, $elm$json$Json$Decode$float),
+	A2($elm$json$Json$Decode$index, 1, $elm$json$Json$Decode$float));
+var $author$project$Image$decodeLineSegment = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Image$LineSegment,
+	A2($elm$json$Json$Decode$index, 0, $author$project$Image$decodeFloat2D),
+	A2($elm$json$Json$Decode$index, 1, $author$project$Image$decodeFloat2D));
+var $author$project$Image$decodeLinesValue = A3(
+	$elm$json$Json$Decode$map2,
+	$author$project$Image$LinesValue,
+	A2(
+		$elm$json$Json$Decode$field,
+		'data',
+		$elm$json$Json$Decode$list($author$project$Image$decodeLineSegment)),
+	A2($elm$json$Json$Decode$field, 'name', $elm$json$Json$Decode$string));
+var $author$project$Image$decodeLines = A2(
+	$elm$json$Json$Decode$map,
+	$author$project$Image$ImageLayerLines,
+	A2($elm$json$Json$Decode$field, 'value', $author$project$Image$decodeLinesValue));
 var $author$project$Image$ImageLayerTokens = function (a) {
 	return {$: 'ImageLayerTokens', a: a};
 };
@@ -13119,6 +13209,8 @@ var $author$project$Image$decodeLayerDataHelp = function (typ) {
 			return $author$project$Image$decodeTokens;
 		case 'actions':
 			return $author$project$Image$decodeActions;
+		case 'lines':
+			return $author$project$Image$decodeLines;
 		default:
 			return $elm$json$Json$Decode$fail('No Layer Data decoder implemented for ' + typ);
 	}
