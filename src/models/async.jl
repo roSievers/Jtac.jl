@@ -51,9 +51,10 @@ function (m :: Async{G})( game :: G
                         , use_features = false
                         ) where {G <: Game}
 
-  @assert !use_features "Features should never be used in Async."
+  @assert !use_features "Features cannot be used in Async."
 
   out_channel = Channel(1)
+  bind(out_channel, m.thread)
   put!(m.channel, (game, out_channel))
   take!(out_channel)
 
@@ -66,7 +67,7 @@ function (m :: Async{G})( games :: Vector{G}
   @assert !use_features "Features should never be used in Async. "
   @warn "Calling Async model in batched mode is not recommended." maxlog=1
 
-  outputs = asyncmap(x -> m(x, args...), games, ntasks = m.buffersize)
+  outputs = asyncmap(x -> m(x, use_features), games, ntasks = m.buffersize)
   cat_outputs(outputs)
 
 end
