@@ -11,104 +11,181 @@ that it is easy to extend the library with new games.
 """
 module Jtac
 
-# Standard Libraries
+# -------- Packages ---------------------------------------------------------- #
+
 using Random, Statistics, LinearAlgebra, Printf, Distributed
 
-# Pretty Printing
-import ProgressMeter, Crayons
+import ProgressMeter, Crayons, BSON, NLopt
 
-# Neural Networks
 import AutoGrad, Knet
-import Knet: identity, relu, elu, softmax, tanh, sigm
+import Knet: identity,
+             relu,
+             elu,
+             softmax,
+             tanh,
+             sigm
 
-export AutoGrad, Knet, 
-       identity, relu, elu, softmax, tanh, sigm
+export AutoGrad, Knet
 
-# Saving models and datasets
-import BSON
+export identity,
+       relu,
+       elu,
+       softmax,
+       tanh,
+       sigm
 
-# Optimizing the Bayesian ELO likelihood
-import NLopt
+# -------- Utilities --------------------------------------------------------- #
 
-# Utilities
 include("util.jl")
 
-# Games
+# -------- Games ------------------------------------------------------------- #
+
 include("game.jl")
 
-export Game, Status, ActionIndex,
-       status, current_player, legal_actions, apply_action!, 
-       is_action_legal, representation, policy_length, random_playout, 
-       augment, draw, is_over, random_turn!
+export Game, 
+       Status,
+       ActionIndex
 
-# Models
+export status,
+       current_player,
+       legal_actions,
+       apply_action!, 
+       is_action_legal,
+       representation,
+       policy_length,
+       random_playout, 
+       augment,
+       draw,
+       is_over,
+       random_turn!
+
+# -------- CPU/GPU Elements and NN Models ------------------------------------ #
+
 include("feature.jl")
 include("element.jl")
 include("layer.jl")
 include("model.jl")
 
-export Feature, ConstantFeature
+export Feature,
+       ConstantFeature
 
-export Model, apply, apply_features,
-       to_gpu, to_cpu, swap, on_gpu,
-       base_model, playing_model, training_model,
+export Model
+
+export apply,
+       apply_features,
+       to_gpu,
+       to_cpu,
+       swap,
+       on_gpu,
+       base_model,
+       playing_model,
+       training_model,
        gametype
 
-export Pointwise, Dense, Conv, Deconv, Pool, Dropout, Batchnorm, 
-       Chain, Stack,
-       valid_insize, outsize, layers,
-       @chain, @stack, @residual
+export Pointwise,
+       Dense,
+       Conv,
+       Deconv,
+       Pool,
+       Dropout,
+       Batchnorm, 
+       Chain,
+       Stack
 
-# Model implementations
+export valid_insize,
+       outsize,
+       layers,
+       @chain,
+       @stack,
+       @residual
+
+# -------- Specific models implementations ----------------------------------- # 
+
 include("models/toy.jl")
 include("models/neural.jl")
 include("models/async.jl")
 
-export DummyModel, RandomModel, RolloutModel,
-       NeuralModel, Shallow, MLP, ShallowConv,
+export DummyModel,
+       RandomModel,
+       RolloutModel,
+       NeuralModel,
+       Shallow,
+       MLP,
+       ShallowConv,
        Async
 
-# MCTS, Players, and Bayesian ELO rankings
+# -------- MCTS, Players, and Bayesian ELO rankings -------------------------- #
+
 include("mc.jl")
 include("player.jl")
 include("belo.jl")
 
-export RandomPlayer, MCTSPlayer, 
-       IntuitionPlayer, HumanPlayer, 
-       pvp, name, think, decide, turn!,
-       compete, Ranking, summary
+export RandomPlayer,
+       MCTSPlayer, 
+       IntuitionPlayer,
+       HumanPlayer
 
+export pvp,
+       name,
+       think,
+       decide,
+       turn!,
+       compete
 
-# Training
+export Ranking
+export summary
+
+# -------- Training ---------------------------------------------------------- #
+
 include("dataset.jl")
 include("loss.jl")
 include("learning.jl")
 
-export DataSet, augment, minibatch, 
-       record_self, record_against,
-       Loss, loss, caption,
-       set_optimizer!, train_step!, train!,
-       train_self!, train_against!, train_from_model!,
+export DataSet
+
+export augment,
+       minibatch, 
+       record_self,
+       record_against,
+       Loss,
+       loss,
+       caption,
+       set_optimizer!,
+       train_step!,
+       train!,
+       train_self!,
+       train_against!,
+       train_from_model!,
        with_contest
 
-# Distributed creation of datasets
+# -------- Distributed creation of datasets # -------------------------------- #
+
 include("distributed.jl")
 
 export record_self_distributed,
        record_against_distributed,
        compete_distributed
 
-# Saving and loading games and datasets
+# -------- Saving and loading games and datasets ----------------------------- #
+
 include("io.jl")
 
-export save_model, load_model, save_dataset, load_dataset
+export save_model,
+       load_model,
+       save_dataset,
+       load_dataset
 
-# Game implementations
+# -------- Game implementations ---------------------------------------------- #
+
 include("games/mnkgame.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
 include("games/morris.jl")
 
-export TicTacToe, MNKGame, MetaTac, Nim, Morris
+export TicTacToe,
+       MNKGame,
+       MetaTac,
+       Nim,
+       Morris
 
 end # module Jtac
