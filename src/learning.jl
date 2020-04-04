@@ -252,7 +252,8 @@ train_self!(player, epochs = 5, playings = 100)
 """
 function train_self!( player :: MCTSPlayer
                     ; loss = Loss()
-                    , branching = 0.
+                    , prepare = prepare(steps = 0)
+                    , branch = branch(prob = 0.)
                     , augment = true
                     , distributed = false
                     , tickets = nothing
@@ -265,8 +266,9 @@ function train_self!( player :: MCTSPlayer
   # Function to generate datasets through selfplays
   gen_data = (cb, n) -> record_self( player
                                    , n
+                                   , prepare = prepare
+                                   , branch = branch
                                    , augment = augment
-                                   , branching = branching
                                    , features = features
                                    , merge = false
                                    , callback = cb 

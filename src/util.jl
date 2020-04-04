@@ -260,31 +260,10 @@ end
 
 # -------- Random Branching -------------------------------------------------- #
 
-branch_options(br :: Real) = (before = 0., during = br, steps = 1)
-branch_options((b, d, s)) = (before = b, during = d, steps = s)
+prepare(; steps = 0) = game -> random_turns!(copy(game), steps)
 
-function branch_root(game, br)
-
-  game = copy(game)
-  if rand() < br.before
-    for _ in 1:rand(1:br.steps)
-      !is_over(game) && random_turn!(game)
-    end
-  end
-  game
-
-end
-
-function branch(games :: Vector, br)
-
-  map(randsubseq(games, br.during)) do game
-    game = copy(game)
-    for _ in 1:rand(1:br.steps)
-      !is_over(game) && random_turn!(game)
-    end
-    game
-  end
-
+function branch(; prob = 0., steps = 1)
+  game -> rand() < prob ? random_turns!(copy(game), steps) : nothing
 end
 
 # -------- Neural Network Head Creation -------------------------------------- #

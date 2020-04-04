@@ -38,6 +38,9 @@ export identity,
 
 include("util.jl")
 
+export prepare,
+       branch
+
 # -------- Games ------------------------------------------------------------- #
 
 include("game.jl")
