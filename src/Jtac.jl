@@ -191,4 +191,10 @@ export TicTacToe,
        Nim,
        Morris
 
+
+# -------- Training / Playing Server------------------------------------------ #
+
+include("server.jl")
+
+
 end # module Jtac

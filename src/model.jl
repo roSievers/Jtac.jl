@@ -69,7 +69,6 @@ ntasks(:: Model) = 1
 
 """
     base_model(model)
-    training_model(player)
 
 Extract the model on which `model` or `player` is based. Except for explicit
 wrapper models like `Async`, this usually returns the model itself.
