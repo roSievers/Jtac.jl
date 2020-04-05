@@ -11,12 +11,14 @@ decompose(p :: Int)     = p
 decompose(p :: Float32) = p
 decompose(p :: Float64) = p
 decompose(p :: String)  = p
+decompose(p :: Symbol)          = p
 
 compose(p :: Bool)    = p
 compose(p :: Int)     = p
 compose(p :: Float32) = p
 compose(p :: Float64) = p
 compose(p :: String)  = p
+compose(p :: Symbol)  = p
 
 decompose(p :: Array)           = dict(:array, value = p)
 decompose(p :: Tuple{Int, Int}) = dict(:pair, a = p[1], b = p[2])
@@ -39,7 +41,7 @@ decompose(:: typeof(ones))     = dict(:function, name = :ones)
 
 function compose(:: Val{:function}, d)
   if d[:name] in [ :identity, :softmax, :relu
-                 , :tanh, :sigm, :elu, :zeros, :ones]
+                 , :tanh, :sigm, :elu, :zeros, :ones ]
     eval(d[:name])
   else
     error("Cannot compose function $(d[:name])")
@@ -69,15 +71,42 @@ decompose(bm :: Knet.BNMoments) = @decompose :bnmoments bm
 compose(:: Val{:parameter}, d) = Knet.Param(d[:value])
 compose(:: Val{:bnmoments}, d) = @compose Knet.BNMoments d 
 
-# -------- Jtac Conversions -------------------------------------------------- #
+# -------- Layer Conversions ------------------------------------------------- #
 
 decompose(v :: Vector{Layer})   = dict(:layers, value = decompose.(v))
-decompose(f :: Vector{Feature}) = dict(:features, value = f)
-decompose(:: Type{G}) where {G <: Game} = dict(:gametype, name = string(G))
-
 compose(:: Val{:layers}, d)   = Layer[compose(l) for l in d[:value]]
-compose(:: Val{:features}, d) = d[:value]
-compose(:: Val{:gametype}, d) = eval(Meta.parse(d[:name])) # TODO: check if type!
+
+
+# -------- Feature Conversions ----------------------------------------------- #
+
+decompose(f :: ConstantFeature) = @decompose :constantfeature f
+compose(:: Val{:constantfeature}, d) = @compose ConstantFeature d
+
+decompose(f :: Vector{Feature}) = dict(:features, features = decompose.(f))
+compose(:: Val{:features}, d) = compose.(d[:features])
+
+
+# -------- Game Type Conversions --------------------------------------------- #
+
+function decompose(:: Type{G}) where {G <: Game}
+  name = nameof(G)
+  params = G.parameters
+  dict(:gametype, name = nameof(G), params = collect(G.parameters))
+end
+
+function compose(:: Val{:gametype}, d)
+  name   = compose(d[:name])
+  params = compose.(d[:params]) |> collect
+
+  @assert isa(name, Symbol) "Cannot compose gametype"
+  @assert all(isbits, params) "Cannot compose gametype"
+
+  if isempty(d[:params])
+    eval(name)
+  else
+    eval(Expr(:curly, name, params...))
+  end
+end
 
 # TODO: The :gametype and :features decompositions are not transparent!
 # But maybe this is not a problem, as they are not needed for remote
