@@ -194,7 +194,8 @@ export TicTacToe,
 
 # -------- Training / Playing Server------------------------------------------ #
 
-include("server.jl")
+include("server/server.jl")
+export Server
 
 
 end # module Jtac

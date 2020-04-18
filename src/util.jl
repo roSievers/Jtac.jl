@@ -1,6 +1,9 @@
 
 # -------- Miscellaneous ----------------------------------------------------- #
 
+tup(a :: Int) = (a, a)
+tup(a) = (a[1], a[2])
+
 second((a, b)) = b
 
 unzip(a :: Array{<: Tuple}) = map(first, a), map(second, a)
@@ -189,14 +192,6 @@ function check_features(l, model, dataset)
 end
 
 
-# ------- Switch Knet Allocator ---------------------------------------------- #
-
-# TODO: This is an ugly hack that should be discussed with the Knet people.
-a = true
-Knet.cuallocator() = a
-switch_knet_allocator() = (global a; a = !a)
-
-
 # -------- Parallel-Stable Progress Maps ------------------------------------- #
 
 """
@@ -285,3 +280,4 @@ function prepare_head(head, s, l, gpu)
   head
 
 end
+
