@@ -76,6 +76,10 @@ struct Disconnect <: ServerMsg
   msg :: String
 end
 
+struct Idle <: ServerMsg
+  msg :: String
+end
+
 struct Reconnect <: ServerMsg
   wait_time :: Float64
 end
@@ -183,9 +187,9 @@ struct DataRequest <: ServerMsg
     @assert !isabstracttype(G)
 
     new( PlayerSpec(player)
-       , tup(prepare_steps)
+       , Jtac.tup(prepare_steps)
        , branch_prob
-       , tup(branch_steps)
+       , Jtac.tup(branch_steps)
        , augment
        , min_playings
        , max_playings
@@ -203,20 +207,21 @@ struct ContestRequest <: ServerMsg
   length :: Int
   id     :: Int
 
-  function ContestRequest( players :: Vector{<: MCTSPlayer}
-                         , length :: Int
-                         , active = 1:length(players)
-                         ; id = rand(UInt16) )
+end
 
-    # Make sure that a concrete, consistent game type can be derived
-    derive_gematype(players)
+function ContestRequest( players :: Vector{<: MCTSPlayer}
+                       , length :: Int
+                       , active = 1:length(players)
+                       ; id = rand(UInt16) )
 
-    specs = PlayerSpec.(players)
-    new(specs, active, length, id)
+  # Make sure that a concrete, consistent game type can be derived
+  Jtac.derive_gametype(players)
 
-  end
+  specs = PlayerSpec.(players)
+  ContestRequest(specs, active, length, id)
 
 end
+
 
 
 #

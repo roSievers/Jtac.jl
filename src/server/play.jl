@@ -21,21 +21,40 @@ end
 
 function combine(rs :: Vector{InternalContestRecord}, dtime)
   @assert length(rs) > 1
-  reqid = r[1].reqid
+  reqid = rs[1].reqid
   @assert all(x -> x.reqid == reqid, rs)
 
   data = sum(x -> x.data, rs)
   InternalContestRecord(data, reqid, 0, dtime)
 end
 
-function subdivide(r :: ContestRequest, n :: Int)
-  # Get the number of pairings
-  # This is the minimal number per pack - and we here only allow multiples,
-  # such that each pairing is played equally often
-  m = pairings(length(r.specs), length(r.active))
+function subdivide(req :: ContestRequest, playings :: Int)
+  # When we get a competition request from a train server, we will usually
+  # want to subdivide it on the differ workers.
+  # Each subcompetition should have at least m playings, otherwise there
+  # are pairings that do not play.
+  m = Jtac.pairings(length(req.specs), length(req.active))
 
-  k = ceil(r.length / m)
-  [ ContestRequest(r.specs, r.active, k
+  # Indeed, we only want to do subcompetitions with a length of multiples of m,
+  # such that it is guaranteed that each pairing plays equally often. We thus
+  # might play more games (l) than requested (req.length).
+  l = ceil(Int, req.length / m) * m
+
+  # When deciding how many playings to do in one subcompetition, we orient
+  # ourselves by the 'playings' value of the play server, choosing the next
+  # multiple of m that equals or is above playings.
+  r = max(1, ceil(Int, playings / m))
+
+  # k subcompetitions with length r*m will be conducted, and one subcompetition
+  # with length rem = l - (k * r * m) (which divides m by the definition of m)
+  k, rem = divrem(l, r*m)
+
+  requests = [ ContestRequest(req.specs, req.active, r*m, req.id) for _ in 1:k ]
+  if rem > 0
+    push!(requests, ContestRequest(req.specs, req.active, rem, req.id))
+  end
+
+  requests
 end
 
 
@@ -48,7 +67,7 @@ function playclient(
                    , port                    = 7788
                    , name                    = ENV["USER"]
                    , token                   = ""
-                   , playings                = 10
+                   , playings                = 100
                    , gpu                     = false
                    , async                   = false
                    , workers                 = Distributed.workers()
@@ -344,6 +363,15 @@ function download( name, slot, getsocket, stop, datareq, contestreq
 
       log(name, "received unexpected login reply from server. Ignoring it")
 
+    elseif msg isa Idle
+
+      log(name, "server asks us to idle: '$(msg.msg)'")
+
+      if isready(datareq)
+        req = take!(datareq)
+        log(name, "discarded data request D.$(req.id)")
+      end
+
     elseif msg isa Disconnect
 
       log(name, "server asks us to disconnect: '$(msg.msg)'")
@@ -445,7 +473,7 @@ function upload(name, slot, stop, buffer, confirm)
 
     if record isa InternalDataRecord
 
-      log(name, "uploading record d.$did:D.$(record.reqid) received from w$(record.worker)")
+      log(name, "uploading record d.$did:D.$(record.reqid) received from w$(record.worker)...")
 
       dtime = @elapsed begin
         send(fetch(slot), sign_record(record, did))
@@ -463,7 +491,7 @@ function upload(name, slot, stop, buffer, confirm)
 
     elseif record isa InternalContestRecord
 
-      log(name, "uploading contest record c.$cid:C.$(record.reqid) received from w$(record.worker)")
+      log(name, "uploading contest record c.$cid:C.$(record.reqid)...")
 
       dtime = @elapsed begin
         send(fetch(slot), sign_record(record, cid))
@@ -471,7 +499,7 @@ function upload(name, slot, stop, buffer, confirm)
       end
       
       if c.id == cid
-        log(name, "sent c.$cid in $dtime record $cid")
+        log(name, "sent c.$cid in $dtime seconds")
       else
         log(name, "received inconsistent confirmation id $(c.id)")
         break
@@ -520,7 +548,7 @@ end
 
 
 function compute( name, stop, datareq, contestreq, buffer
-                ; playings = 10
+                ; playings = 100
                 , gpu = false
                 , async = false
                 , workers = Distributed.workers()
@@ -570,29 +598,45 @@ function compute( name, stop, datareq, contestreq, buffer
   # Manage contest requests
   # Each worker gets its own channel to help prevent potential race conditions
 
-  creqchannels = [RemoteChannel(() -> Channel{ContestRequest}(100)) for _ in workers]
+  chcreate = () -> Channel{Tuple{Int, Int, ContestRequest}}(100)
+  creqchannels = [RemoteChannel(chcreate) for _ in workers]
   packchannel = RemoteChannel(() -> Channel{InternalContestRecord}(3m))
 
   contests = @async begin
     worker = 0
     for creq in contestreq
 
-      # Subdivid the contest request in smaller contest that can be distributed
-      # on the workers
-      packs = subdivide(creq, m)
-      r = length(packs)
-      for pack in packs
-        worker = (worker % m) + 1
-        put!(creqchannels[worker], pack)
-      end
+      try
+        # Subdivid the contest request in smaller contest that can be distributed
+        # to the workers
+        packs = subdivide(creq, playings)
+        k = length(packs)
 
-      # Collect the next r contest results and merge them before sending the
-      # results to the buffer
-      packresults = map(1:r) do _
-        take!(packchannel)
-      end
+        log(name, "dividing request C.$(creq.id) with length $(creq.length) in $k subrequests")
 
-      put!(buffer, combine(packresults))
+        for (i, pack) in enumerate(packs)
+          worker = (worker % m) + 1
+          put!(creqchannels[worker], (i, k, pack))
+        end
+
+        # Collect the next k contest results and merge them before sending the
+        # results to the buffer
+        packresults = map(1:k) do _
+          take!(packchannel)
+        end
+
+        dtime = sum(x -> x.dtime, packresults) / m # Average time per worker
+        cdata = combine(packresults, dtime)
+        l = sum(cdata.data)
+
+        log(name, "collecting record of length $l for C.$(cdata.reqid)")
+        put!(buffer, cdata)
+
+      catch err
+        log(name, "unexpected error in contest thread: $err")
+        put!(stop, true)
+        return
+      end
 
     end
   end
@@ -605,6 +649,7 @@ function compute( name, stop, datareq, contestreq, buffer
     close(contestreq)
     close(datareq)
     close(packchannel)
+    close(buffer)
     map(close, creqchannels)
   end
 
@@ -614,57 +659,40 @@ function compute( name, stop, datareq, contestreq, buffer
 
       callback = () -> isready(stop) && throw(WorkerExit())
       gpu && Knet.gpu((i-1) % gpu_devices)
-      req = nothing
 
-      while !isready(stop)
 
-        # In the workers we have to carefully handle exceptions, since even
-        # a user interruption may emerge at any point in the code that follows.
-        # If we would not communicate this to the outside (and to all other
-        # workers), we might hang -> not good...
+      # In the workers we have to carefully handle exceptions, since even
+      # a user interruption may emerge at any point in the code that follows.
+      # If we would not communicate this to the outside (and to all other
+      # workers), we might hang -> not good...
 
-        try
+      @sync begin
+        
+        @async while !isready(stop)
 
-          # Take instructions. This can either be a contest request
-          # or a data request
+          j = 0
+          k = 0
+          req = nothing
 
-          if isready(creqchannels[i])
-            req = take!(creqchannels[i])
-          else
-            req = fetch(datareq)
+          try
+
+            j, k, req = take!(creqchannels[i])
+
+          catch err
+
+            if err isa InterruptException
+              put!(messages, (i, "got interrupted"))
+              put!(stop, true)
+            else
+              put!(messages, (i, "received stop signal"))
+              put!(stop, true)
+            end
+
+            break
+
           end
 
-        catch err
-
-          # Handel the error that probably happend during "fetch(datareq)",
-          # probably because the channel was closed (probably because stop was
-          # set true). However, this exception might also be a user interruption
-          # that is caught here originally (what the hell, julia???), then we
-          # signal a global stop
-
-          if err isa InterruptException
-            put!(messages, (i, "got interrupted"))
-            put!(stop, true)
-          else
-            put!(messages, (i, "received stop signal"))
-            put!(stop, true)
-          end
-
-          return
-
-        end
-
-        # Now, distinguish between contest and data requests
-
-        # Should use clever local player buffers for get_player function such
-        # that same specs do not have to be resolved multiple times?
-        # (Use Remote read-only Dictionaries?)
-        if req isa ContestRequest
-
-          k = length(req.players)
-          l = req.length
-
-          msg = "doing contest of length $l with $k players for request C.$(req.id)..."
+          msg = "doing subcontest $j / $k of length $(req.length) for request C.$(req.id)..."
           put!(messages, (i, msg))
 
           players = get_player.(req.specs, gpu = gpu, async = async)
@@ -676,7 +704,29 @@ function compute( name, stop, datareq, contestreq, buffer
           record = InternalContestRecord(data, req.id, i, dtime)
           put!(packchannel, record)
 
-        elseif req isa DataRequest
+        end
+
+        @async while !isready(stop)
+
+          req = nothing
+
+          try
+
+            req = fetch(datareq)
+
+          catch err
+
+            if err isa InterruptException
+              put!(messages, (i, "got interrupted"))
+              put!(stop, true)
+            else
+              put!(messages, (i, "received stop signal"))
+              put!(stop, true)
+            end
+
+            break
+
+          end
 
           # Adapt number of playings to train server preferences
 
@@ -736,7 +786,7 @@ function compute( name, stop, datareq, contestreq, buffer
               put!(stop, true)
             end
 
-            return
+            break
 
           end
 
