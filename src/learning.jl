@@ -179,9 +179,6 @@ function _train!( player :: Player{G}
     step, finish = stepper("# Learning...", steps)
     cb = (_) -> quiet ? nothing : step()
 
-    # The Knet allocator works better for training but worse for playing
-    switch_knet_allocator()
-
     # Train the player with the generated dataset
     train!( player
           , trainset
@@ -196,9 +193,6 @@ function _train!( player :: Player{G}
 
     # Calculate and print loss for this epoch if not quiet
     !quiet && print_loss(loss, player, i, trainset, testset)
-
-    # Undo the changes in the Knet allocator
-    switch_knet_allocator()
 
     # Bring the full dataset from this epoche in the replay buffer
     push!(replay_buffer, datasets)
