@@ -692,7 +692,10 @@ function compute( name, stop, datareq, contestreq, buffer
 
           end
 
-          msg = "doing subcontest $j / $k of length $(req.length) for request C.$(req.id)..."
+          l  = req.length
+          id = req.id
+
+          msg = "doing subcontest $j / $k of length $l for request C.$id..."
           put!(messages, (i, msg))
 
           players = get_player.(req.specs, gpu = gpu, async = async)
