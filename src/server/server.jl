@@ -11,7 +11,13 @@ import Sockets: @ip_str, connect, listen, TCPSocket
 import Serialization
 import Distributed
 import Distributed: RemoteChannel
+import Blosc
 
+function __init__()
+
+  Blosc.set_compressor("zstd")
+
+end
 
 #
 # Messages to communicate between train server and play client
@@ -19,8 +25,22 @@ import Distributed: RemoteChannel
 
 abstract type Msg end
 
-send(socket, msg :: Msg) = Serialization.serialize(socket, msg)
-receive(socket) :: Msg   = Serialization.deserialize(socket)
+# TODO: the temporary buffers don't look particularly efficient, but I am not
+# sure how to prevent them
+function send(socket, msg :: Msg)
+  buf = IOBuffer()
+  Serialization.serialize(buf, msg)
+  cmsg = Blosc.compress(take!(buf))
+  Serialization.serialize(socket, cmsg)
+end
+
+function receive(socket) :: Msg
+  buf = IOBuffer()
+  cmsg = Serialization.deserialize(socket)
+  write(buf, Blosc.decompress(UInt8, cmsg))
+  seekstart(buf)
+  Serialization.deserialize(buf)
+end
 
 
 #

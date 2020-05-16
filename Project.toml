@@ -17,6 +17,7 @@ NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
+Blosc = "a74b3585-a348-5f62-a45c-50e91977d574"
 
 [compat]
 julia = "^1.3"
