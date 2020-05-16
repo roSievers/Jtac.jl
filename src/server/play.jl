@@ -6,7 +6,7 @@ struct WorkerExit <: Exception end
 abstract type InternalRecord end
 
 struct InternalDataRecord <: InternalRecord
-  data   :: Vector
+  data_  :: Vector{UInt8} # compressed Jtac datasets
   reqid  :: Int
   worker :: Int
   dtime  :: Float64
@@ -30,7 +30,7 @@ end
 
 function subdivide(req :: ContestRequest, playings :: Int)
   # When we get a competition request from a train server, we will usually
-  # want to subdivide it on the differ workers.
+  # want to subdivide it for the different workers.
   # Each subcompetition should have at least m playings, otherwise there
   # are pairings that do not play.
   m = Jtac.pairings(length(req.specs), length(req.active))
@@ -58,8 +58,14 @@ function subdivide(req :: ContestRequest, playings :: Int)
 end
 
 
-sign_record(r :: InternalDataRecord, id) = DataRecord(r.data, r.reqid, id, r.dtime)
-sign_record(r :: InternalContestRecord, id) = ContestRecord(r.data, r.reqid, id, r.dtime)
+function sign_record(r :: InternalDataRecord, id)
+  DataRecord(r.data_, r.reqid, id, r.dtime)
+end
+
+function sign_record(r :: InternalContestRecord, id)
+  ContestRecord(r.data_, r.reqid, id, r.dtime)
+end
+
 log(name, msg) = println("<$name> " * msg)
 
 function playclient(
@@ -672,7 +678,10 @@ function compute( name, stop, datareq, contestreq, buffer
 
           j = 0
           k = 0
-          req = nothing
+
+          req      = nothing
+          oldreqid = nothing
+          players  = nothing
 
           try
 
@@ -692,26 +701,54 @@ function compute( name, stop, datareq, contestreq, buffer
 
           end
 
-          l  = req.length
-          id = req.id
+          try
 
-          msg = "doing subcontest $j / $k of length $l for request C.$id..."
-          put!(messages, (i, msg))
+            l  = req.length
+            id = req.id
 
-          players = get_player.(req.specs, gpu = gpu, async = async)
+            msg = "doing subcontest $j / $k of length $l for request C.$id..."
+            put!(messages, (i, msg))
 
-          dtime = @elapsed begin
-            data = compete(players, req.length, req.active)
+            if req.id != oldreqid || isnothing(players)
+
+              # Prevent decompressing of players if not necessary
+              players = get_player.(req.specs, gpu = gpu, async = async)
+
+            end
+
+            dtime = @elapsed begin
+              # TODO: callback to raise WorkerExit if stop flag is set
+              data = compete(players, req.length, req.active)
+            end
+
+            record = InternalContestRecord(data, req.id, i, dtime)
+            put!(packchannel, record)
+
+            oldreqid = req.id
+
+          catch err
+
+            if err isa WorkerExit
+              put!(messages, (i, "received stop signal"))
+            elseif err isa InterruptException
+              put!(messages, (i, "got interrupted"))
+              put!(stop, true)
+            else
+              put!(messages, (i, string(err)))
+              put!(stop, true)
+            end
+
+            break
+
           end
-
-          record = InternalContestRecord(data, req.id, i, dtime)
-          put!(packchannel, record)
 
         end
 
         @async while !isready(stop)
 
-          req = nothing
+          req      = nothing
+          oldreqid = nothing
+          player   = nothing
 
           try
 
@@ -739,7 +776,13 @@ function compute( name, stop, datareq, contestreq, buffer
 
           # Derive player and preparational / branching steps
 
-          player = get_player(req.spec, gpu = gpu, async = async)
+          if req.id != oldreqid || isnothing(player)
+
+            # Prevent that the player is decompressed unnecessarily, as this
+            # might consume relevant processing power and/or memory
+            player = get_player(req.spec, gpu = gpu, async = async)
+
+          end
 
           psteps = req.prepare_steps[1]:req.prepare_steps[2]
           bsteps = req.branch_steps[1]:req.branch_steps[2]
@@ -768,8 +811,13 @@ function compute( name, stop, datareq, contestreq, buffer
 
             # Sent the record to be uploaded
 
-            record = InternalDataRecord(datasets, req.id, i, dtime)
+            data_ = compress(datasets)
+            record = InternalDataRecord(data_, req.id, i, dtime)
             put!(buffer, record)
+
+            # Remember the request id for the next iteration
+
+            oldreqid = req.id
 
           # An exception in the code above could mean a WorkerExit, i.e., the
           # worker received a stop signal and stopped gracefully. It could
