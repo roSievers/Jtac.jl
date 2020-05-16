@@ -53,7 +53,7 @@ training_model(:: Player) = nothing
 
 # Features that are supported by the player. Used for automatic feature
 # detection during the generation of datasets in selfplays
-features(:: Player) = []
+features(:: Player) = Feature[]
 
 
 # -------- Random Player ----------------------------------------------------- #
@@ -66,7 +66,7 @@ struct RandomPlayer <: Player{Game} end
 function think(:: RandomPlayer, game :: Game)
   actions = legal_actions(game)
   policy = zeros(Float32, policy_length(game))
-  policy[actions] = 1f0 / length(actions)
+  policy[actions] .= 1f0 / length(actions)
   policy
 end
 
