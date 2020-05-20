@@ -73,7 +73,7 @@ function playclient(
                    , port                    = 7788
                    , name                    = ENV["USER"]
                    , token                   = ""
-                   , playings                = 100
+                   , playings                = 50
                    , gpu                     = false
                    , async                   = false
                    , workers                 = Distributed.workers()
@@ -403,7 +403,24 @@ function download( name, slot, getsocket, stop, datareq, contestreq
 
     elseif msg isa DataRequest && accept_data_requests
 
-      log(name, "received request D.$(msg.id)")
+      if isready(datareq)
+        log(name, "received request D.$(msg.id) (replacing D.$(fetch(datareq).id))")
+      else
+        log(name, "received request D.$(msg.id)")
+      end
+
+      log(name, "  name: $(msg.spec.name)")
+      log(name, "  power: $(msg.spec.power)")
+      log(name, "  temperature: $(msg.spec.temperature)")
+      log(name, "  exploration: $(msg.spec.exploration)")
+      log(name, "  dilution: $(msg.spec.dilution)")
+      log(name, "  augment: $(msg.augment)")
+      log(name, "  min_playings: $(msg.min_playings)")
+      log(name, "  max_playings: $(msg.max_playings)")
+      log(name, "  prepare_steps: $(msg.branch_steps)")
+      log(name, "  branch_steps: $(msg.branch_steps)")
+      log(name, "  branch_prob: $(msg.branch_prob)")
+
       isready(datareq) && take!(datareq)
       put!(datareq, msg)
 
@@ -479,7 +496,8 @@ function upload(name, slot, stop, buffer, confirm)
 
     if record isa InternalDataRecord
 
-      log(name, "uploading record d.$did:D.$(record.reqid) received from w$(record.worker)...")
+      s = round(Base.summarysize(record) / 1024^2, digits=3)
+      log(name, "uploading record d.$did:D.$(record.reqid) (≈ $s mb) from w$(record.worker)...")
 
       dtime = @elapsed begin
         send(fetch(slot), sign_record(record, did))
@@ -487,7 +505,7 @@ function upload(name, slot, stop, buffer, confirm)
       end
       
       if c.id == did
-        log(name, "sent d.$did in $dtime seconds")
+        log(name, "sent d.$did:D.$(record.reqid) (≈ $s mb) in $dtime seconds")
       else
         log(name, "received inconsistent confirmation id d.$(c.id) (expected d.$did)")
         break
@@ -706,7 +724,7 @@ function compute( name, stop, datareq, contestreq, buffer
             l  = req.length
             id = req.id
 
-            msg = "doing subcontest $j / $k of length $l for request C.$id..."
+            msg = "started subcontest $j / $k of length $l for request C.$id..."
             put!(messages, (i, msg))
 
             if req.id != oldreqid || isnothing(players)
@@ -772,7 +790,7 @@ function compute( name, stop, datareq, contestreq, buffer
 
           k = clamp(playings, req.min_playings, req.max_playings)
 
-          put!(messages, (i, "doing $k playings for D.$(req.id)..."))
+          put!(messages, (i, "started $k playings for D.$(req.id)..."))
 
           # Derive player and preparational / branching steps
 
