@@ -192,10 +192,9 @@ export TicTacToe,
        Morris
 
 
-# -------- Training / Playing Server------------------------------------------ #
+# -------- Training / Playing Services --------------------------------------- #
 
-include("server/server.jl")
-export Server
+include("service/service.jl")
 
 
 end # module Jtac

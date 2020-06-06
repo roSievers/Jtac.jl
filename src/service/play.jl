@@ -1,12 +1,10 @@
 
-const CLIENT_VERSION = 1
-
 struct WorkerExit <: Exception end 
 
 abstract type InternalRecord end
 
 struct InternalDataRecord <: InternalRecord
-  data_  :: Vector{UInt8} # compressed Jtac datasets
+  _data  :: Vector{UInt8} # compressed datasets
   reqid  :: Int
   worker :: Int
   dtime  :: Float64
@@ -58,32 +56,37 @@ function subdivide(req :: ContestRequest, playings :: Int)
 end
 
 
-function sign_record(r :: InternalDataRecord, id)
-  DataRecord(r.data_, r.reqid, id, r.dtime)
+function sign_record(r :: InternalDataRecord, id :: Int)
+  DataRecord(r._data, r.reqid, id, r.dtime)
 end
 
-function sign_record(r :: InternalContestRecord, id)
-  ContestRecord(r.data_, r.reqid, id, r.dtime)
+function sign_record(r :: InternalContestRecord, id :: Int)
+  ContestRecord(r.data, r.reqid, id, r.dtime)
 end
 
 log(name, msg) = println("<$name> " * msg)
 
-function playclient(
-                   ; ip                      = ip"127.0.0.1"
-                   , port                    = 7788
-                   , name                    = ENV["USER"]
-                   , token                   = ""
-                   , playings                = 50
-                   , gpu                     = false
-                   , async                   = false
-                   , workers                 = Distributed.workers()
-                   , buffersize              = 100 
-                   , wait_reconnect          = 10
-                   , accept_data_requests    = true
-                   , accept_contest_requests = true
-                   , kwargs... )
+"""
+    start(Play; <keyword arguments>)
 
-  log(name, "initializing jtac play client...")
+Start a Jtac play service.
+"""
+function start( :: Type{Play}
+              ; ip       = ip"127.0.0.1"
+              , port     = 7788
+              , name     = ENV["USER"]
+              , token    = ""
+              , playings = 50
+              , gpu      = false
+              , async    = false
+              , workers  = Distributed.workers()
+              , buffersize              = 100 
+              , wait_reconnect          = 10
+              , accept_data_requests    = true
+              , accept_contest_requests = true
+              , kwargs... )
+
+  log(name, "initializing jtac play service...")
 
   buffersize = max(buffersize, 2length(workers))
 
@@ -151,11 +154,6 @@ function playclient(
 
 
   # Download task that receives information and requests from the train server
-  #
-  # put!:  slot, stop, datareq, contestreq, confirm, stop
-  # take!: slot, datareq
-  # fetch: stop, slot
-  # close: slot, datareq, contestreq, confirm, socket
 
   download_task = @async download( name, slot, getsocket, stop
                                  , datareq, contestreq, confirm
@@ -164,20 +162,10 @@ function playclient(
 
 
   # Upload task that sends data to the train server
-  #
-  # put!:  stop
-  # take!: buffer, confirmuploads 
-  # fetch: slot, buffer, stop
-  # close: slot, buffer, confirm
 
   upload_task = @async upload(name, slot, stop, buffer, confirm)
 
   # Compute task that generates self play and contest data on requests
-  #
-  # put!:
-  # take!:
-  # fetch:
-  # close:
 
   compute_task = @async compute( name, stop, datareq, contestreq, buffer
                                ; gpu = gpu
@@ -231,19 +219,19 @@ function login(name, ip, port, token, data, contest, sleeptime)
       log(name, "trying to log in to server $ip:$port")
 
       socket = connect(ip, port)
-      client_info = Login(token = token, name = name, data = data, contest = contest)
+      login = PlayLogin(token = token, name = name, data = data, contest = contest)
 
-      send(socket, client_info)
-      reply = receive(socket) :: Reply
+      send(socket, login)
+      reply = receive(socket) :: PlayAccept
 
       if reply.accept
 
-        log(name, "connection established: '$(reply.msg)'")
+        log(name, "connection established: '$(reply.text)'")
         return socket
 
       else
 
-        log(name, "login failed: $(reply.msg)")
+        log(name, "login failed: $(reply.text)")
         log(name, "exiting jtac play client")
         return nothing
 
@@ -275,7 +263,8 @@ function login(name, ip, port, token, data, contest, sleeptime)
 end
 
 
-function cleanup(name, stop, buffer, download_task, upload_task, compute_task; throw = false)
+function cleanup( name, stop, buffer, download_task, upload_task, compute_task
+                ; throw = false )
 
   log(name, "stopping coroutines and closing connection...")
 
@@ -363,33 +352,33 @@ function download( name, slot, getsocket, stop, datareq, contestreq
 
   main = @async while !eof(fetch(slot))
 
-    msg = receive(fetch(slot)) :: ServerMsg
+    msg = receive(fetch(slot)) :: Msg{Train, Play}
 
-    if msg isa Reply
+    if msg isa PlayAccept
 
-      log(name, "received unexpected login reply from server. Ignoring it")
+      log(name, "received unexpected login reply from server, ignoring it")
 
     elseif msg isa Idle
 
-      log(name, "server asks us to idle: '$(msg.msg)'")
+      log(name, "server asks us to idle: '$(msg.text)'")
 
       if isready(datareq)
         req = take!(datareq)
         log(name, "discarded data request D.$(req.id)")
       end
 
-    elseif msg isa Disconnect
+    elseif msg isa PlayDisconnect
 
-      log(name, "server asks us to disconnect: '$(msg.msg)'")
+      log(name, "server asks us to disconnect: '$(msg.text)'")
       return
 
-    elseif msg isa Reconnect
+    elseif msg isa PlayReconnect
 
-      log(name, "server asks us to reconnect after $(msg.wait_time) seconds")
+      log(name, "server asks us to reconnect after $(msg.time) seconds: '$(msg.text)'")
       take!(slot)
 
       log(name, "waiting...")
-      sleep(msg.wait_time)
+      sleep(msg.time)
 
       log(name, "trying to reconnect")
       socket = getsocket(name)
@@ -414,10 +403,10 @@ function download( name, slot, getsocket, stop, datareq, contestreq
       log(name, "  temperature: $(msg.spec.temperature)")
       log(name, "  exploration: $(msg.spec.exploration)")
       log(name, "  dilution: $(msg.spec.dilution)")
-      log(name, "  augment: $(msg.augment)")
       log(name, "  min_playings: $(msg.min_playings)")
       log(name, "  max_playings: $(msg.max_playings)")
-      log(name, "  prepare_steps: $(msg.branch_steps)")
+      log(name, "  augment: $(msg.augment)")
+      log(name, "  prepare_steps: $(msg.prepare_steps)")
       log(name, "  branch_steps: $(msg.branch_steps)")
       log(name, "  branch_prob: $(msg.branch_prob)")
 
@@ -429,14 +418,8 @@ function download( name, slot, getsocket, stop, datareq, contestreq
       log(name, "received contest request C.$(msg.id)")
       put!(contestreq, msg)
 
-    elseif msg isa DataConfirmation
+    elseif msg isa Union{DataConfirmation, ContestConfirmation}
 
-      #log(name, "received remote confirmation for play data #$(msg.id)")
-      put!(confirm, msg)
-
-    elseif msg isa ContestConfirmation
-
-      #log(name, "received remote confirmation for contest data #$(msg.id)")
       put!(confirm, msg)
 
     else
@@ -497,7 +480,7 @@ function upload(name, slot, stop, buffer, confirm)
     if record isa InternalDataRecord
 
       s = round(Base.summarysize(record) / 1024^2, digits=3)
-      log(name, "uploading record d.$did:D.$(record.reqid) (≈ $s mb) from w$(record.worker)...")
+      log(name, "uploading record d.$did:D.$(record.reqid) ($(s)MB) from w$(record.worker)...")
 
       dtime = @elapsed begin
         send(fetch(slot), sign_record(record, did))
@@ -505,7 +488,7 @@ function upload(name, slot, stop, buffer, confirm)
       end
       
       if c.id == did
-        log(name, "sent d.$did:D.$(record.reqid) (≈ $s mb) in $dtime seconds")
+        log(name, "sent d.$did:D.$(record.reqid) ($(s)MB) in $dtime seconds")
       else
         log(name, "received inconsistent confirmation id d.$(c.id) (expected d.$did)")
         break
@@ -523,9 +506,9 @@ function upload(name, slot, stop, buffer, confirm)
       end
       
       if c.id == cid
-        log(name, "sent c.$cid in $dtime seconds")
+        log(name, "sent c.$cid:C.$(record.reqid) in $dtime seconds")
       else
-        log(name, "received inconsistent confirmation id $(c.id)")
+        log(name, "received inconsistent confirmation id c.$(c.id) (expected c.$cid)")
         break
       end
 
@@ -533,7 +516,7 @@ function upload(name, slot, stop, buffer, confirm)
 
     else
 
-      log(name, "received record of unknown type, this must not happen")
+      log(name, "internal consistency: received record of unknown type (this must not happen)")
       break
 
     end

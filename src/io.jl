@@ -11,7 +11,7 @@ decompose(p :: Int)     = p
 decompose(p :: Float32) = p
 decompose(p :: Float64) = p
 decompose(p :: String)  = p
-decompose(p :: Symbol)          = p
+decompose(p :: Symbol)  = p
 
 compose(p :: Bool)    = p
 compose(p :: Int)     = p
@@ -125,7 +125,6 @@ decompose(l :: Batchnorm{false}) = @decompose :batchnorm l
 decompose(l :: Chain{false})     = @decompose :chain l
 decompose(l :: Stack{false})     = @decompose :stack l
 decompose(l :: Residual{false})  = @decompose :residual l
-
 
 compose(:: Val{:pointwise}, d) = @compose Pointwise{false} d
 compose(:: Val{:dense}, d)     = @compose Dense{false} d

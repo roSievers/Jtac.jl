@@ -19,8 +19,9 @@ end
 """
     Async(model; max_batchsize, buffersize)
 
-Wraps `model` to an asynchronous model with maximal batchsize `max_batchsize`
-for evaluation in parallel and a buffer of size `buffersize` for queuing.
+Wraps `model` to become an asynchronous model with maximal batchsize
+`max_batchsize` for evaluation in parallel and a buffer of size `buffersize` for
+queuing.
 """
 function Async( model :: Model{G}; 
                 max_batchsize = 50, 
@@ -54,8 +55,7 @@ function (m :: Async{G})( game :: G
   @assert !use_features "Features cannot be used in Async."
 
   out_channel = Channel(1)
-  bind(out_channel, m.thread)
-  put!(m.channel, (game, out_channel))
+  put!(m.channel, (copy(game), out_channel))
   take!(out_channel)
 
 end
@@ -105,16 +105,14 @@ function worker_thread(channel, model, max_batchsize)
     while !closed_and_empty(channel)
 
       inputs = Vector()
+
       # If we arrive here, there is at least one thing to be done.
       while isready(channel) && length(inputs) < max_batchsize
         push!(inputs, take!(channel))
         yield()
       end
 
-      v, p, f = model(first.(inputs))
-      v = v |> to_cpu
-      p = p |> to_cpu
-      f = f |> to_cpu
+      v, p, f = model(first.(inputs)) .|> to_cpu
 
       for i = 1:length(inputs)
         put!(inputs[i][2], (v[i], p[:,i], f[:,i]))

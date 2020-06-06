@@ -165,7 +165,6 @@ function print_ranking(rk)
 
 end
 
-
 # -------- Feature Compability ----------------------------------------------- #
 
 function check_features(l, model)
@@ -190,7 +189,6 @@ function check_features(l, model, dataset)
   false
 
 end
-
 
 # -------- Parallel-Stable Progress Maps ------------------------------------- #
 
