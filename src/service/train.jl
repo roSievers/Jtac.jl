@@ -124,7 +124,7 @@ end
 Add a `dataset` generated for a specific request `id` to a `datapool`. The
 `history` of request ids is used to calculate the age of the added dataset.
 """
-function add!(dp :: DataPool{G}, ds :: DataSet{G}, reqid :: Int, history :: Vector{Int})
+function add!(dp :: DataPool{G}, ds :: DataSet{G}, reqid :: Int, history :: Vector{Int}) where {G <: Game}
 
   index = findfirst(isequal(reqid), history)
 
@@ -237,7 +237,7 @@ Update the age entries of a `datapool` for a given `history` of request ids.
 This function will throw exceptions if the datapool contains entries with ids
 that are not in the history.
 """
-function update_age!(dp :: DataPool{G}, history :: Vector{Int}) where {G <: Game}
+function update_age!(dp :: DataPool, history :: Vector{Int})
 
   len = length(history)
   agemap = Dict{Int, Int}((id, len - i) for (i,id) in enumerate(history))
@@ -260,7 +260,7 @@ update_use!(dp :: DataPool, indices :: Vector{Int}) = (dp.use[indices] .+= 1)
 
 Adjust the capacity of `datapool` to `context`.
 """
-update_capacity!(dp :: DataPool{G}, ctx :: Context) = (dp.capacity = ctx.capacity)
+update_capacity!(dp :: DataPool, ctx :: Context) = (dp.capacity = ctx.capacity)
 
 
 """
@@ -374,7 +374,7 @@ function train_model(context, context_change, refmodel, request, datarecords, gl
   end
 
   # Actual dataset handling and training takes place on a worker
-  train_task = @spawn begin
+  train_task = Distributed.@spawn begin
 
     put!(msgs, "worker: initialized")
 
@@ -447,7 +447,7 @@ function train_model(context, context_change, refmodel, request, datarecords, gl
 
       if tsize <= ctx.epochsize || qavg < ctx.min_quality
 
-         if tsize <= ctx.epochsize)
+         if tsize <= ctx.epochsize
            put!(msgs, "worker: training pool too small ($tsize)")
          else
            put!(msgs, "worker: quality of training pool too low ($qavg)")
@@ -495,7 +495,7 @@ function train_model(context, context_change, refmodel, request, datarecords, gl
           commit_request("era $era started")
 
           # Save the model to the backup folder
-          name = "$(ctx.name)-$era")
+          name = "$(ctx.name)-$era"
           save_model(model |> to_cpu, joinpath(ctx.backup_folder, name))
 
           # Remove possible backup files that are old
