@@ -64,7 +64,7 @@ function (m :: Async{G})( games :: Vector{G}
                         , use_features = false
                         ) where {G <: Game}
 
-  @assert !use_features "Features should never be used in Async. "
+  @assert !use_features "Features cannot be used in Async. "
   @warn "Calling Async model in batched mode is not recommended." maxlog=1
 
   outputs = asyncmap(x -> m(x, use_features), games, ntasks = m.buffersize)

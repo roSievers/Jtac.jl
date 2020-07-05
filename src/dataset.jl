@@ -45,6 +45,24 @@ Base.length(d :: DataSet) = length(d.games)
 
 # -------- Dataset Operations ------------------------------------------------ #
 
+function Base.getindex(d :: DataSet{G}, I) where {G <: Game}
+  DataSet{G}(d.games[I], d.label[I], d.flabel[I], d.features)
+end
+
+function Base.append!(d :: DataSet{G}, dd :: DataSet{G}) where {G <: Game}
+
+  if d.features != dd.features
+
+    error("Appending dataset with incompatible features")
+
+  end
+
+  append!(d.games, dd.games)
+  append!(d.label, dd.label)
+  append!(d.flabel, dd.flabel)
+
+end
+
 function Base.merge(d :: DataSet{G}, ds...) where {G <: Game}
 
   # Make sure that all datasets have compatible features
@@ -52,7 +70,7 @@ function Base.merge(d :: DataSet{G}, ds...) where {G <: Game}
 
   if !all(x -> x.features == features, ds) 
 
-    error("Merging databases with incompatible features")
+    error("Merging datasets with incompatible features")
 
   end
 

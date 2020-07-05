@@ -13,6 +13,7 @@ import Sockets: @ip_str, connect, listen, TCPSocket
 import Serialization
 import Distributed
 import Distributed: RemoteChannel
+import SharedArrays
 import Blosc
 
 function __init__()
