@@ -66,10 +66,10 @@ end
 # -------- Knet Conversions -------------------------------------------------- #
 
 decompose(p :: Knet.Param)      = dict(:parameter, value = Knet.value(p))
-decompose(bm :: Knet.BNMoments) = @decompose :bnmoments bm
+decompose(bm :: Knet.Ops20.BNMoments) = @decompose :bnmoments bm
 
 compose(:: Val{:parameter}, d) = Knet.Param(d[:value])
-compose(:: Val{:bnmoments}, d) = @compose Knet.BNMoments d 
+compose(:: Val{:bnmoments}, d) = @compose Knet.Ops20.BNMoments d 
 
 # -------- Layer Conversions ------------------------------------------------- #
 
