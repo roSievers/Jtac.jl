@@ -274,7 +274,7 @@ end
 
 
 """
-    start(Jtac.Service.Train, model, context; <keyword arguments>)
+    start(Service.Train, model, context; <keyword arguments>)
 
 Start a jtac train service with initial model `model` and context `context`.
 """
@@ -293,7 +293,7 @@ function start( :: Type{Train}
   context = RemoteChannel(() -> Channel{Context}(1))
 
   if isnothing(ctx)
-    @info "No context specified. Using fallback context."
+    @info "No context specified. Using fallback options."
     put!(context, Context())
   else
     put!(context, ctx)
@@ -344,7 +344,7 @@ function train_model(context, context_change, refmodel, request, datarecords, gl
   # access
   req_history = SharedArrays.SharedVector{DataRequest}(0)
 
-  # Request id that is incremented for each request update
+  # Request id that is incremented in each request update
   id = RemoteChannel(() -> Channel{Int}(1))
   put!(id, 1) 
 

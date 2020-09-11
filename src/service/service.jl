@@ -28,7 +28,6 @@ end
 abstract type JtacService end
 abstract type Train   <: JtacService end
 abstract type Play    <: JtacService end
-abstract type Watch   <: JtacService end
 abstract type Control <: JtacService end
 
 """
