@@ -1,7 +1,7 @@
 
 # -------- Serializing (Async) Players --------------------------------------- #
 
-function _serialize(p :: Union{IntuitionPlayer, MCTSPlayer})
+function pack(p :: Union{IntuitionPlayer, MCTSPlayer})
 
   # Convert the playing model to cpu
   m = playing_model(p)
@@ -14,7 +14,7 @@ function _serialize(p :: Union{IntuitionPlayer, MCTSPlayer})
 
 end
 
-function _deserialize(p :: Union{IntuitionPlayer, MCTSPlayer}, dm, gpu)
+function unpack(p :: Union{IntuitionPlayer, MCTSPlayer}, dm, gpu)
   
   # Reconstruct the model and bring it to the GPU if wanted
   m = compose(dm)
@@ -25,7 +25,7 @@ function _deserialize(p :: Union{IntuitionPlayer, MCTSPlayer}, dm, gpu)
 
 end
 
-_on_gpu(splayers) = any(p[3] for p in splayers)
+models_on_gpu(splayers) = any(p[3] for p in splayers)
 
 # -------- Distributed Calculations ------------------------------------------ #
 
@@ -64,10 +64,10 @@ function with_workers( f :: Function
   task = @async map(_ -> take!(res), 1:tickets)
 
   # Serialize the players
-  splayers = _serialize.(players)
+  splayers = pack.(players)
 
   # Count the GPUs
-  gpu = _on_gpu(splayers)
+  gpu = models_on_gpu(splayers)
   devices = Knet.cudaGetDeviceCount()
   m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 
@@ -85,7 +85,7 @@ function with_workers( f :: Function
       end
 
       # Reconstruct the players
-      ps = [_deserialize(p...) for p in splayers]
+      ps = [unpack(p...) for p in splayers]
 
       # Wait for a ticket. If we get one, carry it out. If there are no tickets
       # left, the ticket channel is closed and we end the loop.

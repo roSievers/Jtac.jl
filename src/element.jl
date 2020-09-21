@@ -5,7 +5,7 @@
 Abstract type to encapsulate the common interface, mainly CPU-GPU transfer, for
 (i) neural network layers and (ii) neural network models. We distinguish between
 the two, since a Jtac `Model` contains game-specific information while a `Layer`
-is agnostic of anything but its raw data input and output sizes.
+is game agnostic.
 """
 abstract type Element{GPU} end
 

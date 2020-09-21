@@ -1,13 +1,11 @@
 
-module Service
-
-const JTAC_SERVICE_VERSION = 0
+const JTAC_SERVER_VERSION = "v0.1"
 
 #
 # Imports
 #
 
-using ..Jtac
+using Jtac
 
 import Sockets: @ip_str, connect, listen, TCPSocket
 import Serialization
@@ -16,14 +14,10 @@ import Distributed: RemoteChannel
 import SharedArrays
 import Blosc
 
-function __init__()
-
-  # This algorithm worked (by far) the best to get small representations on
-  # MetaTac datasets, and encoding / decoding did not take considerably longer
-  # than with the others
-  Blosc.set_compressor("zstd")
-
-end
+# This algorithm worked (by far) the best to get small representations on
+# MetaTac datasets, and encoding / decoding did not take considerably longer
+# than with the others
+Blosc.set_compressor("zstd")
 
 abstract type JtacService end
 abstract type Train   <: JtacService end

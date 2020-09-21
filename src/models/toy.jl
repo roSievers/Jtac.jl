@@ -9,7 +9,7 @@ function random_policy(length)
   policy
 end
 
-# -------- Glueing Single Outputs -------------------------------------------- #
+# -------- Glueing together single outputs ----------------------------------- #
 
 function cat_outputs(outputs)
 
@@ -30,7 +30,7 @@ function cat_outputs(outputs)
 
 end
 
-# -------- Dummy Model ------------------------------------------------------- # 
+# -------- Dummy Model ------------------------------------------------------- #
 
 """
 This model returns value 0 and a uniform policy vector for each game state.
@@ -64,7 +64,7 @@ Base.copy(m :: RandomModel) = m
 """
 This model executes random moves until the game is over. The result is returned
 as the value of the game state. It always proposes a uniform policy vector.
-By that, the classical rollout step of MCTS is implemented when this model
+Therefore, the classical rollout step of MCTS is implemented when this model
 is used for the tree search.
 """
 struct RolloutModel <: Model{Game, false} end

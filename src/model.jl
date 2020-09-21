@@ -15,9 +15,9 @@ improve the policy.
 Static model implementations, like the `RolloutModel`, yield non-trainable
 players, like the classical MCTS algorithm. Parameterized models with adjustable
 weights on the other hand, like the `NeuralNetworkModel`, can systematically be
-optimized by playing and training. Roughly speaking, the training goal is to let
-the proposed policy (before any MCTS steps) and the improved policy (after these
-steps) coincide.
+optimized by playing and training. Roughly speaking, the training goal is to
+make the proposed policy (before any MCTS steps) and the improved policy (after
+these steps) converge.
 
 In order to use a model for playing, it has to be attached to a `Player`, like
 the `IntuitionPlayer` (which only uses the policy proposed by the network) or
@@ -35,7 +35,7 @@ to_gpu(a :: Array{Float32}) = convert(Knet.KnetArray{Float32}, a)
 """
     apply(model, game)
 
-Apply `model` to `game`, yielding a `(value, policy)` tuple.
+Apply `model` to `game`, yielding a named `(value, policy)` tuple.
 """
 function apply(model :: Model{G}, game :: G) where {G <: Game}
   v, p, _ = model(game)
@@ -101,3 +101,4 @@ playing_model(m :: Model) = m
 Get the julia type `G <: Game` that `model` can be applied to.
 """
 gametype(model :: Model{G}) where {G <: Game} = G
+

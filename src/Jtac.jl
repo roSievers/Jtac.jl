@@ -3,11 +3,11 @@
 Module that implements the Alpha Zero learning design.
 
 The module exports (i) implementations of various two-player board games, like
-tic-tac-toe and generalizations thereof, (ii) functions for creating neural
-networks that act on the states of games, and (iii) functionality to generate
-datasets via the selfplay of a Monte-Carlo Tree Search player assisted by
-a neural model. Aspects (ii) and (iii) of Jtac are kept orthogonal to (i), such
-that it is easy to extend the library with new games.
+tic-tac-toe, (ii) functions for creating neural networks that act on the states
+of games, and (iii) functionality to generate datasets via the selfplay of
+a Monte-Carlo Tree Search player assisted by a neural model. Aspects (ii) and
+(iii) of Jtac are kept orthogonal to (i), such that it is easy to extend the
+library with new games.
 """
 module Jtac
 
@@ -102,7 +102,7 @@ export valid_insize,
        @stack,
        @residual
 
-# -------- Specific models implementations ----------------------------------- # 
+# -------- Specific models implementations ----------------------------------- #
 
 include("models/toy.jl")
 include("models/neural.jl")
@@ -161,7 +161,7 @@ export augment,
        train_from_model!,
        with_contest
 
-# -------- Distributed creation of datasets # -------------------------------- #
+# -------- Distributed creation of datasets ---------------------------------- #
 
 include("distributed.jl")
 
@@ -190,11 +190,6 @@ export TicTacToe,
        MetaTac,
        Nim,
        Morris
-
-
-# -------- Training / Playing Services --------------------------------------- #
-
-include("service/service.jl")
 
 
 end # module Jtac
