@@ -225,10 +225,11 @@ training models can be trained currently.
 - `iterations = 10`: Number of training epochs per training-set.
 - `batchsize = 50`: Batchsize during training from the training-set.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
-- `branching = 0.`: Random branching probability.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
+- `branch`: Random branching function. See `record_self`.
+- `prepare`: Preparation function. See `record_self`.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
@@ -296,10 +297,11 @@ with NeuralModel-based training models can be trained currently.
 - `iterations = 10`: Number of training epochs per training-set.
 - `batchsize = 50`: Batchsize during training from the training-set.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
-- `branching = 0.`: Random branching probability.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
+- `branch`: Random branching function. See `record_against`.
+- `prepare`: Preparation function. See `record_against`.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
@@ -320,7 +322,8 @@ function train_against!( player :: MCTSPlayer
                        , enemy
                        ; loss = Loss()
                        , start :: Function = () -> rand([-1, 1])
-                       , branching = 0.
+                       , branch = branch(prob = 0.)
+                       , prepare = prepare(steps = 0)
                        , augment = true
                        , distributed = false
                        , tickets = nothing
@@ -333,7 +336,8 @@ function train_against!( player :: MCTSPlayer
                                       , n
                                       , start = start
                                       , augment = augment
-                                      , branching = branching
+                                      , branch = branch
+                                      , prepare = prepare
                                       , features = features
                                       , merge = false
                                       , callback = cb
@@ -364,7 +368,8 @@ currently.
 - `iterations = 10`: Number of training epochs per training-set.
 - `batchsize = 50`: Batchsize during training from the training-set.
 - `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
-- `branching = 0.`: Random branching probability.
+- `branch`: Random branching function.
+- `prepare`: Preparation function.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
@@ -377,13 +382,11 @@ function train_from_model!( pupil :: Player{G}
                           , teacher :: Union{Model{H}, Player{H}}
                           , players = [pupil]
                           ; loss = Loss()
-                          , branching = 0.
+                          , branch = branch(prob = 0.)
+                          , prepare = prepare(steps = 0)
                           , augment = true
                           , kwargs... 
                           ) where {H <: Game, G <: H}
-
-  # Complement the branching options (before, during, steps)
-  branching = branch_options(branching)
 
   # Check if pupil and teacher are compatible featurewise
   use_features = features(pupil) == features(teacher) != Feature[]
@@ -400,10 +403,10 @@ function train_from_model!( pupil :: Player{G}
       p1, p2 = rand(players, 2)
 
       # Watch them playing
-      games = pvp_games(p1, p2, game = branch_root(G(), branching))[1:end-1]
+      games = pvp_games(p1, p2, game = prepare(G()))[1:end-1]
 
       # Force the players to 'make errors' sometimes
-      branchgames = branch(games, branching)
+      branchgames = branch.(games)
       branches = map(g -> pvp_games(p1, p2, g), branchgames)
 
       # Let the teacher model look at all games to generate a dataset

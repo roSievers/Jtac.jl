@@ -10,7 +10,7 @@ abstract type Player{G <: Game} end
 """
     think(player, game)
 
-Let `player` think about `game` and return a policy to you.
+Let `player` think about `game` and return a policy.
 """
 think(p :: Player, game :: Game) :: Vector{Float32} = error("Not implemented")
 
@@ -228,16 +228,16 @@ function think( p :: MCTSPlayer{G}
               ) :: Vector{Float32} where {G <: Game}
 
   # Improved policy over the allowed actions
-  pol = mctree_policy( p.model
-                     , game
-                     , power = p.power
-                     , temperature = p.temperature
-                     , exploration = p.exploration
-                     , dilution = p.dilution )
+  p = mctree_policy( p.model
+                   , game
+                   , power = p.power
+                   , temperature = p.temperature
+                   , exploration = p.exploration
+                   , dilution = p.dilution )
 
   # Full policy vector
   policy = zeros(Float32, policy_length(game))
-  policy[legal_actions(game)] = pol
+  policy[legal_actions(game)] = p
 
   policy
 
