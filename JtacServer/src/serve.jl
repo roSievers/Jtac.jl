@@ -108,7 +108,7 @@ function connect_server(channels, ip, port, login, delay)
       !isnothing(sock) && close(sock)
     end
 
-    if isnothing(res)
+    if isnothing(res) && !check_shutdown(channels)
       log_info("trying again in $delay seconds...")
       sleep_shutdown(channels, delay)
     end
@@ -136,7 +136,9 @@ function comtask(channels, ip, port, token, user, delay, accept_data, accept_con
     contestc = Channel{Int}(1)
 
     connect() = connect_server(channels, ip, port, login, delay)
-    sock, s = wrap_shutdown(connect, () -> nothing, channels)
+    ret = wrap_shutdown(connect, () -> nothing, channels)
+    if isnothing(ret) continue end
+    sock, s = ret
     change!(channels["session"], s)
 
     if sess != s
@@ -410,7 +412,7 @@ function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, cache, 
 
   # check if we are still in the same session
   s = fetch(channels["session"])
-  while s == ""
+  while !check_shutdown(channels) && s == ""
     # wait for reconnect if we lost the train session
     sleep(0.5)
     s = fetch(channels["session"])
