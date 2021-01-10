@@ -744,7 +744,7 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
                              ; loss = loss
                              , callback_step = cb
                              , batchsize = ctx.batch_size
-                             , epochs = 1 )
+                             , epochs = ctx.iterations )
 
   losses = map([trainset, test.data]) do ds
     names = Jtac.loss_names(loss)
@@ -774,15 +774,15 @@ function conclude_era(model, folder, name, epoch, era, epochcount, channels, msg
   log_info(msg, "era $era finished after training on $epochcount states")
 
   try
-    if ctx.backup_number != 0
+    if ctx.backups != 0
       # save the model (with possibly updated context)
       path = joinpath(folder, "$(name)-$era")
       log_info(msg, "saving reference model as '$path.jtm'")
       Jtac.save_model(path, model |> Jtac.to_cpu)
 
       # remove backup files that are too old
-      if ctx.backup_number > 0 && era - ctx.backup_number >= 1
-        path = joinpath(folder, "$(name)-$(era - ctx.backup_number)")
+      if ctx.backups > 0 && era - ctx.backups >= 1
+        path = joinpath(folder, "$(name)-$(era - ctx.backups)")
         if Base.Filesystem.isfile(path)
           Base.Filesystem.rm(path)
         end
@@ -819,11 +819,14 @@ end
 function precompile_trainstep(msg, model)
   log_info(msg, "simulating training step to trigger precompilation...")
   m = copy(model)
-  game = [Jtac.gametype(m)() for _ in 1:100]
-  label = [rand(Float32, 1+Jtac.policy_length(game)) for _ in 1:100]
+  gt = Jtac.gametype(m)
+  len = Jtac.policy_length(gt)
+  games = [gt() for _ in 1:100]
+  label = [rand(Float32, 1+len) for _ in 1:100]
   flabel = Vector{Float32}[]
-  ds = Jtac.DataSet([game], label, flabel)
+  ds = Jtac.DataSet(games, label, flabel)
   Jtac.train!(m, ds, epochs = 1, batchsize = 20)
+  log_info(msg, "precompilation done")
 end
 
 function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)

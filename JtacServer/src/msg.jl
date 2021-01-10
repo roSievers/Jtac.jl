@@ -447,6 +447,7 @@ mutable struct Context <: Body
   # Selecting training data from the DataPool
   # Epoch: subset of the pool used for one training iteration
   epoch_size :: Int
+  iterations :: Int
   test_frac :: Float64 # fraction of data to go to test set 
   max_age :: Int
   max_use :: Int
@@ -470,9 +471,8 @@ mutable struct Context <: Body
   momentum :: Float32
   loss_weights :: Vector{Float32}
 
-  # Folder where backups of the model are stored
-  backup_folder :: String
-  backup_number :: Int
+  # number of backups
+  backups :: Int
 
   # Additional meta-information for purposes of documentation
   msg :: String
@@ -492,6 +492,7 @@ function Context( id :: Int
                 , min_playings = 1
                 , max_playings = 1000
                 , epoch_size = 5000
+                , iterations = 1
                 , test_frac = 0.1
                 , max_age = 3
                 , max_use = 3
@@ -503,16 +504,15 @@ function Context( id :: Int
                 , learning_rate = 1e-2
                 , momentum = 0.9
                 , loss_weights = [1., 1., 0.]
-                , backup_folder = "./"
-                , backup_number = 2
+                , backups = 2
                 , msg = "" )
 
   Context( id, name, power, temperature, exploration, dilution,
            initial_steps, branch, branch_steps, augment,
            min_playings, max_playings,
-           epoch_size, test_frac, max_age, max_use, min_quality, age_weight,
+           epoch_size, iterations, test_frac, max_age, max_use, min_quality, age_weight,
            capacity, era_size, batch_size, learning_rate, momentum, loss_weights,
-           backup_folder, backup_number, msg )
+           backups, msg )
 end
 
 

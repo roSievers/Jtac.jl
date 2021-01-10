@@ -174,7 +174,6 @@ function upload_data(channels, sock, datac, contestc, did, cid)
 
   upload(channel, confirm, id) = begin
     data = take!(channel)
-    @show data.reqid
     r, t = data isa ServeData ? ("d", "D") : ("c", "C")
     worker = data.id
     data.id = id[]
@@ -252,9 +251,11 @@ function check_workers(channels, workers)
   if 1 in workers
     log_error("using the main process as worker is not supported")
     soft_shutdown!(channels)
+    throw_shutdown()
   elseif !issubset(workers, Distributed.workers())
     log_error("requested workers are not available")
     soft_shutdown!(channels)
+    throw_shutdown()
   end
 end
 
@@ -313,8 +314,8 @@ function plytask(channels, playings, gpu, async, workers)
 
   on_shutdown() = begin
     sleep(0.5)  # TODO: we should do something different here to make sure that worker-messages return
-    close(msg)
     close(cres)
+    for msg in msgs close(msg) end
     for req in creq close(req) end
   end
 
