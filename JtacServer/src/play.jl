@@ -1,21 +1,29 @@
 
+#
+# jtac play
+#
+
+import Base.Experimental: @sync
+
 struct WorkerExit <: Exception end 
 
-abstract type InternalRecord end
+#abstract type InternalRecord end
 
-struct InternalDataRecord <: InternalRecord
-  _data  :: Vector{UInt8} # compressed datasets
-  reqid  :: Int
-  worker :: Int
-  dtime  :: Float64
-end
+#struct InternalDataRecord <: InternalRecord
+#  _data    :: Vector{UInt8} # compressed datasets
+#  states   :: Int
+#  playings :: Int
+#  reqid    :: Int
+#  worker   :: Int
+#  time     :: Float64
+#end
 
-struct InternalContestRecord <: InternalRecord
-  data   :: Array{Int, 3} 
-  reqid  :: Int
-  worker :: Int
-  dtime  :: Float64
-end
+#struct InternalContestRecord <: InternalRecord
+#  data   :: Array{Int, 3} 
+#  reqid  :: Int
+#  worker :: Int
+#  time   :: Float64
+#end
 
 function combine(rs :: Vector{InternalContestRecord}, dtime)
   @assert length(rs) > 1
@@ -26,17 +34,17 @@ function combine(rs :: Vector{InternalContestRecord}, dtime)
   InternalContestRecord(data, reqid, 0, dtime)
 end
 
-function subdivide(req :: ContestRequest, playings :: Int)
+function subdivide(r :: TrainContestServe, playings :: Int)
   # When we get a competition request from a train server, we will usually
   # want to subdivide it for the different workers.
   # Each subcompetition should have at least m playings, otherwise there
   # are pairings that do not play.
-  m = Jtac.pairings(length(req.specs), length(req.active))
+  m = Jtac.pairings(length(r.specs), length(r.active))
 
   # Indeed, we only want to do subcompetitions with a length of multiples of m,
   # such that it is guaranteed that each pairing plays equally often. We thus
-  # might play more games (l) than requested (req.length).
-  l = ceil(Int, req.length / m) * m
+  # might play more games (l) than requested (r.length).
+  l = ceil(Int, r.length / m) * m
 
   # When deciding how many playings to do in one subcompetition, we orient
   # ourselves by the 'playings' value of the play server, choosing the next
@@ -47,46 +55,42 @@ function subdivide(req :: ContestRequest, playings :: Int)
   # with length rem = l - (k * r * m) (which divides m by the definition of m)
   k, rem = divrem(l, r*m)
 
-  requests = [ ContestRequest(req.specs, req.active, r*m, req.id) for _ in 1:k ]
+  reqs = map(1:k) do _
+    TrainContestServe(r.specs, r.active, r.names, r*m, r.era, r.reqid)
+  end
   if rem > 0
-    push!(requests, ContestRequest(req.specs, req.active, rem, req.id))
+    push!(reqs, TrainContestServe(r.specs, r.active, r.names, rem, r.era, r.reqid))
   end
 
-  requests
+  reqs
 end
 
 
-function sign_record(r :: InternalDataRecord, id :: Int)
-  DataRecord(r._data, r.reqid, id, r.dtime)
-end
+sign_record!(r :: ServeData, id :: Int) = r.id = id
+sign_record!(r :: ServeContest, id :: Int) = r.id = id
 
-function sign_record(r :: InternalContestRecord, id :: Int)
-  ContestRecord(r.data, r.reqid, id, r.dtime)
-end
-
-log(name, msg) = println("<$name> " * msg)
 
 """
-    start(Play; <keyword arguments>)
+    play_service(<keyword arguments>)
 
-Start a Jtac play service.
+Start the Jtac play service.
 """
-function start( :: Type{Play}
-              ; ip       = ip"127.0.0.1"
-              , port     = 7788
-              , name     = ENV["USER"]
-              , token    = ""
-              , playings = 50
-              , gpu      = false
-              , async    = false
-              , workers  = Distributed.workers()
-              , buffersize              = 100 
-              , wait_reconnect          = 10
-              , accept_data_requests    = true
-              , accept_contest_requests = true
-              , kwargs... )
+function play_service(
+                     ; ip       = ip"127.0.0.1"
+                     , port     = 7788
+                     , user     = ENV["USER"]
+                     , token    = ""
+                     , playings = 50
+                     , use_gpu  = false
+                     , async    = false
+                     , workers  = Distributed.workers()
+                     , buffer_size    = 100 
+                     , delay          = 10
+                     , accept_data    = true
+                     , accept_contest = true
+                     , kwargs... )
 
-  log(name, "initializing jtac play service...")
+  log_info("initializing jtac play service...")
 
   buffersize = max(buffersize, 2length(workers))
 
@@ -188,15 +192,15 @@ function start( :: Type{Play}
 
     if err isa InterruptException
 
-      @error "<$name> Interrupted"
+      log_err(name, "Interrupted")
 
     elseif err isa Base.IOError
 
-      @error "<$name> Connection to $ip:$port was closed unexpectedly"
+      log_err(name, "Connection to $ip:$port was closed unexpectedly")
 
     else
 
-      @error "<$name> Unexpected exception: $err"
+      log_err(name, "Unexpected exception: $err")
       throw(err.task.exception)
 
     end
@@ -222,7 +226,7 @@ function login(name, ip, port, token, data, contest, sleeptime)
       login = PlayLogin(token = token, name = name, data = data, contest = contest)
 
       send(socket, login)
-      reply = receive(socket) :: PlayAccept
+      reply = receive(socket, PlayAccept)
 
       if reply.accept
 
@@ -352,7 +356,7 @@ function download( name, slot, getsocket, stop, datareq, contestreq
 
   main = @async while !eof(fetch(slot))
 
-    msg = receive(fetch(slot)) :: Msg{Train, Play}
+    msg = receive(fetch(slot), Message{Train, Play})
 
     if msg isa PlayAccept
 
@@ -398,17 +402,17 @@ function download( name, slot, getsocket, stop, datareq, contestreq
         log(name, "received request D.$(msg.id)")
       end
 
-      log(name, "  name: $(msg.spec.name)")
-      log(name, "  power: $(msg.spec.power)")
-      log(name, "  temperature: $(msg.spec.temperature)")
-      log(name, "  exploration: $(msg.spec.exploration)")
-      log(name, "  dilution: $(msg.spec.dilution)")
-      log(name, "  min_playings: $(msg.min_playings)")
-      log(name, "  max_playings: $(msg.max_playings)")
-      log(name, "  augment: $(msg.augment)")
-      log(name, "  prepare_steps: $(msg.prepare_steps)")
-      log(name, "  branch_steps: $(msg.branch_steps)")
-      log(name, "  branch_prob: $(msg.branch_prob)")
+      log(name, "  | name: $(msg.spec.name)")
+      log(name, "  | power: $(msg.spec.power)")
+      log(name, "  | temperature: $(msg.spec.temperature)")
+      log(name, "  | exploration: $(msg.spec.exploration)")
+      log(name, "  | dilution: $(msg.spec.dilution)")
+      log(name, "  | min_playings: $(msg.min_playings)")
+      log(name, "  | max_playings: $(msg.max_playings)")
+      log(name, "  | augment: $(msg.augment)")
+      log(name, "  | prepare_steps: $(msg.prepare_steps)")
+      log(name, "  | branch_steps: $(msg.branch_steps)")
+      log(name, "  | branch_prob: $(msg.branch_prob)")
 
       isready(datareq) && take!(datareq)
       put!(datareq, msg)
@@ -572,20 +576,21 @@ function compute( name, stop, datareq, contestreq, buffer
 
   if workers == [1]
 
-    @error "<$name-3> using the main process as worker is not supported"
+    log_err(name, "using the main process as worker is not supported")
     log(name, "exiting...")
     return false
 
   elseif !issubset(workers, Distributed.workers())
 
-    @error "<$name-3> requested workers are not available"
+    log_err(name, "requested workers are not available")
     log(name, "exiting...")
     return false
 
   end
 
   m = length(workers)
-  gpu_devices = Knet.cudaGetDeviceCount()
+  # TODO: Knet.cudaGetDeviceCount() is not defined in current KNET !
+  gpu_devices = gpu ? Knet.cudaGetDeviceCount() : 0
 
   if m > gpu_devices && gpu
     log(name, "info: $m workers will share $gpu_devices GPU device[s]")

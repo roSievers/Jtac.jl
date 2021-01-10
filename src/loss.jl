@@ -56,8 +56,8 @@ function Loss(
 
 end
 
-function caption(l :: Loss)
-  base = [:value, :policy, :reg]
+function loss_names(l :: Loss)
+  base = ["value", "policy", "reg"]
   features = feature_name.(l.features)
   vcat(base, features)
 end

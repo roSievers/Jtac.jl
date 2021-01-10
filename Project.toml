@@ -1,6 +1,6 @@
 name = "Jtac"
 uuid = "ff1b8621-ed28-5f2d-82b1-1136b8fa4e8d"
-authors = "Rolf Kreibaum and Thomas Staudt"
+authors = "Rolf Kreibaum and Thomas Staudt <tscode@posteo.net>"
 version = "0.1.0"
 
 [deps]
@@ -15,9 +15,11 @@ NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [compat]
-julia = "^1.3"
+julia = "^1.5"
+Knet = "1.4"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

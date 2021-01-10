@@ -50,7 +50,7 @@ end
 Train `model`, or the training model of `player`, on `dataset`.
 
 # Arguments
-' `loss = Loss()`: Loss used for training.
+- `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of iterations through `dataset`.
 - `batchsize = 50`: Batchsize for the update steps.
 - `callback_epoch`: Function called after each epoch.

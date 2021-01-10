@@ -31,6 +31,13 @@ Get all neural network layers of an the composite layer `clayer`.
 """
 layers( :: CompositeLayer) = error("Not implemented")
 
+"""
+    count_params(layer)
+
+Count the number of free parameters in `layer`.
+"""
+count_params(layer :: Layer) = sum(length, Knet.params(layer))
+
 
 # -------- Auxiliary Functions ----------------------------------------------- # 
 
@@ -38,7 +45,7 @@ layers( :: CompositeLayer) = error("Not implemented")
  
 atype(gpu :: Bool) = gpu ? Knet.KnetArray{Float32} : Array{Float32}
 
-# Check if something is a AutoGrad param or not
+# Check if something is an AutoGrad param or not
  
 is_param(p) = isa(p, Knet.Param)
 

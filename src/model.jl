@@ -102,3 +102,10 @@ Get the julia type `G <: Game` that `model` can be applied to.
 """
 gametype(model :: Model{G}) where {G <: Game} = G
 
+"""
+    count_params(model)
+
+Count the number of free parameters in `model`.
+"""
+count_params(model :: Model) = sum(length, Knet.params(model))
+

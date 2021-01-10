@@ -1,0 +1,22 @@
+name = "JtacServer"
+uuid = "97cd4d6c-95bc-4aa2-b3d7-1c0cdff322bd"
+authors = ["Thomas Staudt <tscode@posteo.net>"]
+version = "0.1.0"
+
+[deps]
+Blosc = "a74b3585-a348-5f62-a45c-50e91977d574"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+Knet = "1902f260-5fb4-5aff-8c31-6271790ab950"
+LazyJSON = "fc18253b-5e1b-504c-a4a2-9ece4944c004"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+Jtac = "ff1b8621-ed28-5f2d-82b1-1136b8fa4e8d"
+
+[compat]
+Knet = "1.4"
+julia = "^1.5"

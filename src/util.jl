@@ -123,7 +123,7 @@ const default_crayon = Crayons.Crayon(reset = true)
 
 function print_loss_header(loss, use_features)
 
-  names = use_features ? caption(loss) : caption(loss)[1:3]
+  names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
 
   components = map(names) do c
     Printf.@sprintf("%10s", string(c)[1:min(end, 10)])
