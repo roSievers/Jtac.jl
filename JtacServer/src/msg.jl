@@ -498,7 +498,7 @@ function Context( id :: Int
                 , max_use = 3
                 , min_quality = 0.
                 , age_weight = 0.5
-                , capacity = Int(1e6)
+                , capacity = 10^6
                 , era_size = 20000
                 , batch_size = 512
                 , learning_rate = 1e-2

@@ -23,8 +23,7 @@ function serve(
               , delay    = 10
               , buffer_size    = 100 
               , accept_data    = true
-              , accept_contest = true
-              , kwargs... )
+              , accept_contest = true)
 
   log_info("initializing jtac serve session")
   
@@ -371,8 +370,9 @@ function serve_worker(channels, wid, playings, gpu, async, creq, cres, msg)
         end
       end
 
-      sess = fetch(channels["session"])
-      work(channels, req, wid, playings, gpu, async, sess, cache, cres, msg)
+      sess  = fetch(channels["session"])
+      cache = work(channels, req, wid, playings, gpu, async, sess, cres, msg, cache)
+      GC.gc()
     end
   catch err
     if shutdown_exn(err) || check_shutdown(channels)
@@ -385,7 +385,7 @@ function serve_worker(channels, wid, playings, gpu, async, creq, cres, msg)
   end
 end
 
-function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, cache, _, msg)
+function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, _, msg, cache)
   k = clamp(k, req.min_playings, req.max_playings)
   rid = req.reqid
   log_info(msg, "starting $k playings for D$rid")
@@ -394,14 +394,17 @@ function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, cache, 
 
   # reuse old player if the request id has not changed
   if !isnothing(cache) && rid == cache[1]
+    log_info(msg, "using cached player")
     player = cache[2]
   else
+    log_info(msg, "building player from request")
     player = build_player(req.spec, gpu = gpu, async = async)
   end
   
   time = @elapsed begin
     prepare = Jtac.prepare(steps = req.init_steps)
     branch = Jtac.branch(prob = req.branch, steps = req.branch_steps)
+    log_info(msg, "generating dataset")
     ds = Jtac.record_self( player, k
                          , augment = req.augment
                          , prepare = prepare
