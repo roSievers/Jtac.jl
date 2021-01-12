@@ -25,6 +25,8 @@ import Knet: identity,
              tanh,
              sigm
 
+import CUDA
+
 export AutoGrad, Knet
 
 export identity,

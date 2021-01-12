@@ -41,8 +41,8 @@ nothing if the element is already on the GPU.
 to_gpu(el :: Element{true})  = el
 
 function to_gpu(el :: Element{false}) 
-  if Knet.gpu() == -1
-    @warn "No GPU was found by Knet. Element stays on CPU"
+  if isempty(CUDA.devices())
+    @warn "No GPU found. Element stays on CPU"
     el
   else
    swap(el)

@@ -114,7 +114,7 @@ end
 
 function expand_tree_by_one!(node, game, model; kwargs...)
   new_game = copy(game)
-  # Decending to a leaf also changes the new_game value. This value then
+  # Descending to a leaf also changes the new_game value. This value then
   # corresponds to the game state at the leaf.
   new_node = descend_to_leaf!(new_game, node; kwargs...)
   p1_value = expand!(new_node, new_game, model)

@@ -22,6 +22,7 @@ function serve(
               , workers  = Distributed.workers()
               , delay    = 10
               , buffer_size    = 100 
+              , gc_interval    = 10
               , accept_data    = true
               , accept_contest = true)
 
@@ -45,7 +46,7 @@ function serve(
     @sync begin
       @async keyboard_shutdown(channels)
       com = @async comtask(channels, ipv4(ip), port, token, user, delay, accept_data, accept_contest)
-      ply = @async plytask(channels, playings, use_gpu, async, workers)
+      ply = @async plytask(channels, workers, playings, use_gpu, async, gc_interval)
     end
   catch err
     ok  = err isa TaskFailedException && shutdown_fail(err.task)
@@ -69,7 +70,7 @@ end
 
 function connect_server(channels, ip, port, login, delay)
   res = nothing
-  while isnothing(res)
+  while !check_shutdown(channels) && isnothing(res)
     sock = nothing
 
     try_login() = begin
@@ -100,6 +101,7 @@ function connect_server(channels, ip, port, login, delay)
       if err isa Base.IOError
         log_error("connecting to $ip:$port failed: connection refused")
       elseif err isa Shutdown
+        soft_shutdown!(channels)
         log_error("connecting to $ip:$port failed: shutdown exception")
       else
         log_error("connecting to $ip:$port failed: $err")
@@ -260,7 +262,7 @@ function check_workers(channels, workers)
   end
 end
 
-function handle_contests(channels, playings, creq, cres)
+function distribute_contests(channels, creq, cres, playings)
   while !check_shutdown(channels)
     if isready(channels["contest-request"])
       req = take!(channels["contest-request"])
@@ -286,32 +288,29 @@ function handle_contests(channels, playings, creq, cres)
   end
 end
 
-function plytask(channels, playings, gpu, async, workers)
+function plytask(channels, workers, playings, use_gpu, async, gc_interval)
   log_info("play task initiated")
 
   check_workers(channels, workers)
-  m = length(workers)
-  gpu_devices = gpu ? length(CUDA.devices()) : 0
 
-  if gpu && m > gpu_devices
-    log_info("note: $m workers will share $gpu_devices GPU device[s]")
-  end
+  opt = ( use_gpu = use_gpu
+        , async = async
+        , playings = playings
+        , gc_interval = gc_interval )
 
   creq = [remote_channel(TrainContestServe, 100) for _ in workers]
-  cres = remote_channel(ServeContest, 3m)
+  cres = remote_channel(ServeContest, 3 * length(workers))
   msgs = [remote_channel(String, 100) for _ in workers]
 
   handle_msg(i) = while true
     log_info("worker $i: " * take!(msgs[i]))
   end
 
-  mtask() = handle_contests(channels, playings, creq, cres)
-  wtask() = wrap_serve_workers(channels, playings, gpu, async, workers, creq, cres, msgs)
+  ctask() = distribute_contests(channels, creq, cres, playings)
+  wtask() = serve_workers(channels, creq, cres, msgs, workers, opt)
 
-  tasks = [mtask, wtask]
-  for i in 1:length(workers)
-    push!(tasks, () -> handle_msg(i))
-  end
+  tasks = [ctask, wtask]
+  for i in 1:length(workers) push!(tasks, () -> handle_msg(i)) end
 
   on_shutdown() = begin
     sleep(0.5)  # TODO: we should do something different here to make sure that worker-messages return
@@ -338,17 +337,26 @@ function plytask(channels, playings, gpu, async, workers)
   log_info("shutting down play task")
 end
 
-function wrap_serve_workers(channels, playings, gpu, async, workers, creq, cres, msgs)
+function serve_workers(channels, creq, cres, msgs, workers, options)
+  ngpu = options.use_gpu ? length(CUDA.devices()) : 0
+  if options.use_gpu && length(workers) > ngpu
+    log_info("note: $(length(workers)) workers will share $ngpu GPU device[s]")
+  end
+
   @sync begin
     for i in 1:length(workers)
       Distributed.@spawnat workers[i] begin 
-        serve_worker(channels, i, playings, gpu, async, creq, cres, msgs[i])
+        options.use_gpu && Cuda.device!((i-1) % ngpu)
+        play(req, sess, cache) = begin
+          serve_play(channels, req, i, cres, msgs[i], sess, cache, options)
+        end
+        serve_worker(channels, i, creq, msgs[i], play)
       end
     end
   end
 end
 
-function serve_worker(channels, wid, playings, gpu, async, creq, cres, msg)
+function serve_worker(channels, wid, creq, msg, play)
 
   log_info(msg, "worker $wid initialized")
   dreq = channels["data-request"]
@@ -371,8 +379,8 @@ function serve_worker(channels, wid, playings, gpu, async, creq, cres, msg)
       end
 
       sess  = fetch(channels["session"])
-      cache = work(channels, req, wid, playings, gpu, async, sess, cres, msg, cache)
-      GC.gc()
+      cache = play(req, sess, cache)
+      GC.gc(); GC.gc()
     end
   catch err
     if shutdown_exn(err) || check_shutdown(channels)
@@ -385,12 +393,20 @@ function serve_worker(channels, wid, playings, gpu, async, creq, cres, msg)
   end
 end
 
-function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, _, msg, cache)
-  k = clamp(k, req.min_playings, req.max_playings)
+function serve_play(channels, req :: TrainDataServe, wid, cres, msg, sess, cache, opt)
+  k = clamp(opt.playings, req.min_playings, req.max_playings)
   rid = req.reqid
-  log_info(msg, "starting $k playings for D$rid")
+  log_info(msg, "initiating $k playings for D$rid")
 
-  cb() = (check_shutdown(channels) && throw_shutdown())
+  now = Dates.time()
+  cb() = begin
+    if check_shutdown(channels)
+      throw_shutdown()
+    elseif Dates.time() - now > opt.gc_interval
+      now = Dates.time()
+      GC.gc(); GC.gc()
+    end
+  end
 
   # reuse old player if the request id has not changed
   if !isnothing(cache) && rid == cache[1]
@@ -398,14 +414,14 @@ function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, _, msg,
     player = cache[2]
   else
     log_info(msg, "building player from request")
-    player = build_player(req.spec, gpu = gpu, async = async)
+    player = build_player(req.spec, gpu = opt.use_gpu, async = opt.async)
   end
   
-  time = @elapsed begin
+  dt = @elapsed begin
     prepare = Jtac.prepare(steps = req.init_steps)
     branch = Jtac.branch(prob = req.branch, steps = req.branch_steps)
-    log_info(msg, "generating dataset")
-    ds = Jtac.record_self( player, k
+    log_info(msg, "generating dataset...")
+    ds = Jtac.record_self( player, opt.playings
                          , augment = req.augment
                          , prepare = prepare
                          , branch = branch
@@ -425,9 +441,9 @@ function work(channels, req :: TrainDataServe, wid, k, gpu, async, sess, _, msg,
     log_warn(msg, "discarding dataset for D$rid since session has changed")
     nothing
   else
-    dt = round(time, digits = 3)
-    log_info(msg, "finished $k playings for D$rid in $dt seconds")
-    data = ServeData(ds, rid, wid, time)
+    dt3 = round(dt, digits = 3)
+    log_info(msg, "finished $k playings for D$rid in $dt3 seconds")
+    data = ServeData(ds, rid, wid, dt)
     put!(channels["data"], data)
     (rid, player) # cached information
   end

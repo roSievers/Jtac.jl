@@ -81,7 +81,7 @@ function with_workers( f :: Function
       # if this call is hidden in set_defaults.
       # set_defaults(i, devices, _on_gpu(splayers))
       if gpu
-        Knet.gpu((i-1) % devices)
+        CUDA.device!((i-1) % devices)
       end
 
       # Reconstruct the players
