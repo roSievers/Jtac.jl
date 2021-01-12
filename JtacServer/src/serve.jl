@@ -346,7 +346,7 @@ function serve_workers(channels, creq, cres, msgs, workers, options)
   @sync begin
     for i in 1:length(workers)
       Distributed.@spawnat workers[i] begin 
-        options.use_gpu && Cuda.device!((i-1) % ngpu)
+        options.use_gpu && CUDA.device!((i-1) % ngpu)
         play(req, sess, cache) = begin
           serve_play(channels, req, i, cres, msgs[i], sess, cache, options)
         end
