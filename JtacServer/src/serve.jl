@@ -50,8 +50,6 @@ function serve(
     end
   catch err
     ok  = err isa TaskFailedException && shutdown_fail(err.task)
-    ok |= shutdown_exn(err)
-    ok |= err isa LoadError && shutdown_exn(err.error)
     if ok
       log_info("received shutdown signal in toplevel")
     else
@@ -291,8 +289,6 @@ end
 function plytask(channels, workers, playings, use_gpu, async, gc_interval)
   log_info("play task initiated")
 
-  check_workers(channels, workers)
-
   opt = ( use_gpu = use_gpu
         , async = async
         , playings = playings
@@ -346,7 +342,9 @@ function serve_workers(channels, creq, cres, msgs, workers, options)
   @sync begin
     for i in 1:length(workers)
       Distributed.@spawnat workers[i] begin 
-        options.use_gpu && CUDA.device!((i-1) % ngpu)
+        if options.use_gpu
+          CUDA.device!((i-1) % ngpu)
+        end
         play(req, sess, cache) = begin
           serve_play(channels, req, i, cres, msgs[i], sess, cache, options)
         end

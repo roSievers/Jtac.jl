@@ -27,7 +27,7 @@ remote_channel(type, n) = Distributed.RemoteChannel(() -> Channel{type}(n))
 
 function set_token(tok)
   tok = isnothing(tok) ? join(rand(0:9, 5)) : tok
-  log_info("the authentification token for this session is '$tok'")
+  Log.info("the authentification token for this session is '$tok'")
   tok
 end
 
@@ -38,7 +38,7 @@ function parse_history(file)
     end
   catch err
     if err isa SystemError
-      log_error("history file '$file' cannot be accessed")
+      Log.error("history file '$file' cannot be accessed")
       []
     else
       rethrow(err)
@@ -69,10 +69,10 @@ ipv4(str :: String) = Sockets.IPv4(str)
 
 function initialize(context, model, folder, name, info, base, history)
   if !Filesystem.isdir(folder)
-    log_info("creating data folder '$folder'")
+    Log.info("creating data folder '$folder'")
     Filesystem.mkpath(folder)
   else
-    log_info("data folder '$folder' already exists")
+    Log.info("data folder '$folder' already exists")
   end
   if model isa String && isnothing(base)
     model_base = Filesystem.basename(model) |> Filesystem.splitext |> first
@@ -106,7 +106,7 @@ function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
   # TODO: what about contests? <-- Do that when everything else works, should be
   # modular
 
-  log_info("initializing jtac training session")
+  Log.info("initializing jtac training session")
 
   channels = Dict{String, Distributed.RemoteChannel}(
       "context"          => remote_channel( Context, 1 )
@@ -144,9 +144,9 @@ function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
     ok |= shutdown_exn(err)
     ok |= err isa LoadError && shutdown_exn(err.error)
     if ok
-      log_info("received shutdown signal in toplevel")
+      Log.info("received shutdown signal in toplevel")
     else
-      log_error("uncaught error reached toplevel: $err")
+      Log.error("uncaught error reached toplevel: $err")
       soft_shutdown!(channels)
       rethrow(err)
     end
@@ -160,18 +160,18 @@ function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
   # TODO: Better options to choose jth and jtm file name / path
   jth = joinpath(folder, "$model_name.jth")
   write(jth, join(json.(com.result), "\n"))
-  log_info("saved the history of the training session as '$jth'")
+  Log.info("saved the history of the training session as '$jth'")
 
   if isnothing(trn.result)
-    log_warn("could not save model: nothing returned by training task")
+    Log.warn("could not save model: nothing returned by training task")
   elseif trn.result isa Exception
-    log_warn("could not save model: training task returned exception")
+    Log.warn("could not save model: training task returned exception")
   elseif trn.result isa Jtac.NeuralModel
     jtm = joinpath(folder, model_name)
     Jtac.save_model(jtm, trn.result)
-    log_info("saved model returned by the training task as '$jtm.jtm'")
+    Log.info("saved model returned by the training task as '$jtm.jtm'")
   else
-    log_warn("could not save model")
+    Log.warn("could not save model")
   end
 end
 
@@ -203,7 +203,7 @@ function wait_tasks(tasks, report_internal = true)
     try wait(t)
     catch err
       if report_internal && !shutdown_fail(t) && !(t.exception isa Return)
-        log_warn("internal task failed: $(t.exception)")
+        Log.warn("internal task failed: $(t.exception)")
       end
     end
   end
@@ -262,7 +262,7 @@ function wrap_shutdown(fs, on_shutdown, channels, on_return = x -> x)
       on_shutdown()
       wait_tasks(tasks, false)
     elseif err isa Distributed.ProcessExitedException
-      log_error("received process exited exception: $err")
+      Log.error("received process exited exception: $err")
       soft_shutdown!(channels)
       on_shutdown()
       wait_tasks(tasks, false)
@@ -326,13 +326,13 @@ function authenticate(login, sock, ip, port, token, user, sess)
   reject(msg) = (send(sock, LoginAuth(false, msg, sess)); close(sock))
 
   if login.token != token
-    log_info("authentication of $ip:$port failed: wrong token '$(login.token)'")
+    Log.info("authentication of $ip:$port failed: wrong token '$(login.token)'")
     reject("token '$(login.token)' incorrect.")
 
-  elseif login.version != JTAC_SERVER_VERSION
-    log_info("authentication of $ip:$port failed: wrong version '$(login.version)'")
+  elseif login.version != VERSION
+    Log.info("authentication of $ip:$port failed: wrong version '$(login.version)'")
     msg = "jtac server version $(login.version) " *
-          "is not supported (need $(JTAC_SERVER_VERSION))."
+          "is not supported (need $(VERSION))."
     reject(msg)
 
   else
@@ -366,13 +366,13 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
 
   body = Client(name, string(client.ip), client.port, false)
   put!(history, [Event(body)])
-  log_info("connection to serve client $(client.ip):$(client.port) ($name) established")
+  Log.info("connection to serve client $(client.ip):$(client.port) ($name) established")
 
   send_request(req, type) = try
     send(client.sock, req)
   catch err
     if !shutdown_exn(err)
-      log_error("sending $type request to client $name failed: $err")
+      Log.error("sending $type request to client $name failed: $err")
     end
     rethrow(err)
   end
@@ -385,7 +385,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
         r = fetch(cdr)
         if isnothing(req) || r.reqid > req.reqid
           req = r
-          log_info("sending new data request D$(r.reqid) to client $name")
+          Log.info("sending new data request D$(r.reqid) to client $name")
           send_request(req, "data")
         end
       end
@@ -398,7 +398,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
     while isopen(ccr) && isopen(client.sock)
       if isready(ccr)
         r = take!(ccr)
-        log_info("sending contest request to client $(client.login.name)")
+        Log.info("sending contest request to client $(client.login.name)")
         send_request(r, "contest")
 
         # after some time, a contest should arrive
@@ -417,9 +417,9 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
     receive(client.sock, Message{Serve, Train})
   catch err
     if err isa Base.IOError
-      log_error("receiving data from client $name failed: connection closed")
+      Log.error("receiving data from client $name failed: connection closed")
     elseif !shutdown_exn(err) && !(err isa EOFError)
-      log_error("receiving data from client $name failed: $err")
+      Log.error("receiving data from client $name failed: $err")
       rethrow(err)
     end
   end
@@ -435,7 +435,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
       if length(contest.data) < contest.sz_max
         put!(contest, data)
       else
-        log_warn("contest queue for client $name is full")
+        Log.warn("contest queue for client $name is full")
         take!(contest, data)
         put!(contest, data)
       end
@@ -451,7 +451,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
   disconnect() = begin
     body = Client(name, string(client.ip), client.port, true)
     put!(history, [Event(body)])
-    log_info("disconnected from client $name")
+    Log.info("disconnected from client $name")
   end
 
   tasks = Any[receive_loop]
@@ -466,7 +466,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
     wrap_shutdown(tasks, on_shutdown, channels, on_return)
   catch err
     close(client.sock)
-    log_error("communication with client $name failed: $err")
+    Log.error("communication with client $name failed: $err")
     disconnect()
     rethrow(err)
   end
@@ -480,13 +480,13 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
 
   count = length(hist)
   name  = client.login.name
-  log_info("connection to monitor $(client.ip):$(client.port) ($name) established")
+  Log.info("connection to monitor $(client.ip):$(client.port) ($name) established")
 
   send_events(events) = try
     for ev in events send(client.sock, ev) end
   catch err
     if !shutdown_exn(err)
-      log_error("failed to send event to monitor $name: $err")
+      Log.error("failed to send event to monitor $name: $err")
     end
     rethrow(err)
   end
@@ -506,9 +506,9 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
     end
   catch err
     if err isa Union{Base.IOError, EOFError}
-      log_error("receiving context from monitor $name failed: connection closed")
+      Log.error("receiving context from monitor $name failed: connection closed")
     elseif !shutdown_exn(err)
-      log_error("receiving context from monitor $name failed: $err")
+      Log.error("receiving context from monitor $name failed: $err")
       rethrow(err)
     end
   end
@@ -520,7 +520,7 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
       ev.body.id = isnothing(i) ? 0 : hist[i].body.id + 1
       put!(channels["history"], [Event(ev.body)])
       put!(channels["context-update"], ev.body)
-      log_info("received context $(ev.body.id) from monitor $name")
+      Log.info("received context $(ev.body.id) from monitor $name")
       # TODO: When we quickly add two contests, they get the same id, since
       # update of hist is slower than receiving second context
     end
@@ -535,12 +535,12 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
     wrap_shutdown([event_loop, context_loop], on_shutdown, channels, on_return)
   catch err
     close(client.sock)
-    log_error("communication with monitor $name failed: $err")
-    log_info("disconnected from monitor $name")
+    Log.error("communication with monitor $name failed: $err")
+    Log.info("disconnected from monitor $name")
     rethrow(err)
   end
 
-  log_info("disconnected from monitor $name")
+  Log.info("disconnected from monitor $name")
   if shutdown throw(Shutdown()) end
 
 end
@@ -580,14 +580,14 @@ function handle_clients!(channels, server, history, token, user, max_clients)
     login = receive(sock, Login)
     client = authenticate(login, sock, ip, port, token, user, sess)
     if isnothing(client)
-      log_info("connection request from $ip:$port rejected (login failed)")
+      Log.info("connection request from $ip:$port rejected (login failed)")
     else
       task = @async handle_client!(channels, history, client)
       push!(ctasks, (sock, task))
     end
   catch err
     if !check_shutdown(channels) && !shutdown_exn(err)
-      log_warn("client $ip:$port disconnected during login")
+      Log.warn("client $ip:$port disconnected during login")
     else
       rethrow(err)
     end
@@ -598,18 +598,18 @@ function handle_clients!(channels, server, history, token, user, max_clients)
     # TODO: getpeername sometimes segfaults in other parts of the code. Observe
     # if it also makes problems here. Maybe reproduce it and report bug?
     ip, port = Sockets.getpeername(sock)
-    log_info("connection request from $ip:$port")
+    Log.info("connection request from $ip:$port")
     filter!(x -> !istaskdone(x[2]), ctasks)
     if length(ctasks) >= max_clients
       close(sock) # we reject
-      log_info("connection request from $ip:$port rejected (too many clients)")
+      Log.info("connection request from $ip:$port rejected (too many clients)")
     else
       wrap_shutdown(() -> on_connection(sock, ip, port), () -> close(sock), channels)
     end
   end
 
   on_shutdown() = begin
-    log_info("waiting for client tasks to return...")
+    Log.info("waiting for client tasks to return...")
     for (sock, _) in ctasks close(sock) end
     close(server)
     wait_tasks([t for (_, t) in ctasks])
@@ -620,7 +620,7 @@ function handle_clients!(channels, server, history, token, user, max_clients)
       wrap_shutdown(accept_connection, on_shutdown, channels)
     catch err
       if !check_shutdown(channels)
-        log_error("client task failed: $err")
+        Log.error("client task failed: $err")
       end
       on_shutdown()
     end
@@ -639,7 +639,7 @@ The functions include
   through the session
 """
 function comtask(channels, ip, port, token, user, max_clients)
-  log_info("listening for client connections at $ip:$port")
+  Log.info("listening for client connections at $ip:$port")
   server = Sockets.listen(ip, port)
   history = Event[]
 
@@ -649,11 +649,11 @@ function comtask(channels, ip, port, token, user, max_clients)
   try
     wrap_shutdown([htask, ctask], () -> close(server), channels)
   catch err
-    log_error("communication task failed: $err")
+    Log.error("communication task failed: $err")
     rethrow(err)
   end
 
-  log_info("shutting down communication task")
+  Log.info("shutting down communication task")
   history
 end
 
@@ -668,12 +668,12 @@ function refresh_data!(train, test, channel, reqid, ctx, msg)
     id  = rec.id
 
     if rid > reqid
-      log_warn(msg, "discarding dataset d$id:D$rid ($name) with impossible request id $rid")
+      Log.warn(msg, "discarding dataset d$id:D$rid ($name) with impossible request id $rid")
       continue
     end
 
     ds = decompress(rec._data)
-    log_info(msg, "decompressed d$id:D$rid ($name) ($(length(ds)) datasets)")
+    Log.info(msg, "decompressed d$id:D$rid ($name) ($(length(ds)) datasets)")
 
     for d in ds
       length(test) 
@@ -682,25 +682,25 @@ function refresh_data!(train, test, channel, reqid, ctx, msg)
     end
 
     tr, te = length(train), length(test)
-    log_info(msg, "data d$id:D$rid ($name) assigned to training ($tr states) and testing ($te states)")
+    Log.info(msg, "data d$id:D$rid ($name) assigned to training ($tr states) and testing ($te states)")
   end
 
   for (name, pool) in [("train", train), ("test", test)]
     len = length(pool)
     if len == 0
-      log_info(msg, "$name pool is empty")
+      Log.info(msg, "$name pool is empty")
     else
       update_age!(pool, reqid)
       update_capacity!(pool, ctx.capacity)
       r, rp = cleanse!(pool, ctx)
-      log_info(msg, "cleaning $name pool: $len -> $r states ($rp of positive quality)")
+      Log.info(msg, "cleaning $name pool: $len -> $r states ($rp of positive quality)")
     end
   end
 
   len = length(train)
   if len > 0
     qavg = Statistics.mean(quality(train, ctx))
-    log_info(msg, "new average quality of train pool: $qavg")
+    Log.info(msg, "new average quality of train pool: $qavg")
   else
     qavg = 0.
   end
@@ -708,10 +708,10 @@ function refresh_data!(train, test, channel, reqid, ctx, msg)
   if len == 0
     false
   elseif len < ctx.epoch_size
-    log_info(msg, "train pool too small for next epoch ($len < $(ctx.epoch_size))")
+    Log.info(msg, "train pool too small for next epoch ($len < $(ctx.epoch_size))")
     false
   elseif qavg < ctx.min_quality
-    log_info(msg, "quality of train pool too low ($qavg < $(ctx.min_quality)")
+    Log.info(msg, "quality of train pool too low ($qavg < $(ctx.min_quality)")
     false
   else
     true
@@ -729,14 +729,14 @@ end
 function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
   # Callback to halt training
   cb(_) = if check_shutdown(channels)
-    log_info(msg, "model received shutdown signal during training")
+    Log.info(msg, "model received shutdown signal during training")
     throw_shutdown()
   end
 
   trainset, idx, qavg = random_selection(train, ctx, ctx.epoch_size)
   update_use!(train, idx)
   qavg = round(qavg, digits = 3)
-  log_info(msg, "selected training data of quality $qavg for epoch $epoch")
+  Log.info(msg, "selected training data of quality $qavg for epoch $epoch")
 
   l = ctx.loss_weights
   loss = Jtac.Loss(value = l[1], policy = l[2], reg = l[3])
@@ -758,7 +758,7 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
   end
 
   len = length(trainset)
-  log_info(msg, "finished epoch $epoch in $time seconds")
+  Log.info(msg, "finished epoch $epoch in $time seconds")
   ep = Epoch(epoch, losses..., qavg, length(trainset), ctx.id, era)
   put!(channels["history"], [Event(ep)])
   len 
@@ -771,13 +771,13 @@ function conclude_era(model, folder, name, epoch, era, epochcount, channels, msg
     return false
   end
 
-  log_info(msg, "era $era finished after training on $epochcount states")
+  Log.info(msg, "era $era finished after training on $epochcount states")
 
   try
     if ctx.backups != 0
       # save the model (with possibly updated context)
       path = joinpath(folder, "$(name)-$era")
-      log_info(msg, "saving reference model as '$path.jtm'")
+      Log.info(msg, "saving reference model as '$path.jtm'")
       Jtac.save_model(path, model |> Jtac.to_cpu)
 
       # remove backup files that are too old
@@ -789,13 +789,13 @@ function conclude_era(model, folder, name, epoch, era, epochcount, channels, msg
       end
     end
   catch err
-    log_error(msg, "unexpected error when trying to save model: $err")
+    Log.error(msg, "unexpected error when trying to save model: $err")
   end
 
   # initiate new era
   change!(channels["ref-model-update"], copy(model |> Jtac.to_cpu))
   put!(channels["history"], [Event(Era(era+1, epoch, []))])
-  log_info(msg, "era $(era+1) starts")
+  Log.info(msg, "era $(era+1) starts")
 
   true
 end
@@ -817,7 +817,7 @@ function wrap_train_worker(proc, args...)
 end
 
 function precompile_trainstep(msg, model)
-  log_info(msg, "simulating training step to trigger precompilation...")
+  Log.info(msg, "simulating training step to trigger precompilation...")
   m = copy(model)
   gt = Jtac.gametype(m)
   len = Jtac.policy_length(gt)
@@ -826,11 +826,11 @@ function precompile_trainstep(msg, model)
   flabel = Vector{Float32}[]
   ds = Jtac.DataSet(games, label, flabel)
   Jtac.train!(m, ds, epochs = 1, batchsize = 20)
-  log_info(msg, "precompilation done")
+  Log.info(msg, "precompilation done")
 end
 
 function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
-  log_info(msg, "training worker initialized")
+  Log.info(msg, "training worker initialized")
   data = channels["data"]
 
   # get reference model and start era
@@ -860,7 +860,7 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
       ok = refresh_data!(trainpool, testpool, data, reqid, ctx, msg)
 
       if !ok
-        log_info(msg, "waiting for fresh data before training can continue")
+        Log.info(msg, "waiting for fresh data before training can continue")
         await_data(channels)
         continue
       end
@@ -880,32 +880,32 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
   catch err
     if shutdown_exn(err) || check_shutdown(channels)
       change!(return_model, model |> Jtac.to_cpu)
-      log_info(msg, "received shutdown signal")
+      Log.info(msg, "received shutdown signal")
       throw_shutdown()
     else
       change!(return_model, model |> Jtac.to_cpu)
-      log_error(msg, "unexpected error: $err")
+      Log.error(msg, "unexpected error: $err")
       rethrow(err)
     end
   end
 end
 
 function trntask(channels, folder, name, use_gpu, proc)
-  log_info("starting training task for model '$name'")
+  Log.info("starting training task for model '$name'")
 
   msg = remote_channel(String, 100)
   reqid = remote_channel(Int, 1)
   change!(reqid, 0)
 
   handle_msg() = while true
-    log_info("worker: " * take!(msg))
+    Log.info("worker: " * take!(msg))
   end
 
   commit_request(ctx, model, msg) = begin
     rid = fetch(reqid) + 1
     change!(channels["data-request"], TrainDataServe(rid, ctx, model))
     put!(channels["history"], [Event(Datareq(rid, ctx.id))])
-    log_info("prepared new data request D$rid ($msg)")
+    Log.info("prepared new data request D$rid ($msg)")
     change!(reqid, rid)
   end
 
@@ -914,7 +914,7 @@ function trntask(channels, folder, name, use_gpu, proc)
       ctx = take!(channels["context-update"])
       change!(channels["context"], ctx)
       model = fetch(channels["ref-model"])
-      log_info("training task noticed that the context changed")
+      Log.info("training task noticed that the context changed")
       commit_request(ctx, model, "context update")
     else
       sleep(1.)
@@ -926,7 +926,7 @@ function trntask(channels, folder, name, use_gpu, proc)
       model = take!(channels["ref-model-update"])
       change!(channels["ref-model"], model)
       ctx = fetch(channels["context"])
-      log_info("training task noticed that the reference model changed")
+      Log.info("training task noticed that the reference model changed")
       commit_request(ctx, model, "model update")
     else
       sleep(.25)
@@ -943,18 +943,18 @@ function trntask(channels, folder, name, use_gpu, proc)
   try
     wrap_shutdown(tasks, on_shutdown, channels)
   catch err
-    log_error("training task failed: $err")
+    Log.error("training task failed: $err")
     soft_shutdown!(channels)
     on_shutdown()
     # wait_tasks(tasks) <-- have to get tasks from wrap_shutdown!
     rethrow(err)
   end
 
-  log_info("shutting down training task")
+  Log.info("shutting down training task")
   if isready(return_model)
     fetch(return_model)
   else
-    log_error("worker did not return trained model")
+    Log.error("worker did not return trained model")
   end
 end
 

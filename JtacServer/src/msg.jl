@@ -66,8 +66,8 @@ end
 send(socket, msg :: LoginAuth) = println(socket, LazyJSON.jsonstring(msg))
 
 function receive(socket, :: Type{LoginAuth})
+  line = readline(socket)
   try
-    line = readline(socket)
     value = LazyJSON.value(line)
     convert(LoginAuth, value)
   catch
@@ -96,8 +96,8 @@ struct ServeLogin <: Login{Serve}
   accept_contest :: Bool
 end
 
-function ServeLogin(name, token; data = true, contest = true)
-  ServeLogin(name, token, JTAC_SERVER_VERSION, "serve", data, contest)
+function ServeLogin(name, token, data = true, contest = true)
+  ServeLogin(name, token, VERSION, "serve", data, contest)
 end
 
 """
@@ -304,7 +304,7 @@ struct MonitorLogin <: Login{Monitor}
 end
 
 function MonitorLogin(name, token)
-  MonitorLogin(name, token, JTAC_SERVER_VERSION, "monitor")
+  MonitorLogin(name, token, VERSION, "monitor")
 end
 
 # The following types are informally specified by the implementation of jtab,
