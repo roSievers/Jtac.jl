@@ -185,12 +185,14 @@ export save_model,
 include("games/mnkgame.jl")
 include("games/metatac.jl")
 include("games/nim.jl")
+include("games/nim2.jl")
 include("games/morris.jl")
 
 export TicTacToe,
        MNKGame,
        MetaTac,
        Nim,
+       Nim2,
        Morris
 
 
