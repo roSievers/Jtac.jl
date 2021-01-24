@@ -486,7 +486,7 @@ function Context( id :: Int
                 , temperature = 1.
                 , exploration = 1.41
                 , dilution = 0.
-                , initial_steps = (0, 0)
+                , init_steps = (0, 0)
                 , branch = 0.
                 , branch_steps = (0, 0)
                 , augment = true
@@ -509,7 +509,7 @@ function Context( id :: Int
                 , msg = "" )
 
   Context( id, name, power, temperature, exploration, dilution,
-           initial_steps, branch, branch_steps, augment,
+           init_steps, branch, branch_steps, augment,
            min_playings, max_playings,
            epoch_size, iterations, test_frac, max_age, max_use, min_quality, age_weight,
            capacity, era_size, batch_size, learning_rate, momentum, loss_weights,

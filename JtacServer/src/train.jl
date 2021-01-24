@@ -711,7 +711,7 @@ function refresh_data!(train, test, channel, reqid, ctx, msg)
     Log.info(msg, "train pool too small for next epoch ($len < $(ctx.epoch_size))")
     false
   elseif qavg < ctx.min_quality
-    Log.info(msg, "quality of train pool too low ($qavg < $(ctx.min_quality)")
+    Log.info(msg, "quality of train pool too low ($qavg < $(ctx.min_quality))")
     false
   else
     true
@@ -872,6 +872,7 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
       len = train_epoch!(model, trainpool, testpool, ctx, epoch, era, channels, msg)
       epoch += 1
       ctx_old = ctx
+      GC.gc(); GC.gc()
 
       # begin new era?
       epochcount += len
