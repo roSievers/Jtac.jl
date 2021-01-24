@@ -333,6 +333,7 @@ struct Epoch <: Body
   trainloss :: Vector{Tuple{String, Float64}}
   testloss  :: Vector{Tuple{String, Float64}}
   quality   :: Float64
+  capacity  :: Float64
   size      :: Int
   ctxid     :: Int
   era       :: Int

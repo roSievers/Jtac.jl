@@ -23,7 +23,7 @@ import LazyJSON
 
 # constants
 const VERSION = "v0.1"
-const DEBUG = Ref{Bool}(true)
+const DEBUG = Ref{Bool}(false)
 
 # exceptions
 struct WorkerStopException <: Exception end

@@ -3,53 +3,9 @@
 # jtac-serve
 #
 
-# if we do not want an exception to end the program, and only print a warning
-# / message if user exit was not issued
-function catch_recoverable(f, ch, on_catch, msg :: Function, exts; warn = Log.warn)
-  try f()
-  catch err
-    if err isa Union{exts...} 
-      isready(ch["exit"]) || warn(msg(err))
-      on_catch(err)
-    else
-      rethrow(err)
-    end
-  end
-end
-
-function catch_recoverable(f, ch, on_catch, msg, args...; kw...)
-  catch_recoverable(f, ch, on_catch, _ -> msg, args...; kw...)
-end
-
-# stolen from https://github.com/JuliaLang/julia/issues/36217
-# unfortunately, it does not seem to be possible to wait for
-# ch["exit"] directly (since we have to close the resource c
-# in the code below at the end of timeout)
-function wait_or_exit(c, timeout :: Real) 
-  timer = Timer(timeout) do t
-    isready(c) || close(c)
-  end
-  try wait(c)
-  catch nothing
-  finally close(timer)
-  end
-end
-
-# typing this function is inconvenient, since RemoteChannels are not
-# AbstractChannels...
-function replace!(ch, value)
-  isready(ch) && take!(ch)
-  put!(ch, value)
-end
 
 function rchannel(:: Type{T}, n) where {T}
   Distributed.RemoteChannel(() -> Channel{T}(n))
-end
-
-function close_data_channels!(ch)
-  for (key, c) in ch
-    if key != "exit" close(c) end
-  end
 end
 
 function valid_workers(workers)
@@ -122,7 +78,7 @@ function serve(
   Log.info("initializing $pname")
 
   # leave early if the specified workers are not valid
-  # TODO: should probably also do a range of other sanity checks
+  # TODO: should probably also do some other sanity checks
   if !valid_workers(workers) return end
 
   # initialize channels that will be used for communication between tasks
@@ -133,9 +89,6 @@ function serve(
     , "data-request"    => rchannel(TrainDataServe, 1)
     , "contest-request" => rchannel(TrainContestServe, 100)
     , "upload"          => rchannel(Union{ServeData, ServeContest}, 100))
-
-  # TODO: Session channel is *empty* if we are not connected
-  # -> we have to fetch in worker, not poll!
 
   # options that affect the communication
   cos = ( ip = ipv4(ip)
@@ -173,8 +126,7 @@ function serve(
     Log.debug("finally reached toplevel. closing exit channel")
   end
 
-  Log.info("exiting $pname")
-
+  Log.debug("exiting $pname")
 end
 
 # communication task
@@ -203,11 +155,13 @@ function serve_communication(ch, os)
   end
 
   # cleaning up all resources that are introduced in this scope
-  cleanup() = begin
-    isnothing(stop)      || close(stop)
+  cleanup(s = true) = begin
     isnothing(sock[])    || close(sock[])
     isnothing(c_data)    || close(c_data)
     isnothing(c_contest) || close(c_contest)
+
+    # we do not want to close stop if we are waiting for reconnect
+    s && (isnothing(stop) || close(stop))
   end
 
   # cleaning up on user induced exit
@@ -227,14 +181,14 @@ function serve_communication(ch, os)
     # it creates. to make this responsive to user exit, we have
     # to pass a reference to the socket that is modified by serve_connect!
     # session is nothing if the connection attempt failed
-    session = serve_connect!(ch, sock, os)
+    session = serve_connect(ch, sock, os)
 
     # if something is not right, wait and clean up, then try again
     if isnothing(sock[]) || isnothing(session) || isready(ch["exit"])
+      cleanup(false)
       sdelay = Stl.quant("$(os.delay)")
       Log.warn("trying again in $sdelay seconds...")
       wait_or_exit(stop, os.delay)
-      cleanup()
     
     # the connection is established, run the upload and download tasks
     else
@@ -266,10 +220,10 @@ function serve_communication(ch, os)
     end
   end
 
-  Log.info("shutting down communications task")
+  Log.debug("exiting serve_communication")
 end
 
-function serve_connect!(ch, sock, os)
+function serve_connect(ch, sock, os)
   Log.debug("entered serve_connect")
 
   dest = Stl.name("$(os.ip):$(os.port)")
@@ -310,15 +264,21 @@ function serve_connect!(ch, sock, os)
 
     # the reply tells us that we were refused
     elseif !reply.accept
-      msg = Stl.string(reply.msg)
-      Log.warn("connection to $dest refused: $msg")
+      smsg = Stl.string(reply.msg)
+      Log.warn("connection to $dest refused: $smsg")
 
     # the reply tells us that we were accepted
     else
-      Log.info("connection to $dest established")
-      reply.session
+      smsg = Stl.string(reply.msg)
+      ssess = Stl.string(reply.session)
+      Log.info("connection to $dest established. welcoming message:")
+      Log.info("  $smsg")
+      Log.debug("exiting serve_connect (session $ssess)")
+      return reply.session
     end
   end
+
+  Log.debug("exiting serve_connect (no session)")
 end
 
 function serve_download(ch, sock, c_data, c_contest)
@@ -344,7 +304,8 @@ function serve_download(ch, sock, c_data, c_contest)
   handle(msg :: TrainDataServe) = begin
     sreq = Stl.quant(msg)
     Log.info("received new request $sreq")
-    replace!(ch["data-request"], msg)
+    isready(ch["data-request"]) && take!(ch["data-request"])
+    put!(ch["data-request"], msg)
   end
 
   # we receive a new contest request
@@ -371,6 +332,7 @@ function serve_download(ch, sock, c_data, c_contest)
       handle(receive(sock, Message{Train, Serve}))
     end
   end
+  Log.debug("exiting serve_download")
 end
 
 function serve_upload(ch, sock, c_data, c_contest, id_data, id_contest)
@@ -432,6 +394,7 @@ function serve_upload(ch, sock, c_data, c_contest, id_data, id_contest)
       end
     end
   end
+  Log.debug("exiting serve_upload")
 end
 
 
@@ -490,7 +453,7 @@ function serve_computation(ch, os, workers)
     cleanup()
   end
 
-  Log.info("shutting down computation task")
+  Log.debug("exiting serve_computation")
 end
 
 function serve_contests(ch, os, req_contest, res_contest)
@@ -526,6 +489,7 @@ function serve_contests(ch, os, req_contest, res_contest)
     data = combine(res, time)
     put!(ch["upload"], data)
   end
+  Log.debug("exiting serve_contests")
 end
 
 function serve_workers(ch, os, workers, req_contest, res_contest, mcs)
@@ -551,6 +515,7 @@ function serve_workers(ch, os, workers, req_contest, res_contest, mcs)
       end
     end
   end
+  Log.debug("exiting serve_workers")
 end
 
 function serve_work(ch, os, i, reqc, resc, mc)
@@ -605,10 +570,12 @@ function serve_work(ch, os, i, reqc, resc, mc)
       GC.gc()
     end
   end
+  Log.debug(mc, "exiting serve_work")
 end
 
 function serve_play(ch, os, i, reqc, _, mc, cache, req :: TrainDataServe)
-  Log.debug(mc, "entered serve_play")
+  Log.debug(mc, "entered serve_play (data)")
+
   # how many playings will actually take place
   k = clamp(os.playings, req.min_playings, req.max_playings)
   sk = Stl.quant("$k")
@@ -660,13 +627,16 @@ function serve_play(ch, os, i, reqc, _, mc, cache, req :: TrainDataServe)
   stime = Stl.quant(round(time, digits = 3))
   Log.info(mc, "finished $sk self plays for $sreq in $stime seconds")
 
+  Log.debug(mc, "exiting serve_play (data)")
+
   # return the data package and the new cache
   ServeData(ds, req.reqid, i, time), (req.reqid, player)
 end
 
 
 function serve_play(ch, os, i, reqc, resc, mc, cache, req :: TrainContestServe)
-  Log.debug(mc, "entered serve_play")
+  Log.debug(mc, "entered serve_play (contest)")
   @assert false "contests are not yet implemented"
+  Log.debug(mc, "exiting serve_play (contest)")
 end
 
