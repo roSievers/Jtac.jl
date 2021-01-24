@@ -50,7 +50,7 @@ module Log
   import ..Stl
   import Distributed: RemoteChannel
 
-  prefix = Stl.comment("jtac ｜")
+  prefix = Stl.comment("jtac │")
   swarn  = Stl.warn("warning:")
   serror = Stl.error("ERROR:")
   sdebug = Stl.debug("DEBUG:")
@@ -80,7 +80,7 @@ module Log
   end
 
   function debug(c :: RemoteChannel{Channel{String}}, str)
-    put!(c, "$sdebug $str")
+    DEBUG[] && put!(c, "$sdebug $str")
   end
 
 end # module Log

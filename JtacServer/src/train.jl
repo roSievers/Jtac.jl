@@ -735,7 +735,10 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
 
   trainset, idx, qavg = random_selection(train, ctx, ctx.epoch_size)
   update_use!(train, idx)
+
+  # information for logging / events
   qavg = round(qavg, digits = 3)
+  cap = length(train) / train.capacity
   Log.info(msg, "selected training data of quality $qavg for epoch $epoch")
 
   l = ctx.loss_weights
@@ -759,7 +762,7 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
 
   len = length(trainset)
   Log.info(msg, "finished epoch $epoch in $time seconds")
-  ep = Epoch(epoch, losses..., qavg, length(trainset), ctx.id, era)
+  ep = Epoch(epoch, losses..., qavg, cap, length(trainset), ctx.id, era)
   put!(channels["history"], [Event(ep)])
   len 
 end

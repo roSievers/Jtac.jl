@@ -58,3 +58,40 @@ function with_gentle_exit(f, on_exit = () -> nothing; log = println, name = "jta
   end
 end
 
+# if we do not want an exception to end the program, and only print a warning
+# / message if user exit was not issued
+function catch_recoverable(f, ch, on_catch, msg :: Function, exts; warn = Log.warn)
+  try f()
+  catch err
+    if err isa Union{exts...} 
+      isready(ch["exit"]) || warn(msg(err))
+      on_catch(err)
+    else
+      rethrow(err)
+    end
+  end
+end
+
+function catch_recoverable(f, ch, on_catch, msg, args...; kw...)
+  catch_recoverable(f, ch, on_catch, _ -> msg, args...; kw...)
+end
+
+# stolen from https://github.com/JuliaLang/julia/issues/36217
+# unfortunately, it does not seem to be possible to wait for
+# ch["exit"] directly (since we have to close the resource c
+# in the code below at the end of timeout)
+function wait_or_exit(c, timeout :: Real) 
+  timer = Timer(timeout) do t
+    isready(c) || close(c)
+  end
+  try wait(c)
+  catch nothing
+  finally close(timer)
+  end
+end
+
+function close_data_channels!(ch)
+  for (key, c) in ch
+    if key != "exit" close(c) end
+  end
+end
