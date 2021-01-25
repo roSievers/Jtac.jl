@@ -14,8 +14,9 @@ function compress(value) :: Vector{UInt8}
   print("COMPRESS START: compressing value of type $(typeof(value))")
   buf = IOBuffer()
   Serialization.serialize(buf, value)
-  Blosc.compress(take!(buf))
+  v = Blosc.compress(take!(buf))
   println("COMPRESS END: ...done")
+  v
 end
 
 """
@@ -29,8 +30,9 @@ function decompress(data)
   buf = IOBuffer()
   write(buf, Blosc.decompress(UInt8, data))
   seekstart(buf)
-  Serialization.deserialize(buf)
+  v = Serialization.deserialize(buf)
   println("DECOMPRESS END: ...done")
+  v
 end
 
 """

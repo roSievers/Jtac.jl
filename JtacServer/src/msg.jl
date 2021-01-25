@@ -23,8 +23,9 @@ Sending a Jtac service message to socket.
 """
 function send(socket, msg :: Message)
   println("SEND START: sending message of type $(typeof(msg))")
-  Serialization.serialize(socket, msg)
+  v = Serialization.serialize(socket, msg)
   println("SEND END: done")
+  v
 end
 
 """
@@ -37,8 +38,8 @@ executed.
 function receive(socket, :: Type{M}) where {M <: Message}
   println("RECEIVE START: receiving msg")
   val = Serialization.deserialize(socket)
-  val isa M ? val : nothing
   println("RECEIVE END: ...done")
+  val isa M ? val : nothing
 end
 
 
