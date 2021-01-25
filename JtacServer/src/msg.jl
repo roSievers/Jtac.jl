@@ -21,7 +21,11 @@ abstract type Message{S <: Role, D <: Role} end
 
 Sending a Jtac service message to socket.
 """
-send(socket, msg :: Message) = Serialization.serialize(socket, msg)
+function send(socket, msg :: Message)
+  println("SEND START: sending message of type $(typeof(msg))")
+  Serialization.serialize(socket, msg)
+  println("SEND END: done")
+end
 
 """
     receive(socket, type)
@@ -31,8 +35,10 @@ Receiving a Jtac service message from `socket` and asserting that it is of type
 executed.
 """
 function receive(socket, :: Type{M}) where {M <: Message}
+  println("RECEIVE START: receiving msg")
   val = Serialization.deserialize(socket)
   val isa M ? val : nothing
+  println("RECEIVE END: ...done")
 end
 
 
