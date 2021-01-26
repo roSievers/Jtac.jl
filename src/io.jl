@@ -89,8 +89,6 @@ compose(:: Val{:features}, d) = compose.(d[:features])
 # -------- Game Type Conversions --------------------------------------------- #
 
 function decompose(:: Type{G}) where {G <: Game}
-  name = nameof(G)
-  params = G.parameters
   dict(:gametype, name = nameof(G), params = collect(G.parameters))
 end
 
@@ -107,11 +105,6 @@ function compose(:: Val{:gametype}, d)
     eval(Expr(:curly, name, params...))
   end
 end
-
-# TODO: The :gametype and :features decompositions are not transparent!
-# But maybe this is not a problem, as they are not needed for remote
-# reconstruction of playing ability?
-
 
 # -------- Layers ------------------------------------------------------------ #
 
