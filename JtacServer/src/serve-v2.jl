@@ -200,7 +200,7 @@ function serve_communication(ch, os)
           reset_session(session)
         else
           s = Stl.keyword(session)
-          log_info("will resume previous session $s")
+          Log.info("will resume previous session $s")
         end
         @sync begin
           # these two functions are blocking through sock, c_data, and
