@@ -33,7 +33,7 @@ Receiving a Jtac service message from `socket` and asserting that it is of type
 executed.
 """
 function receive(socket, :: Type{M}) where {M <: Message}
-  Serialization.deserialize(socket)
+  val = Serialization.deserialize(socket)
   val isa M ? val : nothing
 end
 
