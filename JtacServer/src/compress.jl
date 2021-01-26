@@ -11,12 +11,9 @@ Blosc.set_compressor("zstd")
 Compresses a generic julia value with the zstd algorithm.
 """
 function compress(value) :: Vector{UInt8}
-  print("COMPRESS START: compressing value of type $(typeof(value))")
   buf = IOBuffer()
   Serialization.serialize(buf, value)
-  v = Blosc.compress(take!(buf))
-  println("COMPRESS END: ...done")
-  v
+  Blosc.compress(take!(buf))
 end
 
 """
@@ -26,13 +23,10 @@ Restores a compressed julia type from data. Only apply this to data from trusted
 sources, since arbitrary code may be executed. 
 """
 function decompress(data)
-  println("DECOMPRESS START: decompressing data of length $(length(data))")
   buf = IOBuffer()
   write(buf, Blosc.decompress(UInt8, data))
   seekstart(buf)
-  v = Serialization.deserialize(buf)
-  println("DECOMPRESS END: ...done")
-  v
+  Serialization.deserialize(buf)
 end
 
 """
