@@ -11,10 +11,8 @@ Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 AutoGrad = "6710c13c-97f1-543f-91c5-74e8f7d95b35"
 Knet = "1902f260-5fb4-5aff-8c31-6271790ab950"
-NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
-Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [compat]

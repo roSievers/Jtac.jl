@@ -15,7 +15,8 @@ module Jtac
 
 using Random, Statistics, LinearAlgebra, Printf, Distributed
 
-import ProgressMeter, Crayons, BSON, NLopt
+import BSON
+import ProgressMeter
 
 import AutoGrad, Knet
 import Knet: identity,
@@ -119,11 +120,11 @@ export DummyModel,
        ShallowConv,
        Async
 
-# -------- MCTS, Players, and Bayesian ELO rankings -------------------------- #
+# -------- MCTS, Players, and ML ELO rankings -------------------------------- #
 
 include("mc.jl")
 include("player.jl")
-include("belo.jl")
+include("rank.jl")
 
 export RandomPlayer,
        MCTSPlayer, 
@@ -137,8 +138,7 @@ export pvp,
        turn!,
        compete
 
-export Ranking
-export summary
+export Rank
 
 # -------- Training ---------------------------------------------------------- #
 

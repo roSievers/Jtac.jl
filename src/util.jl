@@ -118,9 +118,6 @@ end
 
 # -------- Pretty Printing to Monitor Training ------------------------------- #
 
-const gray_crayon = Crayons.Crayon(foreground = :dark_gray)
-const default_crayon = Crayons.Crayon(reset = true)
-
 function print_loss_header(loss, use_features)
 
   names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
@@ -135,46 +132,38 @@ end
 
 function print_loss(l, p, epoch, train, test)
 
-  for (set, cr) in [(train, gray_crayon), (test, default_crayon)]
+  for (set, col) in [(train, 245), (test, :normal)]
   
     # Compute the losses and get them as strings
     ls = loss(l, training_model(p), set)
     losses = map(x -> @sprintf("%10.3f", x), ls)
 
     # Print everything in grey (for train) and white (for test)
-    print(cr)
-    @printf( "%10d %s %10.3f %10d\n"
-           , epoch
-           , join(losses, " ")
-           , sum(ls)
-           , length(set) )
-
+    str = @sprintf( "%10d %s %10.3f %10d\n"
+                  , epoch , join(losses, " "), sum(ls), length(set) )
+    printstyled(str, color = col)
   end
-  
 end
 
 function print_ranking(rk)
 
   # Log that a contest comes next
-  print(gray_crayon)
-  println("#\n# Contest with $(length(rk.players)) players:\n#")
+  printstyled("#\n# Contest with $(length(rk.players)) players:\n#", color = 245)
+  println()
 
   # Get the summary of the contest and print it
-  s = "# " * replace(summary(rk, true), "\n" => "\n# ") * "\n#"
-  println(s)
-
+  str = "# " * replace(string(rk, true), "\n" => "\n# ") * "\n#"
+  printstyled(str, color = 245)
+  println()
 end
 
 # -------- Feature Compability ----------------------------------------------- #
 
 function check_features(l, model)
-
   features(l) == features(model) && !isempty(features(model))
-
 end
 
 function check_features(l, model, dataset)
-
   fl = features(l)
   fm = features(model)
   fd = features(dataset)
@@ -187,7 +176,6 @@ function check_features(l, model, dataset)
   end
 
   false
-
 end
 
 # -------- Parallel-Stable Progress Maps ------------------------------------- #

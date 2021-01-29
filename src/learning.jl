@@ -19,13 +19,9 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
       elseif isnothing(opt) && isnothing(param.opt)
 
         param.opt = Knet.Adam(; kwargs...)
-
       end
-
     end
-
   end
-
 end
 
 # A single training step, the loss is returned
@@ -38,7 +34,6 @@ function train_step!(l :: Loss, model, cache :: DataCache)
   end
 
   Knet.value(tape)
-
 end
 
 
@@ -550,17 +545,17 @@ function with_contest( trainf!     # the training function
 
     # Create the cache for games between passive players
     cache_results = zeros(Int, n, n, 3)
-    cache_results[1:np,1:np,:] = compete( passive
-                                        , cache
-                                        , distributed = distributed
-                                        , callback = step )
+    cache_results[1:np,1:np,:] = Rank.compete( passive
+                                             , cache
+                                             , distributed = distributed
+                                             , callback = step )
 
     # Remove the progress bar
     finish()
 
     #  Leave a message that confirms caching.
-    print(gray_crayon)
-    println("# Cached $cache matches by $n players")
+    printstyled("# Cached $cache matches by $n players", color = 245)
+    println()
 
   else
 
@@ -576,18 +571,14 @@ function with_contest( trainf!     # the training function
 
       step, finish = stepper("# Contest...", len)
 
-      results = compete( players
-                       , len
-                       , aidx
-                       , distributed = distributed
-                       , callback = step )
-
+      results = Rank.compete( players, len, aidx
+                            , distributed = distributed , callback = step )
       finish()
 
-      print_ranking(Ranking(players, results + cache_results))
+      # special printing, since we want to prepend '# ' to each line
+      print_ranking(Rank.Ranking(players, results .+ cache_results))
 
       0 < epoch < epochs && print_loss_header(loss, check_features(loss, player))
-
     end
   end
 
