@@ -45,9 +45,14 @@ end
 
 # -------- MCTS Algorithm --------------------------------------------------- #
 
+function logit_normal(n)
+  ey = exp.(randn(Float32, n))
+  ey / sum(ey)
+end
+
 # The confidence in a node
 function confidence( node
-                   ; dilution :: Float32 = 0.25
+                   ; dilution :: Float32 = 0.10
                    , exploration :: Float32 = 1.41
                    ) :: Array{Float32}
 

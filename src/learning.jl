@@ -109,6 +109,43 @@ end
 
 # -------- Training by Playing ----------------------------------------------- #
 
+function print_loss_header(loss, use_features)
+
+  names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
+  components = map(names) do c
+    Printf.@sprintf("%10s", string(c)[1:min(end, 10)])
+  end
+  println(join(["#"; "   epoch"; components; "     total"; "    length"], " "))
+end
+
+function print_loss(l, p, epoch, train, test)
+
+  for (set, col) in [(train, 245), (test, :normal)]
+  
+    # Compute the losses and get them as strings
+    ls = loss(l, training_model(p), set)
+    losses = map(x -> @sprintf("%10.3f", x), ls)
+
+    # Print everything in grey (for train) and white (for test)
+    str = @sprintf( "%10d %s %10.3f %10d\n"
+                  , epoch , join(losses, " "), sum(ls), length(set) )
+    printstyled(str, color = col)
+  end
+end
+
+function print_ranking(rk)
+
+  # Log that a contest comes next
+  printstyled("#\n# Contest with $(length(rk.players)) players:\n#", color = 245)
+  println()
+
+  # Get the summary of the contest and print it
+  str = "# " * replace(string(rk, true), "\n" => "\n# ") * "\n#"
+  printstyled(str, color = 245)
+  println()
+end
+
+
 function _train!( player :: Player{G}
                 , gen_data :: Function
                 ; loss = Loss()

@@ -19,33 +19,11 @@ function choose_index(probs :: Vector{Float32}) :: Int
 
 end
 
-function derive_gametype(players)
-
-  gt = mapreduce(gametype, typeintersect, players, init = Game)
-
-  @assert gt != Union{} "Players do not play compatible games"
-  @assert !isabstracttype(gt) "Cannot infere game from abstract type"
-
-  gt
-
-end
-
-isasync(m) = isa(m, Async) ? true : false
-
-# Use the logit of a normal distribution instead of Dirichlet for diluting the
-# root prior policy
-function logit_normal(n)
-  ey = exp.(randn(Float32, n))
-  ey / sum(ey)
-end
-
 function one_hot(n, k)
   r = zeros(Float32, n)
   r[k] = 1f0
   r
 end
-
-get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
 
 # -------- Symmetry ---------------------------------------------------------- #
 
@@ -115,47 +93,6 @@ function apply_klein_four_group(action :: Int, s :: Tuple)
   ]
 end
 
-
-# -------- Pretty Printing to Monitor Training ------------------------------- #
-
-function print_loss_header(loss, use_features)
-
-  names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
-
-  components = map(names) do c
-    Printf.@sprintf("%10s", string(c)[1:min(end, 10)])
-  end
-
-  println(join(["#"; "   epoch"; components; "     total"; "    length"], " "))
-
-end
-
-function print_loss(l, p, epoch, train, test)
-
-  for (set, col) in [(train, 245), (test, :normal)]
-  
-    # Compute the losses and get them as strings
-    ls = loss(l, training_model(p), set)
-    losses = map(x -> @sprintf("%10.3f", x), ls)
-
-    # Print everything in grey (for train) and white (for test)
-    str = @sprintf( "%10d %s %10.3f %10d\n"
-                  , epoch , join(losses, " "), sum(ls), length(set) )
-    printstyled(str, color = col)
-  end
-end
-
-function print_ranking(rk)
-
-  # Log that a contest comes next
-  printstyled("#\n# Contest with $(length(rk.players)) players:\n#", color = 245)
-  println()
-
-  # Get the summary of the contest and print it
-  str = "# " * replace(string(rk, true), "\n" => "\n# ") * "\n#"
-  printstyled(str, color = 245)
-  println()
-end
 
 # -------- Feature Compability ----------------------------------------------- #
 

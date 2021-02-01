@@ -56,6 +56,10 @@ training_model(:: Player) = nothing
 features(:: Player) = Feature[]
 
 
+# Player ids to get more unique default names
+get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
+
+
 # -------- Random Player ----------------------------------------------------- #
 
 """
@@ -322,6 +326,17 @@ Base.copy(p :: HumanPlayer) = p
 
 
 # -------- PvP --------------------------------------------------------------- #
+
+function derive_gametype(players)
+
+  gt = mapreduce(gametype, typeintersect, players, init = Game)
+
+  @assert gt != Union{} "Players do not play compatible games"
+  @assert !isabstracttype(gt) "Cannot infere concrete game from abstract type"
+
+  gt
+end
+
 
 """
     pvp(player1, player2 [; game, callback])

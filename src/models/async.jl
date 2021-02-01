@@ -78,13 +78,17 @@ function switch_model(m :: Async{G}, model :: Model{G}) where {G <: Game}
        , buffersize = m.buffersize )
 end
 
-swap(m :: Async) = @warn "Async cannot be swapped. Remaining on CPU."
+swap(m :: Async) = @warn "Async cannot be swapped."
 Base.copy(m :: Async) = switch_model(m, copy(m.model))
 
 ntasks(m :: Async) = m.buffersize
 base_model(m :: Async) = m.model
 training_model(m :: Async) = m.model
 worker_model(m :: Async) = m.model
+
+# check if a model is an async model
+isasync(m) = isa(m, Async) ? true : false
+
 
 # Async networks cannot calculate features. To get the features of the
 # network on which it is based, access them via training_model(...)
