@@ -65,22 +65,22 @@ Derive a player from a specification `spec`. The model of the player is
 transfered to the gpu or brought in async mode if the respective flags are set.
 """
 function build_player(spec :: PlayerSpec; gpu = false, async = false)
-  model = spec._model |> decompress
+  model = spec.model
   if model isa Jtac.NeuralModel 
     model = gpu   ? Jtac.to_gpu(model) : model
     model = async ? Jtac.Async(model)  : model
   end
   if spec.power <= 0
     Jtac.IntuitionPlayer( model
-                   , temperature = spec.temperature
-                   , name = spec.name )
+                        , temperature = spec.temperature
+                        , name = spec.name )
   else
     Jtac.MCTSPlayer( model
-              , power = spec.power
-              , temperature = spec.temperature
-              , exploration = spec.exploration
-              , dilution = spec.dilution
-              , name = spec.name )
+                   , power = spec.power
+                   , temperature = spec.temperature
+                   , exploration = spec.exploration
+                   , dilution = spec.dilution
+                   , name = spec.name )
   end
 end
 
