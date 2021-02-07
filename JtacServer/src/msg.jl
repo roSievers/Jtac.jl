@@ -21,9 +21,9 @@ abstract type Message{S <: Role, D <: Role} end
 
 Sending a Jtac service message to socket.
 """
-function send(socket, msg :: Message)
-  Serialization.serialize(socket, msg)
-end
+function send(socket, msg) end
+#  Serialization.serialize(socket, msg)
+#end
 
 """
     receive(socket, type)
@@ -32,10 +32,10 @@ Receiving a Jtac service message from `socket` and asserting that it is of type
 `type`. Only apply this to trusted sockets, since arbitrary code may be
 executed.
 """
-function receive(socket, type)
-  v = Serialization.deserialize(socket)
-  v isa type ? v : nothing
-end
+function receive(socket, type) end
+#  v = Serialization.deserialize(socket)
+#  v isa type ? v : nothing
+#end
 
 """
 Login messages are always exchanged via JSON for both monitor and serve
@@ -80,20 +80,50 @@ end
 # Custom serialization of messages
 #
 
-#const BitsType = Union{Int, Float64, Bool}
-#
-#serial(io, v :: BitsType) = write(io, v)
-#serial(io, v :: String) = write(io, length(v), v)
-#serial(io, v :: Tuple{Int, Int}) = write(io, v[1], v[2])
-#serial(io, v :: Vector{T}) where {T <: BitsType} = write(io, length(v), v)
-#serial(io, v :: Vector{String}) = (write(io, length(v)); for s in v serial(io, s) end)
-#                                   
-#
-#deserial(io, :: Type{String}) = String(read(io, read(io, Int)))
-#deserial(io, :: Type{T}) where {T <: BitsType} = read(io, T)
-#deserial(io, :: Tuple{Int, Int}) = (read(io, Int), read(io, Int))
-#deserial(io, :: Vector{T}) where {T <: BitsType} = reinterpret(T, read(io, sizeof(T)*read(io, Int)))
-#deserial(io, :: Vector{String}) = (n = read(io, Int); [deserial(io, String) for _ in 1:n])
+const BitsType = Union{Int, Float64, Bool}
+
+serial(io, v :: BitsType) = write(io, v)
+serial(io, v :: String) = write(io, length(v), v)
+serial(io, v :: Tuple{Int, Int}) = write(io, v[1], v[2])
+serial(io, v :: Vector{T}) where {T <: BitsType} = write(io, length(v), v)
+serial(io, v :: Vector{String}) = (write(io, length(v)); for s in v serial(io, s) end)
+                                   
+
+deserial(io, :: Type{String}) = String(read(io, read(io, Int)))
+deserial(io, :: Type{T}) where {T <: BitsType} = read(io, T)
+deserial(io, :: Type{Tuple{Int, Int}}) = (read(io, Int), read(io, Int))
+deserial(io, :: Type{Vector{T}}) where {T <: BitsType} = reinterpret(T, read(io, sizeof(T)*read(io, Int)))
+deserial(io, :: Type{Vector{String}}) = (n = read(io, Int); [deserial(io, String) for _ in 1:n])
+
+const msgtypes = Dict(
+    0 => ServeLogout
+  , 1 => ServeData
+  , 2 => ServeContest
+  , 3 => TrainDisconnectServe
+  , 4 => TrainReconnectServe
+  , 5 => TrainIdleServe
+  , 6 => TrainDataServe
+  , 7 => TrainDataConfirmServe
+  , 8 => TrainContestServe
+  , 9 => TrainContestConfirmServe
+)
+
+function send(io, v :: Message)
+  tid = findfirst(isequal(typeof(v)), msgtypes)
+  write(io, tid)
+  for field in Base.fieldnames(typeof(v))
+    serial(io, Base.getfield(v, field))
+  end
+end
+
+function receive(io, T)
+  t = msgtypes[read(io, Int)]
+  @assert t <: T
+  args = map(Base.fieldnames(t)) do field
+    deserial(io, Base.fieldtype(t, field))
+  end
+  t(args...)
+end
 
 
 #
@@ -118,15 +148,6 @@ end
 
 function ServeLogin(name, token, data = true, contest = true)
   ServeLogin(name, token, VERSION, "serve", data, contest)
-end
-
-function serial(io, m :: ServeLogin)
-  write(io, length(m.name)); write(io, m.name)
-  write(io, length(m.token)); write(io, m.token)
-  write(io, length(m.version)); write(io, m.version)
-  write(io, length(m.kind)); write(io, m.kind)
-  write(io, m.accept_data)
-  write(io, m.accept_contest)
 end
 
 """
@@ -228,29 +249,29 @@ struct TrainDataServe <: Message{Train, Serve}
   # Id of the instruction set
   reqid        :: Int
 
-  function TrainDataServe( reqid :: Int
-                         , player :: Jtac.MCTSPlayer{G}
-                         ; augment = true
-                         , init_steps = 0
-                         , branch = 0.
-                         , branch_steps = 1
-                         , min_playings = 1
-                         , max_playings = 10000
-                         ) where {G <: Jtac.Game}
+end
 
-    @assert !isabstracttype(G)
 
-    new( PlayerSpec(player) |> compress
-       , Jtac.tup(init_steps)
-       , branch
-       , Jtac.tup(branch_steps)
-       , augment
-       , min_playings
-       , max_playings
-       , reqid )
+function TrainDataServe( reqid :: Int
+                       , player :: Jtac.MCTSPlayer{G}
+                       ; augment = true
+                       , init_steps = 0
+                       , branch = 0.
+                       , branch_steps = 1
+                       , min_playings = 1
+                       , max_playings = 10000
+                       ) where {G <: Jtac.Game}
 
-  end
+  @assert !isabstracttype(G)
 
+  TrainDataServe( PlayerSpec(player) |> compress
+                , Jtac.tup(init_steps)
+                , branch
+                , Jtac.tup(branch_steps)
+                , augment
+                , min_playings
+                , max_playings
+                , reqid )
 end
 
 """
