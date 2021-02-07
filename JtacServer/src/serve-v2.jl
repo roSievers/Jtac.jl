@@ -607,7 +607,7 @@ function serve_play(ch, os, i, reqc, _, mc, cache, req :: TrainDataServe)
   # if the request id has changed, we have to build the player anew
   else
     Log.debug(mc, "building new player from request $sreq")
-    player = build_player(req.spec, gpu = os.use_gpu, async = os.async)
+    player = build_player(req._spec |> decompress, gpu = os.use_gpu, async = os.async)
   end
   
   # conduct the actual self plays and measure the time it takes the worker

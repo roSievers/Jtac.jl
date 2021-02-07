@@ -36,7 +36,7 @@ instances.
 struct PlayerSpec
 
   # Compressed reference model
-  _model :: Vector{UInt8}
+  model :: Jtac.NeuralModel
 
   # Player parameters
   power       :: Int      # power = 0 is used for IntuitionPlayers
@@ -48,15 +48,14 @@ struct PlayerSpec
 end
 
 function PlayerSpec(player :: Jtac.MCTSPlayer)
-  _model = Jtac.base_model(player) |> Jtac.to_cpu |> compress
-  PlayerSpec( _model, player.power, player.temperature
+  model = Jtac.base_model(player) |> Jtac.to_cpu
+  PlayerSpec( model, player.power, player.temperature
             , player.exploration, player.dilution, player.name )
 end
 
 function PlayerSpec(player :: Jtac.IntuitionPlayer)
-  _model = Jtac.base_model(player) |> Jtac.to_cpu |> compress
-  PlayerSpec(_model, 0, player.temperature, 0., 0., player.name)
-
+  model = Jtac.base_model(player) |> Jtac.to_cpu
+  PlayerSpec(model, 0, player.temperature, 0., 0., player.name)
 end
 
 """
