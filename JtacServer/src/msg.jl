@@ -76,55 +76,6 @@ function receive(socket, :: Type{LoginAuth})
   end
 end
 
-#
-# Custom serialization of messages
-#
-
-const BitsType = Union{Int, Float64, Bool}
-
-serial(io, v :: BitsType) = write(io, v)
-serial(io, v :: String) = write(io, length(v), v)
-serial(io, v :: Tuple{Int, Int}) = write(io, v[1], v[2])
-serial(io, v :: Vector{T}) where {T <: BitsType} = write(io, length(v), v)
-serial(io, v :: Vector{String}) = (write(io, length(v)); for s in v serial(io, s) end)
-                                   
-
-deserial(io, :: Type{String}) = String(read(io, read(io, Int)))
-deserial(io, :: Type{T}) where {T <: BitsType} = read(io, T)
-deserial(io, :: Type{Tuple{Int, Int}}) = (read(io, Int), read(io, Int))
-deserial(io, :: Type{Vector{T}}) where {T <: BitsType} = reinterpret(T, read(io, sizeof(T)*read(io, Int)))
-deserial(io, :: Type{Vector{String}}) = (n = read(io, Int); [deserial(io, String) for _ in 1:n])
-
-const msgtypes = Dict(
-    0 => ServeLogout
-  , 1 => ServeData
-  , 2 => ServeContest
-  , 3 => TrainDisconnectServe
-  , 4 => TrainReconnectServe
-  , 5 => TrainIdleServe
-  , 6 => TrainDataServe
-  , 7 => TrainDataConfirmServe
-  , 8 => TrainContestServe
-  , 9 => TrainContestConfirmServe
-)
-
-function send(io, v :: Message)
-  tid = findfirst(isequal(typeof(v)), msgtypes)
-  write(io, tid)
-  for field in Base.fieldnames(typeof(v))
-    serial(io, Base.getfield(v, field))
-  end
-end
-
-function receive(io, T)
-  t = msgtypes[read(io, Int)]
-  @assert t <: T
-  args = map(Base.fieldnames(t)) do field
-    deserial(io, Base.fieldtype(t, field))
-  end
-  t(args...)
-end
-
 
 #
 # Messages play -> train
@@ -338,6 +289,56 @@ successful.
 """
 struct TrainContestConfirmServe <: Message{Train, Serve}
   id :: Int
+end
+
+
+#
+# Custom serialization of messages between serve and train
+#
+
+const BitsType = Union{Int, Float64, Bool}
+
+serial(io, v :: BitsType) = write(io, v)
+serial(io, v :: String) = write(io, length(v), v)
+serial(io, v :: Tuple{Int, Int}) = write(io, v[1], v[2])
+serial(io, v :: Vector{T}) where {T <: BitsType} = write(io, length(v), v)
+serial(io, v :: Vector{String}) = (write(io, length(v)); for s in v serial(io, s) end)
+                                   
+
+deserial(io, :: Type{String}) = String(read(io, read(io, Int)))
+deserial(io, :: Type{T}) where {T <: BitsType} = read(io, T)
+deserial(io, :: Type{Tuple{Int, Int}}) = (read(io, Int), read(io, Int))
+deserial(io, :: Type{Vector{T}}) where {T <: BitsType} = reinterpret(T, read(io, sizeof(T)*read(io, Int)))
+deserial(io, :: Type{Vector{String}}) = (n = read(io, Int); [deserial(io, String) for _ in 1:n])
+
+const msgtypes = Dict(
+    0 => ServeLogout
+  , 1 => ServeData
+  , 2 => ServeContest
+  , 3 => TrainDisconnectServe
+  , 4 => TrainReconnectServe
+  , 5 => TrainIdleServe
+  , 6 => TrainDataServe
+  , 7 => TrainDataConfirmServe
+  , 8 => TrainContestServe
+  , 9 => TrainContestConfirmServe
+)
+
+function send(io, v :: Message)
+  tid = findfirst(isequal(typeof(v)), msgtypes)
+  write(io, tid)
+  for field in Base.fieldnames(typeof(v))
+    serial(io, Base.getfield(v, field))
+  end
+end
+
+function receive(io, T)
+  t = msgtypes[read(io, Int)]
+  @assert t <: T
+  args = map(Base.fieldnames(t)) do field
+    deserial(io, Base.fieldtype(t, field))
+  end
+  t(args...)
 end
 
 
