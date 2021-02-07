@@ -59,7 +59,7 @@ module Log
   warn(io :: IO, str)  = println(io, "$prefix $swarn $str")
   error(io :: IO, str) = println(io, "$prefix $serror $str")
   function debug(io :: IO, str)
-    DEBUG[] && println(io, "$prefix $sdebug $str")
+    if DEBUG[] println(io, "$prefix $sdebug $str") end
   end
 
   info(args :: String ...)  = info(stdout, args...)
@@ -80,7 +80,7 @@ module Log
   end
 
   function debug(c :: RemoteChannel{Channel{String}}, str)
-    DEBUG[] && put!(c, "$sdebug $str")
+    if DEBUG[] put!(c, "$sdebug $str") end
   end
 
 end # module Log
