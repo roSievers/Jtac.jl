@@ -21,7 +21,7 @@ abstract type Message{S <: Role, D <: Role} end
 
 Sending a Jtac service message to socket.
 """
-function send(socket, msg) end
+function send end
 #  Serialization.serialize(socket, msg)
 #end
 
@@ -32,7 +32,7 @@ Receiving a Jtac service message from `socket` and asserting that it is of type
 `type`. Only apply this to trusted sockets, since arbitrary code may be
 executed.
 """
-function receive(socket, type) end
+function receive end
 #  v = Serialization.deserialize(socket)
 #  v isa type ? v : nothing
 #end
@@ -296,7 +296,7 @@ end
 # Custom serialization of messages between serve and train
 #
 
-const BitsType = Union{Int, Float64, Bool}
+const BitsType = Union{UInt8, Int, Float64, Bool}
 
 serial(io, v :: BitsType) = write(io, v)
 serial(io, v :: String) = write(io, length(v), v)
