@@ -308,7 +308,7 @@ serial(io, v :: Vector{String}) = (write(io, length(v)); for s in v serial(io, s
 deserial(io, :: Type{String}) = String(read(io, read(io, Int)))
 deserial(io, :: Type{T}) where {T <: BitsType} = read(io, T)
 deserial(io, :: Type{Tuple{Int, Int}}) = (read(io, Int), read(io, Int))
-deserial(io, :: Type{Vector{T}}) where {T <: BitsType} = reinterpret(T, read(io, sizeof(T)*read(io, Int)))
+deserial(io, :: Type{Vector{T}}) where {T <: BitsType} = convert(Vector{T}, read(io, sizeof(T)*read(io, Int)))
 deserial(io, :: Type{Vector{String}}) = (n = read(io, Int); [deserial(io, String) for _ in 1:n])
 
 const msgtypes = Dict(
@@ -326,19 +326,30 @@ const msgtypes = Dict(
 
 function send(io, v :: Message)
   tid = findfirst(isequal(typeof(v)), msgtypes)
-  write(io, tid)
-  for field in Base.fieldnames(typeof(v))
-    serial(io, Base.getfield(v, field))
+  # DEBUGGING
+  out = open("send.bin", "a")
+  for io in [out, io]
+    write(io, tid)
+    for field in Base.fieldnames(typeof(v))
+      serial(io, Base.getfield(v, field))
+    end
   end
+  close(out)
 end
 
 function receive(io, T)
-  t = msgtypes[read(io, Int)]
-  @assert t <: T
-  args = map(Base.fieldnames(t)) do field
-    deserial(io, Base.fieldtype(t, field))
+  open("receive.bin", "a") do recv
+    tid = read(io, Int)
+    write(recv, tid)
+    t = msgtypes[tid]
+    @assert t <: T
+    args = map(Base.fieldnames(t)) do field
+      v = deserial(io, Base.fieldtype(t, field))
+      serial(recv, v)
+      v
+    end
+    t(args...)
   end
-  t(args...)
 end
 
 
