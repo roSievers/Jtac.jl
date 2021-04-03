@@ -2,9 +2,9 @@
 # -------- Layer ------------------------------------------------------------- # 
 
 """
-Layers are the functional units for `NeuralNetworkModels`. They are composable
-and, by the macros `@chain` and `@stack`, allow for the easy creation of neural
-networks that are compatible to a given game.
+Layers are the functional units for `NeuralNetworkModel`s. They are composable
+and allow for the easy creation of neural networks that are compatible to
+a given game by the macros `@chain` and `@stack`.
 """
 abstract type Layer{GPU} <: Element{GPU} end
 
@@ -79,6 +79,22 @@ end
 expand_to_pair(t :: NTuple{2, Int}) = t
 expand_to_pair(t :: Int) = (t, t)
 
+# Be able to name most important activation functions
+const activation_names = Dict(
+  Knet.identity => "id",
+  Knet.relu => "relu",
+  Knet.elu => "elu",
+  Knet.selu => "selu"
+)
+
+function activation_name(f)
+  if f in keys(activation_names)
+    activation_names[f]
+  else
+    "custom"
+  end
+end
+
 
 # -------- Pointwise --------------------------------------------------------- # 
 
@@ -98,6 +114,15 @@ Base.copy(p :: Pointwise) = p
 
 valid_insize(:: Pointwise, _) = true
 outsize(p :: Pointwise, s) = s
+
+function Base.show(io :: IO, l :: Pointwise)
+  print(io, "Pointwise($(activation_name(l.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", l :: Pointwise{GPU}) where {GPU}
+  at = GPU ? "GPU" : "CPU"
+  print(io, "Pointwise{$at} $(activation_name(l.f)) layer")
+end
 
 
 # -------- Dense ------------------------------------------------------------- # 
@@ -141,6 +166,17 @@ valid_insize(d :: Dense, s) = (prod(s) == size(d.w, 2))
 function outsize(d :: Dense, s)
   @assert valid_insize(d, s) "Layer cannot be applied to input of size $s"
   size(d.w, 1)
+end
+
+function Base.show(io :: IO, d :: Dense)
+  print(io, "Dense($(size(d.w, 1)), $(activation_name(d.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", d :: Dense{GPU}) where {GPU}
+  n = size(d.w, 1)
+  at = GPU ? "GPU" : "CPU"
+  ac = activation_name(d.f)
+  print(io, "Dense{$at} layer with $n neurons and $ac activation")
 end
 
 
@@ -207,6 +243,22 @@ function outsize(c :: Conv, s)
   )
 end
 
+function Base.show(io :: IO, c :: Conv)
+  window = size(c.w)[1:2]
+  channels = size(c.w, 4)
+  print(io, "Conv($channels, $window, $(activation_name(c.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{GPU}) where {GPU}
+  shape = size(c.w)[[1,2,4]]
+  at = GPU ? "GPU" : "CPU"
+  ac = activation_name(c.f)
+  println(io, "Conv{$at} layer with $(size(c.w)[4]) out-channels and $ac activation")
+  println(io, "window:  $(size(c.w)[1:2])")
+  println(io, "padding: $(c.p)")
+  print(io, "stride:  $(c.s)")
+end
+
 
 # -------- Deconvolution ----------------------------------------------------- # 
 
@@ -223,7 +275,7 @@ struct Deconv{GPU} <: PrimitiveLayer{GPU}
 end
 
 function Deconv( ci :: Int, co :: Int, f = Knet.identity; 
-                 window :: Int = 3, padding = 0, 
+                 window = 3, padding = 0, 
                  stride = 1, bias = true, gpu = false )
 
   k = expand_to_pair(window)
@@ -263,6 +315,21 @@ function outsize(d :: Deconv, s)
   ( size(d.w, 1) + d.s[1] * (s[1] - 1) - 2d.p[1],
     size(d.w, 2) + d.s[2] * (s[1] - 1) - 2d.p[2],
     size(d.w, 3) )
+end
+
+function Base.show(io :: IO, d :: Deconv)
+  window = size(d.w)[1:2]
+  channels = size(d.w, 3)
+  print(io, "Deconv($channels, $window, $(activation_name(d.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", d :: Deconv{GPU}) where {GPU}
+  at = GPU ? "GPU" : "CPU"
+  ac = activation_name(d.f)
+  println(io, "Conv{$at} layer with $(size(d.w)[3]) out-channels and $ac activation")
+  println(io, "window:  $(size(d.w)[1:2])")
+  println(io, "padding: $(d.p)")
+  print(io, "stride:  $(d.s)")
 end
 
 
@@ -305,6 +372,19 @@ function outsize(p :: Pool, s)
   )
 end
 
+function Base.show(io :: IO, p :: Pool)
+  print(io, "Pool($(p.w), $(activation_name(p.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", p :: Pool{GPU}) where {GPU}
+  at = GPU ? "GPU" : "CPU"
+  ac = activation_name(p.f)
+  println(io, "Pool{$at} layer with $ac activation")
+  println(io, "window:  $(p.w[1:2])")
+  println(io, "padding: $(p.p)")
+  print(io, "stride:  $(p.s)")
+end
+
 
 # -------- Dropout ----------------------------------------------------------- #
 
@@ -335,6 +415,15 @@ Base.copy(d :: Dropout) = d
 
 valid_insize(:: Dropout, s) = true
 outsize(:: Dropout, s) = s
+
+function Base.show(io :: IO, d :: Dropout)
+  print(io, "Dropout($(d.prob), $(activation_name(d.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", d :: Dropout{GPU}) where {GPU}
+  at = GPU ? "GPU" : "CPU"
+  print(io, "Dropout{$at} layer with prob $(d.prob) and $(activation_name(d.f)) activation")
+end
 
 
 # -------- Batch Normalization ----------------------------------------------- #
@@ -372,6 +461,15 @@ end
 
 valid_insize(:: Batchnorm, s) = true
 outsize(:: Batchnorm, s) = s
+
+function Base.show(io :: IO, b :: Batchnorm)
+  print(io, "Batchnorm($(activation_name(b.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", b :: Batchnorm{GPU}) where {GPU}
+  at = GPU ? "GPU" : "CPU"
+  print(io, "Batchnorm{$at} layer with $(activation_name(b.f)) activation")
+end
 
 
 # -------- Chain ------------------------------------------------------------- # 
@@ -413,6 +511,57 @@ end
 
 layers(c :: Chain) = c.layers
 
+
+function show_composite(name, io :: IO, layers)
+  n = length(layers)
+  if n == 0
+    print(io, "$name(0)")
+  else
+    pp(layer) = isnothing(layer) ? print(io, "...") : show(io, layer)
+    if n <= 4
+      layers = layers
+    else
+      layers = [layers[1:2]; nothing; layers[end-1:end]]
+    end
+    print(io, "$name($n: ")
+    for l in layers[1:end-1]
+      pp(l);
+      print(io, " -> ")
+    end
+    print(io, layers[end])
+    print(io, ")")
+  end
+end
+
+function show_composite(name, io :: IO, mime :: MIME"text/plain", layers, gpu, indent)
+  n = length(layers)
+  at = gpu ? "GPU" : "CPU"
+  ind = join(repeat(" ", indent))
+  ind2 = join(repeat(" ", indent+2))
+  print(io, ind)
+  if n == 1
+    println(io, "$name{$at} with 1 layer")
+  else
+    println(io, "$name{$at} with $n layers")
+  end
+  for (i, layer) in enumerate(layers)
+    if layer isa PrimitiveLayer
+      print(io, ind2)
+      show(io, layer)
+    else
+      show(io, mime, layer, indent+2)
+    end
+    if i != n
+      println(io)
+    end
+  end
+end
+
+Base.show(io :: IO, c :: Chain) = show_composite("Chain", io, c.layers)
+
+function Base.show(io :: IO, mime :: MIME"text/plain", c :: Chain{GPU}, indent = 0) where {GPU}
+  show_composite("Chain", io, mime, c.layers, GPU, indent)
+end
 
 # -------- Stack ------------------------------------------------------------- # 
 
@@ -457,7 +606,6 @@ function (s :: Stack{GPU})(x) where {GPU}
 
 end
 
-
 function swap(s :: Stack{GPU}) where {GPU}
   Stack(swap.(s.layers)..., stack_input = s.stack_input)
 end
@@ -490,6 +638,12 @@ end
 
 layers(s :: Stack) = s.layers
 
+Base.show(io :: IO, s :: Stack) = show_composite("Stack", io, s.layers)
+
+function Base.show(io :: IO, mime :: MIME"text/plain", s :: Stack{GPU}, indent = 0) where {GPU}
+  show_composite("Stack", io, mime, s.layers, GPU, indent)
+end
+
 
 # -------- Residual ---------------------------------------------------------- # 
 
@@ -501,10 +655,6 @@ shape-conserving.
 struct Residual{GPU} <: CompositeLayer{GPU}
   chain :: Chain{GPU}
 end
-
-#function Residual(c :: Chain{GPU}; gpu = GPU) where {GPU}
-#  new{gpu}(gpu == GPU ? c : swap(c))
-#end
 
 function Residual(layers :: Layer{GPU}...; gpu = GPU) where {GPU}
   ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
@@ -537,12 +687,18 @@ end
 
 layers(r :: Residual) = layers(r.chain)
 
+Base.show(io :: IO, r :: Residual) = show_composite("Residual", io, layers(r))
+
+function Base.show(io :: IO, mime :: MIME"text/plain", r :: Residual{GPU}, indent = 0) where {GPU}
+  show_composite("Residual", io, mime, layers(r), GPU, indent)
+end
+
 # -------- Chain/Stack Macro ------------------------------------------------- #
 
 getsize(t :: Int) = t
 getsize(t :: Tuple) = t
-getsize(g :: Game) = size(g)
-getsize(:: Type{G}) where {G <: Game} = size(G)
+getsize(g :: AbstractGame) = size(g)
+getsize(:: Type{G}) where {G <: AbstractGame} = size(G)
 
 function composite_arguments(symbol :: Symbol, size)
   if symbol in (:Dense,)
@@ -575,7 +731,7 @@ end
 
 function composite_macro_body(c, ex, layers...)
 
-  s = :(Jtac.getsize($ex))
+  s = :(Jtac.Model.getsize($ex))
 
   ssym = gensym("s")
   names = []
@@ -603,7 +759,6 @@ function composite_macro_body(c, ex, layers...)
   # Extract network layers
   layers = layers[setdiff(1:length(layers), kwidx)]
 
-
   if length(layers) == 1 && isa(layers[1], Expr) && layers[1].head == :block
     layers = filter(x -> !isa(x, LineNumberNode), layers[1].args)
   end
@@ -625,7 +780,7 @@ function composite_macro_body(c, ex, layers...)
       
       # Maybe add missing input size argument
       ltype = :($(layer.args[1]))
-      args = Expr(:call, :(Jtac.composite_arguments), QuoteNode(ltype), ssym)
+      args = Expr(:call, :(Jtac.Model.composite_arguments), QuoteNode(ltype), ssym)
       insert!(layer.args, 2, :($args...))
     
     elseif isa(layer, Expr) && layer.head == :macrocall
@@ -639,18 +794,20 @@ function composite_macro_body(c, ex, layers...)
     name = gensym("l") 
     push!(names, name)
 
+    layer.args[1] = :(Jtac.Model.$(layer.args[1]))
+
     # Add the evaluation of the completed layer constructor to the body
     push!(body, :(local $name = $(layer)))
 
     # Obtain the new input size
-    push!(body, :(local $ssym = outsize($name, $ssym)))
+    push!(body, :(local $ssym = Jtac.Model.outsize($name, $ssym)))
 
   end
 
   name = gensym("l")
   # Join all defined layers to a chain
   push!(body, :(local $name = $c($(Expr(:vect, names...))...; $(Expr(:vect, kwargs...))...)))
-  push!(body, :(@assert valid_insize($name, $s) "Macro failed to respect input size. This should not happen."))
+  push!(body, :(@assert Jtac.Model.valid_insize($name, $s) "Macro failed to respect input size. This should not happen."))
   push!(body, :($name))
 
   # Return the created block of code
@@ -678,7 +835,7 @@ Chain([ Conv(1, 32, relu), Dense(32, 50) ])
 ```
 """
 macro chain(ex, layers...)
-  composite_macro_body(:(Jtac.Chain), ex, layers...)
+  composite_macro_body(:(Jtac.Model.Chain), ex, layers...)
 end
 
 """
@@ -687,14 +844,14 @@ end
 Stack macro that works analogously to `@chain`.
 """
 macro stack(ex, layers...)
-  composite_macro_body(:(Jtac.Stack), ex, layers...)
+  composite_macro_body(:(Jtac.Model.Stack), ex, layers...)
 end
 
 """
     @residual(gametype, [kwoptions...,] partial_layer_constructors...)
 
-Macro to comfortably create residual blocks.
+Macro to comfortably create residual blocks. It works like `@chain`.
 """
 macro residual(ex, layers...)
-  composite_macro_body(:(Jtac.Residual), ex, layers...)
+  composite_macro_body(:(Jtac.Model.Residual), ex, layers...)
 end

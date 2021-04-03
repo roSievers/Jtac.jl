@@ -10,7 +10,7 @@ policy label to the improved policy in the single MCTS steps. Furthermore,
 features can be enabled for a dataset and are stored as part of the label, as
 well.
 """
-mutable struct DataSet{G <: Game}
+mutable struct Dataset{G <: AbstractGame}
 
   games  :: Vector{G}                 # games saved in the dataset
   label  :: Vector{Vector{Float32}}   # target value/policy labels
@@ -21,35 +21,59 @@ mutable struct DataSet{G <: Game}
 end
 
 """
-      DataSet{G}([; features])
+      Dataset{G}([; features])
 
 Initialize an empty dataset for concrete game type `G` and `features` enabled.
 """
-function DataSet{G}(; features = Feature[]) where {G <: Game}
+function Dataset{G}(; features = Feature[]) where {G <: AbstractGame}
 
-  DataSet( Vector{G}()
+  Dataset( Vector{G}()
          , Vector{Vector{Float32}}()
          , Vector{Vector{Float32}}()
          , features )
 
 end
 
-function DataSet(games, label, flabel; features = Feature[])
+function Dataset(games, label, flabel; features = Feature[])
 
-  DataSet(games, label, flabel, features)
+  Dataset(games, label, flabel, features)
 
 end
 
-features(ds :: DataSet) = ds.features
-Base.length(d :: DataSet) = length(d.games)
+Model.features(ds :: Dataset) = ds.features
+Base.length(d :: Dataset) = length(d.games)
+
+# -------- Saving and Loading Datasets --------------------------------------- #
+
+"""
+    save_dataset(name, dataset)
+
+Save `dataset` under filename `name` with automatically appended extension
+".jtd". Dataset caches are not saved.
+"""
+function save_dataset(fname :: String, d :: Dataset)
+  
+  # Save the file
+  BSON.bson(fname * ".jtd", dataset = d) 
+
+end
+
+"""
+    load_dataset(name)
+
+Load a dataset from file "name", where the extension ".jtd" is automatically
+appended.
+"""
+load_dataset(fname :: String) = BSON.load(fname * ".jtd")[:dataset]
+
 
 # -------- Dataset Operations ------------------------------------------------ #
 
-function Base.getindex(d :: DataSet{G}, I) where {G <: Game}
-  DataSet{G}(d.games[I], d.label[I], d.flabel[I], d.features)
+function Base.getindex(d :: Dataset{G}, I) where {G <: AbstractGame}
+  Dataset{G}(d.games[I], d.label[I], d.flabel[I], d.features)
 end
 
-function Base.append!(d :: DataSet{G}, dd :: DataSet{G}) where {G <: Game}
+function Base.append!(d :: Dataset{G}, dd :: Dataset{G}) where {G <: AbstractGame}
 
   if d.features != dd.features
 
@@ -63,7 +87,7 @@ function Base.append!(d :: DataSet{G}, dd :: DataSet{G}) where {G <: Game}
 
 end
 
-function Base.merge(d :: DataSet{G}, ds...) where {G <: Game}
+function Base.merge(d :: Dataset{G}, ds...) where {G <: AbstractGame}
 
   # Make sure that all datasets have compatible features
   features = d.features
@@ -75,7 +99,7 @@ function Base.merge(d :: DataSet{G}, ds...) where {G <: Game}
   end
 
   # Create and return the merged dataset
-  dataset = DataSet{G}()
+  dataset = Dataset{G}()
   dataset.features = features
 
   dataset.games  = vcat([d.games,  (x.games  for x in ds)...]...)
@@ -86,7 +110,7 @@ function Base.merge(d :: DataSet{G}, ds...) where {G <: Game}
 
 end
 
-function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
+function Base.split(d :: Dataset{G}, size :: Int; shuffle = true) where {G}
 
   n = length(d)
   @assert size <= n "Cannot split dataset of length $n at position $size."
@@ -94,40 +118,42 @@ function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
   idx = shuffle ? randperm(n) : 1:n
   idx1, idx2 = idx[1:size], idx[size+1:end]
 
-  d1 = DataSet( d.games[idx1], d.label[idx1]
+  d1 = Dataset( d.games[idx1], d.label[idx1]
               , d.flabel[idx1], features = d.features)
-  d2 = DataSet( d.games[idx2], d.label[idx2]
+  d2 = Dataset( d.games[idx2], d.label[idx2]
               , d.flabel[idx2], features = d.features)
 
   d1, d2
 
 end
 
-function augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: Game
+
+function Game.augment(d :: Dataset{G}) :: Vector{Dataset{G}} where G <: AbstractGame
 
   # NOTE: Augmentation will render flabel information useless.
   # Therefore, one must recalculate them after applying this function!
 
   # Problem: we must augment d in such a way that playthroughs are still
   # discernible after augmentation. I.e., for each symmetry transformation, one
-  # DataSet will be returned.
+  # Dataset will be returned.
 
-  gs, ls = unzip([augment(g, l) for (g, l) in zip(d.games, d.label)])
+  aug = [augment(g, l) for (g, l) in zip(d.games, d.label)]
+  gs, ls = map(x -> x[1], aug), map(x -> x[2], aug)
 
   map(1:length(gs[1])) do j
 
     games = map(x -> x[j], gs)
     label = map(x -> x[j], ls)
 
-    DataSet(games, label, copy(d.flabel), features = d.features)
+    Dataset(games, label, copy(d.flabel), features = d.features)
 
   end
 
 end
 
-# -------- Raw DataSet Representation: Caches -------------------------------- #
+# -------- Raw Dataset Representation: Caches -------------------------------- #
 
-struct DataCache{G <: Game, GPU}
+struct Datacache{G <: AbstractGame, GPU}
 
   data        # game representation data
 
@@ -137,13 +163,13 @@ struct DataCache{G <: Game, GPU}
 
 end
 
-function DataCache( ds :: DataSet{G}
+function Datacache( ds :: Dataset{G}
                   ; gpu = false
                   , use_features = false
-                  ) where {G <: Game}
+                  ) where {G <: AbstractGame}
 
   # Preparation
-  at = atype(gpu)
+  at = Model.atype(gpu)
   vplabel = hcat(ds.label...)
 
   # Convert to at
@@ -152,17 +178,17 @@ function DataCache( ds :: DataSet{G}
   plabel = convert(at, vplabel[2:end, :])
   flabel = use_features ? convert(at, hcat(ds.flabel...)) : nothing
 
-  DataCache{G, gpu}(data, vlabel, plabel, flabel)
+  Datacache{G, gpu}(data, vlabel, plabel, flabel)
 
 end
 
-Base.length(c :: DataCache) = size(c.data)[end]
+Base.length(c :: Datacache) = size(c.data)[end]
 
 # -------- Iterating Datasets: Batches --------------------------------------- #
 
-struct Batches{G <: Game, GPU}
+struct Batches{G <: AbstractGame, GPU}
 
-  cache :: DataCache{G, GPU}
+  cache :: Datacache{G, GPU}
 
   batchsize :: Int
   shuffle :: Bool
@@ -172,20 +198,17 @@ struct Batches{G <: Game, GPU}
 
 end
 
-function Batches( d :: DataSet{G}
+function Batches( d :: Dataset{G}
                 , batchsize
                 ; shuffle = false
                 , partial = true
-                , gpu = false 
+                , gpu = false
                 , use_features = false
-                ) where {G <: Game}
+                ) where {G <: AbstractGame}
 
   indices = collect(1:length(d))
-
-  cache = DataCache(d, gpu = gpu, use_features = use_features)
-
+  cache = Datacache(d, gpu = gpu, use_features = use_features)
   Batches{G, gpu}(cache, batchsize, shuffle, partial, indices)
-
 end
 
 function Base.length(b :: Batches)
@@ -193,7 +216,7 @@ function Base.length(b :: Batches)
   b.partial ? ceil(Int, n) : floor(Int, n)
 end
 
-function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: Game, GPU}
+function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame, GPU}
 
   # Preparations
   l = length(b.cache)
@@ -215,14 +238,21 @@ function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: Game, GPU}
   plabel = b.cache.plabel[:, idx]
   flabel = isnothing(b.cache.flabel) ? nothing : b.cache.flabel[:, idx]
 
-  cache = DataCache{G, GPU}(data, vlabel, plabel, flabel)
+  cache = Datacache{G, GPU}(data, vlabel, plabel, flabel)
 
   # Return the (cache, new_start) state tuple
   cache, stop + 1
-
 end
 
-# -------- Generating Datasets: Helpers -------------------------------------- #
+# -------- Random Branching Helpers ------------------------------------------ #
+
+prepare(; steps = 0) = game -> random_turns!(copy(game), steps)
+
+function branch(; prob = 0., steps = 1)
+  game -> rand() < prob ? random_turns!(copy(game), steps) : nothing
+end
+
+# -------- Generating Datasets ----------------------------------------------- #
 
 function _record( play :: Function # maps game to dataset
                 , root :: G
@@ -234,8 +264,7 @@ function _record( play :: Function # maps game to dataset
                 , merge = true
                 , prepare = prepare(steps = 0)
                 , branch = branch(prob = 0, steps = 1)
-                ) where {G <: Game}
-
+                ) where {G <: AbstractGame}
 
   # Extend the provided play function by random branching 
   # and the call to callback
@@ -255,7 +284,7 @@ function _record( play :: Function # maps game to dataset
     datasets = [dataset; branches]
 
     # Augment the datasets (if desired)
-    augment && (datasets = mapreduce(Jtac.augment, vcat, datasets))
+    augment && (datasets = mapreduce(Game.augment, vcat, datasets))
     
     # Calculate features (if there are any)
     datasets = map(d -> _record_features!(d, features), datasets)
@@ -288,10 +317,10 @@ function _record( play :: Function # maps game to dataset
 
 end
 
-function _record_move!( dataset :: DataSet{G}
+function _record_move!( dataset :: Dataset{G}
                       , game
                       , player
-                      ) where {G <: Game}
+                      ) where {G <: AbstractGame}
 
   pl = policy_length(G)
 
@@ -312,8 +341,8 @@ function _record_move!( dataset :: DataSet{G}
 
 end
 
-function _record_final!( dataset :: DataSet{G}
-                      , game ) where {G <: Game}
+function _record_final!( dataset :: Dataset{G}
+                      , game ) where {G <: AbstractGame}
 
   pl = policy_length(G)
   push!(dataset.games, copy(game))
@@ -322,7 +351,7 @@ function _record_final!( dataset :: DataSet{G}
 end
 
 
-function _record_value!(dataset :: DataSet{G}) where {G <: Game}
+function _record_value!(dataset :: Dataset{G}) where {G <: AbstractGame}
 
   result = status(dataset.games[end])
 
@@ -335,9 +364,9 @@ function _record_value!(dataset :: DataSet{G}) where {G <: Game}
 end
 
 # Add feature label to an extended dataset (that contains the final game state)
-function _record_features!( dataset :: DataSet{G}
+function _record_features!( dataset :: Dataset{G}
                           , features
-                          ) where {G <: Game}
+                          ) where {G <: AbstractGame}
 
   fl = feature_length(features, G)
 
@@ -417,7 +446,7 @@ player = MCTSPlayer(model, power = 50)
 dataset = record_self(player, 10, augment = false)
 ```
 """
-function record_self( p :: Player{G}
+function record_self( p :: AbstractPlayer{G}
                     , n :: Int = 1
                     ; game :: T = G()
                     , features = features(p)
@@ -447,7 +476,7 @@ function record_self( p :: Player{G}
   # Function that plays a single game of player against itself
   play = game -> begin
 
-    dataset = DataSet{T}()
+    dataset = Dataset{T}()
 
     while !is_over(game)
 
@@ -474,7 +503,7 @@ function record_self( p :: Player{G}
   end
 
   # Record several games, potentially with branching
-  _record(play, game, n; features = features, ntasks = ntasks(p), kwargs...)
+  _record(play, game, n; features = features, ntasks = Model.ntasks(p), kwargs...)
 
 end
 
@@ -507,8 +536,8 @@ The function takes the following arguments:
 - `tickets`: Number of chunks in which the workload is distributed if
    `distributed != false`. By default, it is set to the number of workers.
 """
-function record_against( p :: Player{G}
-                       , enemy :: Player{H}
+function record_against( p :: AbstractPlayer{G}
+                       , enemy :: AbstractPlayer{H}
                        , n :: Int = 1
                        ; game :: T = G()
                        , start :: Function = () -> rand([-1, 1])
@@ -537,7 +566,7 @@ function record_against( p :: Player{G}
 
   play = game -> begin
 
-    dataset = DataSet{T}()
+    dataset = Dataset{T}()
 
     # Roll the dice to see who starts. Our player (i = 1) or the enemy (i = -1)?
     s = start()
@@ -558,7 +587,7 @@ function record_against( p :: Player{G}
 
   end
 
-  ntasks = Jtac.ntasks(p) + Jtac.ntasks(enemy) - 1
+  ntasks = Model.ntasks(p) + Model.ntasks(enemy) - 1
 
   _record(play, game, n; features = features, ntasks = ntasks, kwargs...)
 
@@ -572,13 +601,13 @@ Record a dataset by applying `model` to `games`. The features enabled for
 `model` are recorded if `use_features` is true. `callback` is a function that is
 called after each application of `model` to a game state.
 """
-function record_model( model :: Model{G}
+function record_model( model :: AbstractModel{G}
                      , games :: Vector{T}
                      ; use_features = true
                      , augment = false
                      ) where {G, T <: G}
 
-  games = augment ? mapreduce(Jtac.augment, vcat, games) : games
+  games = augment ? mapreduce(Game.augment, vcat, games) : games
 
   vplabel = Vector{Float32}[]
   flabel  = Vector{Float32}[]
@@ -590,15 +619,15 @@ function record_model( model :: Model{G}
     use_features ? push!(flabel, f[:,i]) : push!(flabel, similar(f[:,i], 0))
   end
 
-  features = use_features ? Jtac.features(model) : Feature[]
+  features = use_features ? Model.features(model) : Feature[]
 
-  DataSet(games, vplabel, flabel, features = features)
+  Dataset(games, vplabel, flabel, features = features)
 
 end
 
 # -------- Distributed Recording --------------------------------------------- #
 
-function record_self_distributed( p :: Player
+function record_self_distributed( p :: AbstractPlayer
                                 , n :: Int = 1
                                 ; workers = workers()
                                 , merge = false
@@ -618,8 +647,8 @@ function record_self_distributed( p :: Player
 end
 
 
-function record_against_distributed( p :: Player
-                                   , enemy :: Player
+function record_against_distributed( p :: AbstractPlayer
+                                   , enemy :: AbstractPlayer
                                    , n :: Int = 1
                                    ; workers = workers()
                                    , merge = false

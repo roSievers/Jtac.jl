@@ -4,7 +4,7 @@
 # n: height
 # k: stones in a row required to win a game.
 
-mutable struct MNKGame{M, N, K} <: Game
+mutable struct MNKGame{M, N, K} <: AbstractGame
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
   current_player :: Int
   status :: Status

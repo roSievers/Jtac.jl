@@ -88,7 +88,7 @@ compose(:: Val{:features}, d) = compose.(d[:features])
 
 # -------- Game Type Conversions --------------------------------------------- #
 
-function decompose(:: Type{G}) where {G <: Game}
+function decompose(:: Type{G}) where {G <: AbstractGame}
   dict(:gametype, name = nameof(G), params = collect(G.parameters))
 end
 
@@ -142,7 +142,7 @@ compose(:: Val{:rollout}, d) = RolloutModel()
 
 # -------- Neural Models ----------------------------------------------------- #
 
-function decompose(m :: NeuralModel{G, false}) where {G <: Game}
+function decompose(m :: NeuralModel{G, false}) where {G <: AbstractGame}
   d = @decompose :model m
   push!(d, :gametype => decompose(G))
   d
@@ -155,7 +155,7 @@ end
 
 # -------- Async Models ------------------------------------------------------ #
 
-function decompose(m :: Async{G}) where {G <: Game}
+function decompose(m :: Async{G}) where {G <: AbstractGame}
   @assert !on_gpu(training_model(m)) "Cannot decompose GPU models"
   dict( :async
       , model = decompose(m.model)
@@ -174,13 +174,13 @@ end
 # -------- Saving Models ----------------------------------------------------- #
 
 """
-    save_model(name, model)
+    save(name, model)
 
 Save `model` under the filename `name` with automatically appended extension
 ".jtm". Note that the model is first converted to a saveable format, i.e., it is
 moved to the CPU and `training_model(model)` is extracted.
 """
-function save_model(fname :: String, model :: Model{G}) where {G}
+function save(fname :: String, model :: AbstractModel{G}) where {G}
 
   # Decompose the training_model after bringing it to the cpu
   dict = model |> training_model |> to_cpu |> decompose
@@ -191,33 +191,10 @@ function save_model(fname :: String, model :: Model{G}) where {G}
 end
 
 """
-    load_model(name)
+    load(name)
 
 Load a model from file `name`, where the extension ".jtm" is automatically
 appended.
 """
-load_model(fname :: String) = BSON.load(fname * ".jtm")[:model] |> compose
-
-# -------- Saving and Loading Datasets --------------------------------------- #
-
-"""
-    save_dataset(name, dataset)
-
-Save `dataset` under filename `name` with automatically appended extension
-".jtd". Dataset caches are not saved.
-"""
-function save_dataset(fname :: String, d :: DataSet)
-  
-  # Save the file
-  BSON.bson(fname * ".jtd", dataset = d) 
-
-end
-
-"""
-    load_dataset(name)
-
-Load a dataset from file "name", where the extension ".jtd" is automatically
-appended.
-"""
-load_dataset(fname :: String) = BSON.load(fname * ".jtd")[:dataset]
+load(fname :: String) = BSON.load(fname * ".jtm")[:model] |> compose
 

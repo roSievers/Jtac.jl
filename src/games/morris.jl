@@ -13,7 +13,7 @@ differ depending on the game state. It can have three meanings:
   | / | \\ |
   O - X - .
 """
-mutable struct Morris <: Game
+mutable struct Morris <: AbstractGame
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
   current_player :: Int
   lifted :: Int # A number in 1:9 indicates a lifted piece, 0 indicates no lifted piece.

@@ -1,5 +1,5 @@
 # The total board is made up of 9 single boards
-mutable struct MetaTac <: Game
+mutable struct MetaTac <: AbstractGame
   board :: Vector{Int}
   current_player :: Int
   # The focus is either 0 (no focus) or indicates the allowed board

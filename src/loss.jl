@@ -7,9 +7,9 @@ to policy, value, and feature labels.
 """
 struct Loss
 
-  value          :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
-  policy         :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
-  reg            :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  value  :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  policy :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  reg    :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
 
   features :: Vector{Feature}
   fweights :: Vector{Float32}
@@ -62,13 +62,13 @@ function loss_names(l :: Loss)
   vcat(base, features)
 end
 
-features(l :: Loss) = l.features
+Model.features(l :: Loss) = l.features
 
 # -------- Loss Calculation -------------------------------------------------- #
 
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
-             , cache :: DataCache{G, GPU}
+             , cache :: Datacache{G, GPU}
              ) where {G, GPU}
 
   n = length(cache)
@@ -116,12 +116,12 @@ model with at most `maxbatch` game states at once.
 """
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
-             , dataset :: DataSet{G}
+             , dataset :: Dataset{G}
              ; maxbatch = 1024
              ) where {G, GPU}
 
   # Check if features can be used
-  use_features = check_features(l, model, dataset)
+  use_features = feature_compatibility(l, model, dataset)
 
   # Cut the dataset in batches if it is too large
   batches = Batches(dataset, maxbatch, gpu = GPU, use_features = use_features)
@@ -138,9 +138,9 @@ end
 
 Calculate the loss determined by `l` between `label` and `model(game)` 
 """
-function loss(l :: Loss, model :: Model, game, label)
+function loss(l :: Loss, model :: AbstractModel, game, label)
 
-  loss(l, model, DataSet([game], [label], [zeros(Float32, 0)]))
+  loss(l, model, Dataset([game], [label], [zeros(Float32, 0)]))
 
 end
 

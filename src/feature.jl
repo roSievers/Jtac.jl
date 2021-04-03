@@ -37,17 +37,38 @@ function feature_length(fs :: Vector{Feature}, G)
 end
 
 function feature_indices(fs :: Vector{Feature}, G)
-
   isempty(fs) && return []
 
   clengths = cumsum(feature_length.(fs, G))
-
   start_indices = [1; clengths[1:end-1] .+ 1]
   end_indices = clengths
 
   map((i,j) -> i:j, start_indices, end_indices)
-
 end
+
+feature_name(f :: Feature) = "<unknown>"
+
+# -------- Feature Compability ----------------------------------------------- #
+
+function feature_compatibility(l, model)
+  features(l) == features(model) && !isempty(features(model))
+end
+
+function feature_compatibility(l, model, dataset)
+  fl = features(l)
+  fm = features(model)
+  fd = features(dataset)
+
+  if isempty(fm)        return false
+  elseif fm == fl == fd return true
+  elseif fm == fd       @warn "Loss does not support model features"
+  elseif fm == fl       @warn "Dataset does not support model features"
+  else                  @warn "Loss and dataset do not support model features"
+  end
+
+  false
+end
+
 
 # -------- Constant Dummy Feature -------------------------------------------- #
 
@@ -66,9 +87,9 @@ function ConstantFeature(data; name = :const)
   ConstantFeature(Symbol(name), data)
 end
 
-(f :: ConstantFeature)(:: G, :: Vector{G}) where {G <: Game} = f.data
+(f :: ConstantFeature)(:: G, :: Vector{G}) where {G <: AbstractGame} = f.data
 
 feature_name(f :: ConstantFeature) = f.name
-feature_length(f :: ConstantFeature, :: Type{<:Game}) = length(f.data)
+feature_length(f :: ConstantFeature, :: Type{<:AbstractGame}) = length(f.data)
 
 

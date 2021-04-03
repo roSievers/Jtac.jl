@@ -5,7 +5,7 @@
 function set_optimizer!(model, opt = Knet.Adam; kwargs...)
 
   for param in Knet.params(model)
-    
+
     # Feature heads that are not used have length 0. They do not get an
     # optimizer.
     if length(param) > 0
@@ -25,7 +25,7 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
 end
 
 # A single training step, the loss is returned
-function train_step!(l :: Loss, model, cache :: DataCache)
+function train_step!(l :: Loss, model, cache :: Datacache)
 
   tape = Knet.@diff sum(loss(l, model, cache))
 
@@ -36,81 +36,9 @@ function train_step!(l :: Loss, model, cache :: DataCache)
   Knet.value(tape)
 end
 
-
-# -------- Training on Datasets ---------------------------------------------- #
-
-"""
-    train!(model/player, dataset; <keyword arguments>)
-
-Train `model`, or the training model of `player`, on `dataset`.
-
-# Arguments
-- `loss = Loss()`: Loss used for training.
-- `epochs = 10`: Number of iterations through `dataset`.
-- `batchsize = 50`: Batchsize for the update steps.
-- `callback_epoch`: Function called after each epoch.
-- `callback_step`: Function called after each update step.
-- `optimizer = nothing`: Optimizer initialized for each weight in `model`
-- `kwargs...`: Keyword arguments for `optimizer`
-
-# Examples
-```julia
-set = record_self(MCTSPlayer(), 10, game = TicTacToe()) 
-model = NeuralModel(TicTacToe, @chain TicTacToe Dense(50))
-loss = Loss(policy = 0.15, regularization=1e-4)
-train!(model, set, loss = loss, epochs = 15)
-```
-
-"""
-function train!( player  :: Union{Player, Model}
-               , trainset :: DataSet
-               ; loss = Loss()
-               , epochs = 10
-               , batchsize = 50
-               , callback_step = (_) -> nothing
-               , callback_epoch = (_) -> nothing
-               , optimizer = nothing
-               , kwargs... )
-
-
-  # Get basic info about the player's model
-  model = training_model(player)
-  gpu = on_gpu(model)
-
-  # Check if features can be enabled
-  use_features = check_features(loss, model, trainset)
-
-  # Set/overwrite optimizers
-  set_optimizer!(model, optimizer; kwargs...)
-
-  # Generate the batch iterator
-  batches = Batches( trainset
-                   , batchsize
-                   , shuffle = true
-                   , partial = false
-                   , gpu = gpu )
-
-  # Iterate through the trainset
-  for j in 1:epochs
-
-    for (i, cache) in enumerate(batches)
-
-      train_step!(loss, model, cache)
-      callback_step(i)
-
-    end
-
-    callback_epoch(j)
-
-  end
-
-end
-
-
-# -------- Training by Playing ----------------------------------------------- #
+# -------- Logging Losses while Training ------------------------------------- #
 
 function print_loss_header(loss, use_features)
-
   names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
   components = map(names) do c
     Printf.@sprintf("%10s", string(c)[1:min(end, 10)])
@@ -118,10 +46,13 @@ function print_loss_header(loss, use_features)
   println(join(["#"; "   epoch"; components; "     total"; "    length"], " "))
 end
 
-function print_loss(l, p, epoch, train, test)
-
-  for (set, col) in [(train, 245), (test, :normal)]
-  
+function print_loss(l, p, epoch, train, test = nothing)
+  if isnothing(test)
+    ds = [(train, :normal)]
+  else
+    ds = [(train, 245), (test, :normal)]
+  end
+  for (set, col) in ds
     # Compute the losses and get them as strings
     ls = loss(l, training_model(p), set)
     losses = map(x -> @sprintf("%10.3f", x), ls)
@@ -146,7 +77,94 @@ function print_ranking(rk)
 end
 
 
-function _train!( player :: Player{G}
+# -------- Training on Datasets ---------------------------------------------- #
+
+"""
+    train!(model/player, dataset; <keyword arguments>)
+
+Train `model`, or the training model of `player`, on `dataset`.
+
+# Arguments
+- `loss = Loss()`: Loss used for training.
+- `epochs = 10`: Number of iterations through `dataset`.
+- `batchsize = 50`: Batchsize for the update steps.
+- `callback_epoch`: Function called after each epoch.
+- `callback_step`: Function called after each update step.
+- `optimizer = nothing`: Optimizer initialized for each weight in `model`
+- `kwargs...`: Keyword arguments for `optimizer`
+
+# Examples
+```julia
+G = Game.TicTacToe
+dataset = Training.record_self(Player.MCTSPlayer(), 10, game = G()) 
+model = Model.NeuralModel(G, Model.@chain G Dense(50))
+loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
+Training.train!(model, dataset, loss = loss, epochs = 15)
+```
+
+"""
+function train!( player  :: Union{AbstractPlayer, AbstractModel}
+               , trainset :: Dataset
+               ; loss = Loss()
+               , epochs = 10
+               , batchsize = 50
+               , callback_step = (_) -> nothing
+               , callback_epoch = (_) -> nothing
+               , optimizer = nothing
+               , quiet = false
+               , kwargs... )
+
+
+  # Get basic info about the player's model
+  model = training_model(player)
+  gpu = on_gpu(model)
+
+  # Check if features can be enabled
+  use_features = feature_compatibility(loss, model, trainset)
+
+  # Set/overwrite optimizers
+  set_optimizer!(model, optimizer; kwargs...)
+
+  # Print loss header if not quiet
+  !quiet && print_loss_header(loss, use_features)
+
+
+  # Generate the batch iterator (each iteration is shuffled independently)
+  batches = Batches( trainset
+                   , batchsize
+                   , shuffle = true
+                   , partial = true
+                   , gpu = gpu )
+
+  # Iterate through the trainset epochs times
+  for j in 1:epochs
+
+    if !quiet
+      step, finish = stepper("# Learning...", length(batches))
+    end
+
+    for (i, cache) in enumerate(batches)
+
+      train_step!(loss, model, cache)
+      callback_step(i)
+      !quiet && step()
+
+    end
+
+    if !quiet
+      finish()
+      print_loss(loss, player, j, trainset)
+    end
+
+    callback_epoch(j)
+  end
+end
+
+
+# -------- Training by Playing ----------------------------------------------- #
+
+
+function _train!( player :: AbstractPlayer{G}
                 , gen_data :: Function
                 ; loss = Loss()
                 , epochs = 10
@@ -159,8 +177,8 @@ function _train!( player :: Player{G}
                 , quiet = false
                 , callback_epoch = (_) -> nothing
                 , callback_iter = (_) -> nothing
-                , kwargs... 
-                ) where {G <: Game}
+                , kwargs...
+                ) where {G <: AbstractGame}
 
   @assert playings > 0 "Number of playings for training must be positive"
 
@@ -171,7 +189,7 @@ function _train!( player :: Player{G}
   train_playings = ceil(Int, playings * (1-testfrac))
 
   # Print the loss header if not quiet
-  !quiet && print_loss_header(loss, check_features(loss, player))
+  !quiet && print_loss_header(loss, feature_compatibility(loss, player))
 
   # Set the optimizer for the player's model
   set_optimizer!(training_model(player), optimizer; kwargs...)
@@ -200,14 +218,14 @@ function _train!( player :: Player{G}
     if testfrac > 0
       testset = merge(datasets[train_playings+1:playings]...)
     else
-      testset = DataSet{G}() 
+      testset = Dataset{G}() 
     end
 
     # Clear the progress bar (if it was printed)
     finish()
 
     # Prepare the next progress bar
-    steps = iterations * div(length(trainset), batchsize)
+    steps = iterations * ceil(Int, length(trainset) / batchsize)
     step, finish = stepper("# Learning...", steps)
     cb = (_) -> quiet ? nothing : step()
 
@@ -217,6 +235,7 @@ function _train!( player :: Player{G}
           , loss = loss
           , epochs = iterations
           , batchsize = batchsize
+          , quiet = true
           , callback_step = cb
           , callback_epoch = callback_iter )
 
@@ -233,7 +252,7 @@ function _train!( player :: Player{G}
     length(replay_buffer) >= replays+1 && deleteat!(replay_buffer, 1)
 
     # Call callback function
-    callback_epoch(i) 
+    callback_epoch(i)
 
   end 
 
@@ -271,10 +290,11 @@ training models can be trained currently.
 
 # Examples
 ```julia
-# Self-train a simple neural network model for 5 epochs
-model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
-player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-train_self!(player, epochs = 5, playings = 100)
+# Train a neural network model to learn TicTacToe by playing against itself
+G = Game.TicTacToe
+model = Model.NeuralModel(G, Model.@chain G Conv(64, relu) Dense(32, relu))
+player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
+Training.train_self!(player, epochs = 5, playings = 100)
 ```
 """
 function train_self!( player :: MCTSPlayer
@@ -288,7 +308,7 @@ function train_self!( player :: MCTSPlayer
 
   # Only use player-enabled features for recording if they are compatible with
   # the loss
-  features = check_features(loss, player) ? Jtac.features(player) : Feature[]
+  features = feature_compatibility(loss, player) ? Jtac.features(player) : Feature[]
 
   # Function to generate datasets through selfplays
   gen_data = (cb, n) -> record_self( player
@@ -319,7 +339,7 @@ the keyword argument `loss`) when playing against `enemy`. If the enemy is too
 good, this may turn out to be a bad learning mode: a player that loses all the
 time will produce very pessimistic value predictions for each single game state,
 which will harm the MCTS algorithm for improved policies. Note that only players
-with NeuralModel-based training models can be trained currently.
+with NeuralModel-based training models can be trained.
 
 # Arguments
 - `loss = Loss()`: Loss used for training.
@@ -343,11 +363,12 @@ with NeuralModel-based training models can be trained currently.
 
 # Examples
 ```julia
-# Train a simple neural network model against an MCTS player for 5 epochs
-model = NeuralModel(TicTacToe, @chain TicTacToe Conv(64, relu) Dense(32, relu))
-player = MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-enemy = MCTSPlayer(power = 250)
-train_against!(player, enemy, epochs = 5, playings = 100)
+# Train a neural network model by playing against an MCTS player
+G = Game.TicTacToe
+model = Model.NeuralModel(G, Model.@chain G Conv(64, relu) Dense(32, relu))
+player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
+enemy = Player.MCTSPlayer(power = 250)
+Training.train_against!(player, enemy, epochs = 5, playings = 100)
 ```
 """
 function train_against!( player :: MCTSPlayer
@@ -361,7 +382,7 @@ function train_against!( player :: MCTSPlayer
                        , tickets = nothing
                        , kwargs... )
 
-  features = check_features(loss, player) ? features(player) : Feature[]
+  features = feature_compatibility(loss, player) ? features(player) : Feature[]
 
   gen_data = (cb, n) -> record_against( player
                                       , enemy
@@ -410,15 +431,15 @@ currently.
 - `optimizer = Adam`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 """
-function train_from_model!( pupil :: Player{G}
-                          , teacher :: Union{Model{H}, Player{H}}
+function train_from_model!( pupil :: AbstractPlayer{G}
+                          , teacher :: Union{AbstractModel{H}, AbstractPlayer{H}}
                           , players = [pupil]
                           ; loss = Loss()
                           , branch = branch(prob = 0.)
                           , prepare = prepare(steps = 0)
                           , augment = true
                           , kwargs... 
-                          ) where {H <: Game, G <: H}
+                          ) where {H <: AbstractGame, G <: H}
 
   # Check if pupil and teacher are compatible featurewise
   use_features = features(pupil) == features(teacher) != Feature[]
@@ -484,7 +505,7 @@ arguments can be used to adapt the behavior of `with_contest`:
 - `interval = 10`: After how many epochs do contests take place.
 - `length = 250`: Number of playings during one contest. 
 - `opponents`: List of opponents for the competition. To this list the
-   two players `current` and `initial` are added, which are IntuitionPlayers
+   two players `current` and `initial` are added, which are `IntuitionPlayer`s
    with the model (or a copy of the initial model) of `player`.
 - `temperature`: Temperature of the intuition players `current` and `initial`.
 - `cache = 0`: Number of games to be cached. If `cache > 0`, a number
@@ -517,7 +538,7 @@ function with_contest( trainf!     # the training function
                      , player :: MCTSPlayer
                      , args...
                      ; loss = Loss()
-                     , opponents = Player[]
+                     , opponents = AbstractPlayer[]
                      , length :: Int = 250
                      , cache :: Int = 0
                      , interval :: Int = 10
@@ -615,7 +636,9 @@ function with_contest( trainf!     # the training function
       # special printing, since we want to prepend '# ' to each line
       print_ranking(Rank.Ranking(players, results .+ cache_results))
 
-      0 < epoch < epochs && print_loss_header(loss, check_features(loss, player))
+      if 0 < epoch < epochs
+        print_loss_header(loss, feature_compatibility(loss, player))
+      end
     end
   end
 

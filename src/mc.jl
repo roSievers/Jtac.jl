@@ -21,7 +21,7 @@ Find all children for a node and assesses them through the model.
 The state value predicted by the model is returned.
 The value is from the perspective of the first player
 """
-function expand!(node :: Node, game :: Game, model :: Model) :: Float32
+function expand!(node :: Node, game :: AbstractGame, model :: AbstractModel) :: Float32
   node.current_player = current_player(game)
 
   # We need to first check if the game is still active
@@ -78,7 +78,7 @@ end
 Traverse the tree from top to bottom and return a leaf.
 While this is done, the game is mutated.
 """
-function descend_to_leaf!( game :: Game
+function descend_to_leaf!( game :: AbstractGame
                          , node :: Node
                          ; kwargs...
                          ) :: Node
@@ -131,7 +131,7 @@ end
 
 # Runs the mcts algorithm, expanding the given root node.
 function run_mcts( model
-                 , game :: Game
+                 , game :: AbstractGame
                  ; root = Node()      # To track the expansion
                  , power = 100
                  , kwargs...
@@ -148,7 +148,7 @@ function run_mcts( model
 end
 
 function mctree_policy( model
-                      , game :: Game
+                      , game :: AbstractGame
                       ; power = 100
                       , temperature = 1.
                       , kwargs...
@@ -179,7 +179,7 @@ function mctree_policy( model
 
 end
 
-function mctree_action(model, game :: Game; kwargs...) :: ActionIndex
+function mctree_action(model, game :: AbstractGame; kwargs...) :: ActionIndex
 
   probs = mctree_policy(model, game; kwargs...)
   index = choose_index(probs)
@@ -187,7 +187,7 @@ function mctree_action(model, game :: Game; kwargs...) :: ActionIndex
 
 end
 
-function mctree_turn!(model, game :: Game; kwargs...) :: Node
+function mctree_turn!(model, game :: AbstractGame; kwargs...) :: Node
 
   root = Node()
   action = mctree_action(model, game; root = root, kwargs...)

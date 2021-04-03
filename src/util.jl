@@ -1,13 +1,6 @@
 
 # -------- Miscellaneous ----------------------------------------------------- #
 
-tup(a :: Int) = (a, a)
-tup(a) = (a[1], a[2])
-
-second((a, b)) = b
-
-unzip(a :: Array{<: Tuple}) = map(first, a), map(second, a)
-
 function choose_index(probs :: Vector{Float32}) :: Int
 
   @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
@@ -94,27 +87,6 @@ function apply_klein_four_group(action :: Int, s :: Tuple)
 end
 
 
-# -------- Feature Compability ----------------------------------------------- #
-
-function check_features(l, model)
-  features(l) == features(model) && !isempty(features(model))
-end
-
-function check_features(l, model, dataset)
-  fl = features(l)
-  fm = features(model)
-  fd = features(dataset)
-
-  if isempty(fm)        return false
-  elseif fm == fl == fd return true
-  elseif fm == fd       @warn "Loss does not support model features"
-  elseif fm == fl       @warn "Dataset does not support model features"
-  else                  @warn "Loss and dataset do not support model features"
-  end
-
-  false
-end
-
 # -------- Parallel-Stable Progress Maps ------------------------------------- #
 
 """
@@ -176,7 +148,7 @@ function stepper(description, n :: Int, kwargs...)
 
 end
 
-# -------- Random Branching -------------------------------------------------- #
+# -------- Random Branching Helpers ------------------------------------------ #
 
 prepare(; steps = 0) = game -> random_turns!(copy(game), steps)
 

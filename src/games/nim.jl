@@ -11,7 +11,7 @@
 # The player may take away any of the remaining tokens of the board or pass.
 # Passing is only allowed, after the player has taken at least one token.
 
-mutable struct Nim <: Game
+mutable struct Nim <: AbstractGame
   board :: Vector{Int}
   current_player :: Int
   actions_left :: Int

@@ -35,11 +35,15 @@ end
 """
 This model returns value 0 and a uniform policy vector for each game state.
 """
-struct DummyModel <: AbstractModel{Game, false} end
+struct DummyModel <: AbstractModel{AbstractGame, false} end
 
-(m :: DummyModel)(g :: Game, args...) = 0f0, uniform_policy(policy_length(g)), Float32[]
+function (m :: DummyModel)(g :: AbstractGame, args...)
+  0f0, uniform_policy(policy_length(g)), Float32[]
+end
 
-(m :: DummyModel)(g :: Vector{<:Game}, args...) = cat_outputs(m.(g, args...))
+function (m :: DummyModel)(g :: Vector{<:AbstractGame}, args...)
+  cat_outputs(m.(g, args...))
+end
 
 Base.copy(m :: DummyModel) = m
 
@@ -50,11 +54,15 @@ Base.copy(m :: DummyModel) = m
 This model returns value 0 and a randomly drawn policy vector distribution for
 each game state.
 """
-struct RandomModel <: AbstractModel{Game, false} end
+struct RandomModel <: AbstractModel{AbstractGame, false} end
 
-(m :: RandomModel)(g :: Game, args...) = 0f0, random_policy(policy_length(g)), Float32[]
+function (m :: RandomModel)(g :: AbstractGame, args...)
+  0f0, random_policy(policy_length(g)), Float32[]
+end
 
-(m :: RandomModel)(g :: Vector{<: Game}, args...) = cat_outputs(m.(g, args...))
+function (m :: RandomModel)(g :: Vector{<: AbstractGame}, args...)
+  cat_outputs(m.(g, args...))
+end
 
 Base.copy(m :: RandomModel) = m
 
@@ -67,9 +75,9 @@ as the value of the game state. It always proposes a uniform policy vector.
 Therefore, the classical rollout step of MCTS is implemented when this model
 is used for the tree search.
 """
-struct RolloutModel <: AbstractModel{Game, false} end
+struct RolloutModel <: AbstractModel{AbstractGame, false} end
 
-function (m :: RolloutModel)(g :: Game, args...)
+function (m :: RolloutModel)(g :: AbstractGame, args...)
 
   result = random_playout(g)
   value = status(result) * current_player(g)
@@ -78,7 +86,9 @@ function (m :: RolloutModel)(g :: Game, args...)
 
 end
 
-(m :: RolloutModel)(g :: Vector{<: Game}, args...) = cat_outputs(m.(g, args...))
+function (m :: RolloutModel)(g :: Vector{<: AbstractGame}, args...)
+  cat_outputs(m.(g, args...))
+end
 
 Base.copy(m :: RolloutModel) = m
 

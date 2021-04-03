@@ -2,21 +2,16 @@
 """
 Module that implements the Alpha Zero learning design.
 
-The module exports (i) implementations of various two-player board games, like
-tic-tac-toe, (ii) functions for creating neural networks that act on the states
-of games, and (iii) functionality to generate datasets via the selfplay of
-a Monte-Carlo Tree Search player assisted by a neural model. Aspects (ii) and
-(iii) of Jtac are kept orthogonal to (i), such that it is easy to extend the
-library with new games.
+The module exports implementations of various two-player board games, like
+tic-tac-toe, functions for creating neural networks that act on the states of
+games, and functionality to generate datasets through selfplay of a Monte-Carlo
+Tree Search player assisted by a neural model.
 """
 module Jtac
 
 # -------- Packages ---------------------------------------------------------- #
 
-using Random, Statistics, LinearAlgebra, Printf, Distributed
-
-import BSON
-import ProgressMeter
+using Random, Statistics, LinearAlgebra
 
 import AutoGrad, Knet
 import Knet: identity,
@@ -25,8 +20,6 @@ import Knet: identity,
              softmax,
              tanh,
              sigm
-
-import CUDA
 
 export AutoGrad, Knet
 
@@ -39,161 +32,232 @@ export identity,
 
 # -------- Utilities --------------------------------------------------------- #
 
-include("util.jl")
+module Util
 
-export prepare,
-       branch
+  using Distributed
+  import ProgressMeter
+
+  include("util.jl")
+
+  export one_hot,
+         choose_index,
+         apply_dihedral_group,
+         apply_klein_four_group,
+         stepper
+
+end # module Util
 
 # -------- Games ------------------------------------------------------------- #
 
-include("game.jl")
+module Game
 
-export Game, 
-       Status,
-       ActionIndex
+  using Random, Statistics, LinearAlgebra
+  using ..Jtac
+  using ..Util
 
-export status,
-       current_player,
-       legal_actions,
-       apply_action!, 
-       is_action_legal,
-       representation,
-       policy_length,
-       random_playout, 
-       augment,
-       draw,
-       is_over,
-       random_turn!
+  include("game.jl")
+
+  export AbstractGame, 
+         Status,
+         ActionIndex
+
+  export status,
+         current_player,
+         legal_actions,
+         apply_action!, 
+         is_action_legal,
+         representation,
+         policy_length,
+         random_playout, 
+         augment,
+         draw,
+         is_over,
+         random_turn!,
+         random_turns!
+
+  # -------- Game implementations ---------------------------------------------- #
+
+  include("games/mnkgame.jl")
+  include("games/metatac.jl")
+  include("games/nim.jl")
+  include("games/nim2.jl")
+  include("games/morris.jl")
+
+  export TicTacToe,
+         MNKGame,
+         MetaTac,
+         Nim,
+         Nim2,
+         Morris
+
+
+end #module Game
 
 # -------- CPU/GPU Elements and NN Models ------------------------------------ #
 
-include("feature.jl")
-include("element.jl")
-include("layer.jl")
-include("model.jl")
+module Model
 
-export Feature,
-       ConstantFeature
+  using Random, Statistics, LinearAlgebra
+  using CUDA, BSON
+  using ..Jtac
+  using ..Util
+  using ..Game
 
-export Model
+  include("feature.jl")
+  include("element.jl")
+  include("layer.jl")
+  include("model.jl")
 
-export apply,
-       apply_features,
-       to_gpu,
-       to_cpu,
-       swap,
-       on_gpu,
-       base_model,
-       playing_model,
-       training_model,
-       gametype
+  export Feature,
+         ConstantFeature
 
-export Pointwise,
-       Dense,
-       Conv,
-       Deconv,
-       Pool,
-       Dropout,
-       Batchnorm, 
-       Chain,
-       Stack
+  export AbstractModel
 
-export valid_insize,
-       outsize,
-       layers,
-       @chain,
-       @stack,
-       @residual
+  export features,
+         feature_length,
+         feature_name,
+         feature_compatibility,
+         apply,
+         apply_features,
+         to_gpu,
+         to_cpu,
+         swap,
+         on_gpu,
+         base_model,
+         playing_model,
+         training_model,
+         gametype
 
-# -------- Specific models implementations ----------------------------------- #
+  export Pointwise,
+         Dense,
+         Conv,
+         Deconv,
+         Pool,
+         Dropout,
+         Batchnorm, 
+         Chain,
+         Stack,
+         Residual
 
-include("models/toy.jl")
-include("models/neural.jl")
-include("models/async.jl")
+  export valid_insize,
+         outsize,
+         layers,
+         @chain,
+         @stack,
+         @residual
 
-export DummyModel,
-       RandomModel,
-       RolloutModel,
-       NeuralModel,
-       Shallow,
-       MLP,
-       ShallowConv,
-       Async
+  # -------- Specific model implementations ------------------------------------ #
 
-# -------- MCTS, Players, and ML ELO rankings -------------------------------- #
+  include("models/basic.jl")
+  include("models/neural.jl")
+  include("models/async.jl")
 
-include("mc.jl")
-include("player.jl")
-include("rank.jl")
+  export AbstractModel,
+         DummyModel,
+         RandomModel,
+         RolloutModel,
+         NeuralModel,
+         Shallow,
+         MLP,
+         ShallowConv,
+         Async
 
-export RandomPlayer,
-       MCTSPlayer, 
-       IntuitionPlayer,
-       HumanPlayer
+  # -------- Saving and loading models ----------------------------------------- #
 
-export pvp,
-       name,
-       think,
-       decide,
-       turn!,
-       compete
+  include("modelio.jl")
 
-export Rank
+  export save,
+         load
+
+end # module Model
+
+
+# -------- MCTS, Player, and ML ELO rankings -------------------------------- #
+
+module Player
+
+  using Random, Statistics, LinearAlgebra
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Model
+
+  include("mc.jl")
+  include("player.jl")
+  include("rank.jl")
+
+  export AbstractPlayer,
+         RandomPlayer,
+         MCTSPlayer, 
+         IntuitionPlayer,
+         HumanPlayer
+
+  export pvp,
+         name,
+         think,
+         decide,
+         turn!,
+         compete
+
+  export Rank
+
+end # module Player
 
 # -------- Training ---------------------------------------------------------- #
 
-include("dataset.jl")
-include("loss.jl")
-include("learning.jl")
+module Training
 
-export DataSet
+  using Random, Statistics, LinearAlgebra
+  using Printf, Distributed
+  import BSON
 
-export augment,
-       minibatch, 
-       record_self,
-       record_against,
-       Loss,
-       loss,
-       caption,
-       set_optimizer!,
-       train_step!,
-       train!,
-       train_self!,
-       train_against!,
-       train_from_model!,
-       with_contest
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Model
+  using ..Player
 
-# -------- Distributed creation of datasets ---------------------------------- #
+  include("dataset.jl")
+  include("loss.jl")
+  include("learning.jl")
 
-include("distributed.jl")
+  export Dataset
 
-export record_self_distributed,
-       record_against_distributed,
-       compete_distributed
+  export save_dataset,
+         load_dataset,
+         augment,
+         minibatch, 
+         branch,
+         prepare,
+         record_self,
+         record_against,
+         Loss,
+         loss,
+         caption,
+         set_optimizer!,
+         train_step!,
+         train!,
+         train_self!,
+         train_against!,
+         train_from_model!,
+         with_contest
 
-# -------- Saving and loading games and datasets ----------------------------- #
 
-include("io.jl")
 
-export save_model,
-       load_model,
-       save_dataset,
-       load_dataset
+  # -------- Distributed creation of datasets ---------------------------------- #
 
-# -------- Game implementations ---------------------------------------------- #
+  include("distributed.jl")
 
-include("games/mnkgame.jl")
-include("games/metatac.jl")
-include("games/nim.jl")
-include("games/nim2.jl")
-include("games/morris.jl")
+  export record_self_distributed,
+         record_against_distributed,
+         compete_distributed
 
-export TicTacToe,
-       MNKGame,
-       MetaTac,
-       Nim,
-       Nim2,
-       Morris
+end # module Training
 
+export Util,
+       Game,
+       Model,
+       Player,
+       Training
 
 end # module Jtac

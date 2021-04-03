@@ -7,8 +7,8 @@ in parallel when the single calls take place in an async context. Note that
 an Async model always returns CPU arrays, even if the model it is based on works
 on the GPU.
 """
-mutable struct Async{G} <: Model{G, false}
-  model          :: Model{G}
+mutable struct Async{G} <: AbstractModel{G, false}
+  model          :: AbstractModel{G}
   channel        :: Channel
   thread
 
@@ -23,9 +23,9 @@ Wraps `model` to become an asynchronous model with maximal batchsize
 `max_batchsize` for evaluation in parallel and a buffer of size `buffersize` for
 queuing.
 """
-function Async( model :: Model{G}; 
+function Async( model :: AbstractModel{G}; 
                 max_batchsize = 50, 
-                buffersize = 2*max_batchsize ) where {G <: Game}
+                buffersize = 2*max_batchsize ) where {G <: AbstractGame}
 
   # Make sure that the buffer is larger than the maximal allowed batchsize
   @assert buffersize >= max_batchsize "buffersize must be larger than max_batchsize"
@@ -50,7 +50,7 @@ end
 
 function (m :: Async{G})( game :: G
                         , use_features = false
-                        ) where {G <: Game}
+                        ) where {G <: AbstractGame}
 
   @assert !use_features "Features cannot be used in Async."
 
@@ -62,7 +62,7 @@ end
 
 function (m :: Async{G})( games :: Vector{G}
                         , use_features = false
-                        ) where {G <: Game}
+                        ) where {G <: AbstractGame}
 
   @assert !use_features "Features cannot be used in Async. "
   @warn "Calling Async model in batched mode is not recommended." maxlog=1
@@ -72,7 +72,7 @@ function (m :: Async{G})( games :: Vector{G}
 
 end
 
-function switch_model(m :: Async{G}, model :: Model{G}) where {G <: Game}
+function switch_model(m :: Async{G}, model :: AbstractModel{G}) where {G <: AbstractGame}
   Async( model
        , max_batchsize = m.max_batchsize
        , buffersize = m.buffersize )
@@ -88,7 +88,6 @@ worker_model(m :: Async) = m.model
 
 # check if a model is an async model
 isasync(m) = isa(m, Async) ? true : false
-
 
 # Async networks cannot calculate features. To get the features of the
 # network on which it is based, access them via training_model(...)

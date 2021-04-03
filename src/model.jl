@@ -24,20 +24,17 @@ the `IntuitionPlayer` (which only uses the policy proposed by the network) or
 the `MCTSPlayer` (which conducts several MCTS steps and finally uses the
 improved policy for its decision).
 """
-abstract type Model{G <: Game, GPU} <: Element{GPU} end
+abstract type AbstractModel{G <: AbstractGame, GPU} <: Element{GPU} end
 
-to_cpu(a :: Knet.KnetArray{Float32}) = convert(Array{Float32}, a)
-to_cpu(a :: Array{Float32}) = a
-
-to_gpu(a :: Knet.KnetArray{Float32}) = a
-to_gpu(a :: Array{Float32}) = convert(Knet.KnetArray{Float32}, a)
+to_cpu(a) = convert(atype(false), a)
+to_gpu(a) = convert(atype(true), a)
 
 """
     apply(model, game)
 
 Apply `model` to `game`, yielding a named `(value, policy)` tuple.
 """
-function apply(model :: Model{G}, game :: G) where {G <: Game}
+function apply(model :: AbstractModel{G}, game :: G) where {G <: AbstractGame}
   v, p, _ = model(game)
   (value = v, policy = p |> to_cpu)
 end
@@ -47,14 +44,14 @@ end
 
 Obtain the list of features which are enabled for `model`.
 """
-features(model :: Model) = Feature[]
+features(model :: AbstractModel) = Feature[]
 
 """
     apply_features(model, game)
 
 Apply `model` to `game`, yielding a `(value, policy, feature_values)` tuple.
 """
-function apply_features(model :: Model{G}, game :: G) where {G <: Game}
+function apply_features(model :: AbstractModel{G}, game :: G) where {G <: AbstractGame}
   v, p, f = model(game, true)
   (value = v, policy = p |> to_cpu, features = f |> to_cpu)
 end
@@ -65,7 +62,7 @@ end
 
 The number of tasks that should be applied if the model is called with `asyncmap`.
 """
-ntasks(:: Model) = 1
+ntasks(:: AbstractModel) = 1
 
 """
     base_model(model)
@@ -73,7 +70,7 @@ ntasks(:: Model) = 1
 Extract the model on which `model` or `player` is based. Except for explicit
 wrapper models like `Async`, this usually returns the model itself.
 """
-base_model(m :: Model) = m
+base_model(m :: AbstractModel) = m
 
 """
     training_model(model)
@@ -82,7 +79,7 @@ base_model(m :: Model) = m
 Extract the component of `model` or `player` that can be trained. Returns
 nothing if `model` is not trainable.
 """
-training_model(m :: Model) = nothing
+training_model(m :: AbstractModel) = nothing
 
 """
     playing_model(model)
@@ -93,19 +90,19 @@ On models, this always returns the model itself. Can return `nothing` if
 `player` does not use a model.
 
 """
-playing_model(m :: Model) = m
+playing_model(m :: AbstractModel) = m
 
 """
     gametype(model)
 
-Get the julia type `G <: Game` that `model` can be applied to.
+Get the julia type `G <: AbstractGame` that `model` can be applied to.
 """
-gametype(model :: Model{G}) where {G <: Game} = G
+gametype(model :: AbstractModel{G}) where {G <: AbstractGame} = G
 
 """
     count_params(model)
 
 Count the number of free parameters in `model`.
 """
-count_params(model :: Model) = sum(length, Knet.params(model))
+count_params(model :: AbstractModel) = sum(length, Knet.params(model))
 

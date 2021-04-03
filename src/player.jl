@@ -5,14 +5,14 @@
 Players are named entities that can evaluate game states via the `think`
 function to yield policies.
 """
-abstract type Player{G <: Game} end
+abstract type AbstractPlayer{G <: AbstractGame} end
 
 """
     think(player, game)
 
 Let `player` think about `game` and return a policy.
 """
-think(p :: Player, game :: Game) :: Vector{Float32} = error("Not implemented")
+think(p :: AbstractPlayer, game :: AbstractGame) :: Vector{Float32} = error("Not implemented")
 
 """
     decide(player, game)
@@ -20,40 +20,40 @@ think(p :: Player, game :: Game) :: Vector{Float32} = error("Not implemented")
 Let `player` make an action decision about `game`, based on the policy
 `think(player, game)`.
 """
-decide(p :: Player, game :: Game) = choose_index(think(p, game))
+decide(p :: AbstractPlayer, game :: AbstractGame) = choose_index(think(p, game))
 
 """
     turn!(game, player)
 
 Modify `game` by letting `player` take one turn.
 """
-turn!(game :: Game, p :: Player) = apply_action!(game, decide(p, game))
+turn!(game :: AbstractGame, p :: AbstractPlayer) = apply_action!(game, decide(p, game))
 
 """
     name(player)
 
 The name of a player.
 """
-name(:: Player) :: String = error("Not implemented")
+name(:: AbstractPlayer) :: String = error("Not implemented")
 
 """
     ntasks(player)
 
 How many tasks the player wants to handle via asyncmap.
 """
-ntasks(:: Player) = 1
+Model.ntasks(:: AbstractPlayer) = 1
 
 # For automatic game interference
-gametype(:: Player{G}) where {G <: Game} = G
+Model.gametype(:: AbstractPlayer{G}) where {G <: AbstractGame} = G
 
 # Players with potentially trainable models can be asked to return them
-base_model(p :: Player)   = nothing
-playing_model(:: Player)  = nothing
-training_model(:: Player) = nothing
+Model.base_model(p :: AbstractPlayer)   = nothing
+Model.playing_model(:: AbstractPlayer)  = nothing
+Model.training_model(:: AbstractPlayer) = nothing
 
 # Features that are supported by the player. Used for automatic feature
 # detection during the generation of datasets in selfplays
-features(:: Player) = Feature[]
+Model.features(:: AbstractPlayer) = Feature[]
 
 
 # Player ids to get more unique default names
@@ -65,9 +65,9 @@ get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
 """
 A player with name "random" that always chooses a random (but allowed) action.
 """
-struct RandomPlayer <: Player{Game} end
+struct RandomPlayer <: AbstractPlayer{AbstractGame} end
 
-function think(:: RandomPlayer, game :: Game)
+function think(:: RandomPlayer, game :: AbstractGame)
   actions = legal_actions(game)
   policy = zeros(Float32, policy_length(game))
   policy[actions] .= 1f0 / length(actions)
@@ -83,8 +83,8 @@ Base.copy(p :: RandomPlayer) = p
 """
 A player that relies on the policy returned by a model.
 """
-struct IntuitionPlayer{G} <: Player{G}
-  model :: Model
+struct IntuitionPlayer{G} <: AbstractPlayer{G}
+  model :: AbstractModel
   temperature :: Float32
   name :: String
 end
@@ -97,10 +97,10 @@ Intuition player that uses `model` to generate policies which are cooled/heated
 by `temperature` before making a decision. If provided a `player`, the
 IntuitionPlayer shares this player's model and temperature.
 """
-function IntuitionPlayer( model :: Model{G}
+function IntuitionPlayer( model :: AbstractModel{G}
                         ; temperature = 1.
                         , name = nothing
-                        ) where {G <: Game}
+                        ) where {G <: AbstractGame}
   if isnothing(name)
     id = get_id(model, temperature) 
     name = "intuition-$id"
@@ -110,10 +110,10 @@ function IntuitionPlayer( model :: Model{G}
 
 end
 
-function IntuitionPlayer( player :: Player{G}
+function IntuitionPlayer( player :: AbstractPlayer{G}
                         ; temperature = player.temperature
                         , name = nothing
-                        ) where {G <: Game}
+                        ) where {G <: AbstractGame}
 
   IntuitionPlayer( playing_model(player)
                  , temperature = temperature
@@ -123,7 +123,7 @@ end
 
 function think( p :: IntuitionPlayer{G}
               , game :: G
-              ) :: Vector{Float32} where {G <: Game} 
+              ) :: Vector{Float32} where {G <: AbstractGame} 
   
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
@@ -146,20 +146,21 @@ function think( p :: IntuitionPlayer{G}
 end
 
 name(p :: IntuitionPlayer) = p.name
-ntasks(p :: IntuitionPlayer) = ntasks(p.model)
 
-base_model(p :: IntuitionPlayer) = base_model(p.model)
-playing_model(p :: IntuitionPlayer) = p.model
-training_model(p :: IntuitionPlayer) = training_model(p.model)
+# For convenience, extend some parts of the model interface to players
+Model.ntasks(p :: IntuitionPlayer) = Model.ntasks(p.model)
+Model.base_model(p :: IntuitionPlayer) = base_model(p.model)
+Model.playing_model(p :: IntuitionPlayer) = p.model
+Model.training_model(p :: IntuitionPlayer) = training_model(p.model)
 
-function features(p :: IntuitionPlayer) 
+function Model.features(p :: IntuitionPlayer) 
   tm = training_model(p)
   isnothing(tm) ? Feature[] : features(tm)
 end
 
 function switch_model( p :: IntuitionPlayer{G}
-                     , m :: Model{H}
-                     ) where {H <: Game, G <: H} 
+                     , m :: AbstractModel{H}
+                     ) where {H <: AbstractGame, G <: H} 
   IntuitionPlayer{G}(m, p.temperature, p.name)
 end
 
@@ -173,9 +174,9 @@ swap(p :: IntuitionPlayer) = switch_model(p, swap(p.model))
 A player that relies on Markov chain tree search policies that are constructed
 with the support of a model.
 """
-struct MCTSPlayer{G} <: Player{G}
+struct MCTSPlayer{G} <: AbstractPlayer{G}
 
-  model :: Model
+  model :: AbstractModel
 
   power :: Int
   temperature :: Float32
@@ -193,13 +194,13 @@ end
 MCTS Player powered by `model`, which defaults to `RolloutModel`. The model can
 also be derived from `player` (this does not create a copy of the model).
 """
-function MCTSPlayer( model :: Model{G}
+function MCTSPlayer( model :: AbstractModel{G}
                    ; power = 100
                    , temperature = 1.
                    , exploration = 1.41
                    , dilution = 0.0
                    , name = nothing 
-                   ) where {G <: Game}
+                   ) where {G <: AbstractGame}
 
   if isnothing(name)
     id = get_id(model, temperature, exploration, dilution)
@@ -217,19 +218,19 @@ MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 function MCTSPlayer( player :: IntuitionPlayer{G}
                    ; temperature = player.temperature
                    , kwargs...
-                   ) where {G <: Game}
+                   ) where {G <: AbstractGame}
 
   MCTSPlayer(playing_model(player); temperature = temperature, kwargs...)
 
 end
 
-function MCTSPlayer( player :: MCTSPlayer{G}; kwargs... ) where {G <: Game}
+function MCTSPlayer( player :: MCTSPlayer{G}; kwargs... ) where {G <: AbstractGame}
   MCTSPlayer(playing_model(player); kwargs...)
 end
 
 function think( p :: MCTSPlayer{G}
               , game :: G
-              ) :: Vector{Float32} where {G <: Game}
+              ) :: Vector{Float32} where {G <: AbstractGame}
 
   # Improved policy over the allowed actions
   p = mctree_policy( p.model
@@ -248,18 +249,18 @@ function think( p :: MCTSPlayer{G}
 end
 
 name(p :: MCTSPlayer) = p.name
-ntasks(p :: MCTSPlayer) = ntasks(p.model)
-playing_model(p :: MCTSPlayer) = p.model
-base_model(p :: MCTSPlayer) = base_model(p.model)
-training_model(p :: MCTSPlayer) = training_model(p.model)
+Model.ntasks(p :: MCTSPlayer) = Model.ntasks(p.model)
+Model.playing_model(p :: MCTSPlayer) = p.model
+Model.base_model(p :: MCTSPlayer) = base_model(p.model)
+Model.training_model(p :: MCTSPlayer) = training_model(p.model)
 
-function features(p :: MCTSPlayer)
+function Model.features(p :: MCTSPlayer)
   tm = training_model(p)
   isnothing(tm) ? Feature[] : features(tm)
 end
 
 function switch_model( p :: MCTSPlayer{G}
-                     , m :: Model{H}) where {H <: Game, G <: H} 
+                     , m :: AbstractModel{H}) where {H <: AbstractGame, G <: H} 
 
   MCTSPlayer{G}( m
                , p.power
@@ -278,7 +279,7 @@ swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 """
 A player that queries for interaction before making a decision.
 """
-struct HumanPlayer <: Player{Game}
+struct HumanPlayer <: AbstractPlayer{AbstractGame}
   name :: String
 end
 
@@ -289,7 +290,7 @@ Human player with name `name`, defaulting to "you".
 """
 HumanPlayer(; name = "you") = HumanPlayer(name)
 
-function think(p :: HumanPlayer, game :: Game)
+function think(p :: HumanPlayer, game :: AbstractGame)
 
   # Draw the game
   println()
@@ -329,7 +330,7 @@ Base.copy(p :: HumanPlayer) = p
 
 function derive_gametype(players)
 
-  gt = mapreduce(gametype, typeintersect, players, init = Game)
+  gt = mapreduce(gametype, typeintersect, players, init = AbstractGame)
 
   @assert gt != Union{} "Players do not play compatible games"
   @assert !isabstracttype(gt) "Cannot infere concrete game from abstract type"
@@ -346,9 +347,9 @@ Conduct one match between `player1` and `player2`. The `game` that
 `callback(current_game)` is called after each turn. The game outcome from
 perspective of `player1` (-1, 0, 1) is returned.
 """
-function pvp( p1 :: Player
-            , p2 :: Player
-            ; game :: Game = derive_gametype([p1, p2])()
+function pvp( p1 :: AbstractPlayer
+            , p2 :: AbstractPlayer
+            ; game :: AbstractGame = derive_gametype([p1, p2])()
             , callback = (_) -> nothing )
 
   game = copy(game)
@@ -374,9 +375,9 @@ Conduct one match between `player1` and `player2`. The `game` that
 `callback(current_game)` is called after each turn. The vector of played game
 states is returned.
 """
-function pvp_games( p1 :: Player
-                  , p2 :: Player
-                  ; game :: Game = derive_gametype([p1, p2])()
+function pvp_games( p1 :: AbstractPlayer
+                  , p2 :: AbstractPlayer
+                  ; game :: AbstractGame = derive_gametype([p1, p2])()
                   , callback = (_) -> nothing )
 
   game  = copy(game)

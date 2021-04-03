@@ -12,7 +12,7 @@
 # Passing is only allowed, after the player has taken at least one token.
 
 
-mutable struct Nim2 <: Game
+mutable struct Nim2 <: AbstractGame
     remaining :: Int
     current_player :: Int
     actions_left :: Int

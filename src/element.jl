@@ -2,10 +2,10 @@
 # -------- Computational Element --------------------------------------------- #
 
 """
-Abstract type to encapsulate the common interface, mainly CPU-GPU transfer, for
-(i) neural network layers and (ii) neural network models. We distinguish between
-the two, since a Jtac `Model` contains game-specific information while a `Layer`
-is game agnostic.
+Abstract type to capture the common interface, mainly CPU-GPU transfer, for
+neural network layers and neural network models. We distinguish between layers
+and models, since a Jtac `Model` contains game-specific information while
+a `Layer` is a general purpose object that is game agnostic.
 """
 abstract type Element{GPU} end
 
