@@ -77,6 +77,7 @@ end
 name(p :: RandomPlayer) = "random"
 Base.copy(p :: RandomPlayer) = p
 
+Base.show(io :: IO, p :: RandomPlayer) = print(io, "RandomPlayer(random)")
 
 # -------- Intuition Player -------------------------------------------------- #
 
@@ -166,6 +167,17 @@ end
 
 Base.copy(p :: IntuitionPlayer) = switch_model(p, copy(p.model))
 swap(p :: IntuitionPlayer) = switch_model(p, swap(p.model))
+
+function Base.show(io :: IO, p :: IntuitionPlayer{G}) where {G <: AbstractGame}
+  print(io, "IntuitionPlayer{$G}($(p.name), $(p.temperature))")
+end
+
+function Base.show(io :: IO, :: MIME"text/plain", p :: IntuitionPlayer{G}) where {G <: AbstractGame}
+  println(io, "IntuitionPlayer{$G}:")
+  print(io, " name: $(p.name)"); println(io)
+  print(io, " temp: $(p.temperature)"); println(io)
+  print(io, " model: "); show(io, p.model)
+end
 
 
 # -------- MCTS Player ------------------------------------------------------- #
@@ -274,6 +286,20 @@ Base.copy(p :: MCTSPlayer) = switch_model(p, copy(p.model))
 swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 
+function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
+  print(io, "MCTSPlayer{$G}($(p.name), $(p.power), $(p.temperature), $(p.exploration), $(p.dilution))")
+end
+
+function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
+  println(io, "MCTSPlayer{$G} with power $(p.power):")
+  print(io, " name: $(p.name)"); println(io)
+  print(io, " temp: $(p.temperature)"); println(io)
+  print(io, " model: "); show(io, p.model); println(io)
+  print(io, " exploration: $(p.exploration)"); println(io)
+  print(io, " dilution: $(p.dilution)")
+end
+
+
 # -------- Human Player ------------------------------------------------------ #
 
 """
@@ -295,6 +321,7 @@ function think(p :: HumanPlayer, game :: AbstractGame)
   # Draw the game
   println()
   draw(game)
+  println()
 
   # Take the user input and return the one-hot policy
   while true
@@ -324,6 +351,8 @@ end
 name(p :: HumanPlayer) = p.name
 
 Base.copy(p :: HumanPlayer) = p
+
+Base.show(io :: IO, p :: HumanPlayer) = print(io, "HumanPlayer($(p.name))")
 
 
 # -------- PvP --------------------------------------------------------------- #

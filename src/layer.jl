@@ -253,10 +253,10 @@ function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{GPU}) where {GPU}
   shape = size(c.w)[[1,2,4]]
   at = GPU ? "GPU" : "CPU"
   ac = activation_name(c.f)
-  println(io, "Conv{$at} layer with $(size(c.w)[4]) out-channels and $ac activation")
-  println(io, "window:  $(size(c.w)[1:2])")
-  println(io, "padding: $(c.p)")
-  print(io, "stride:  $(c.s)")
+  println(io, "Conv{$at} layer with $(size(c.w)[4]) out-channels and $ac activation:")
+  println(io, " window:  $(size(c.w)[1:2])")
+  println(io, " padding: $(c.p)")
+  print(io, " stride:  $(c.s)")
 end
 
 
@@ -326,10 +326,10 @@ end
 function Base.show(io :: IO, ::MIME"text/plain", d :: Deconv{GPU}) where {GPU}
   at = GPU ? "GPU" : "CPU"
   ac = activation_name(d.f)
-  println(io, "Conv{$at} layer with $(size(d.w)[3]) out-channels and $ac activation")
-  println(io, "window:  $(size(d.w)[1:2])")
-  println(io, "padding: $(d.p)")
-  print(io, "stride:  $(d.s)")
+  println(io, "Deconv{$at} layer with $(size(d.w)[3]) out-channels and $ac activation:")
+  println(io, " window:  $(size(d.w)[1:2])")
+  println(io, " padding: $(d.p)")
+  print(io, " stride:  $(d.s)")
 end
 
 
@@ -379,10 +379,10 @@ end
 function Base.show(io :: IO, ::MIME"text/plain", p :: Pool{GPU}) where {GPU}
   at = GPU ? "GPU" : "CPU"
   ac = activation_name(p.f)
-  println(io, "Pool{$at} layer with $ac activation")
-  println(io, "window:  $(p.w[1:2])")
-  println(io, "padding: $(p.p)")
-  print(io, "stride:  $(p.s)")
+  println(io, "Pool{$at} layer with $ac activation:")
+  println(io, " window:  $(p.w[1:2])")
+  println(io, " padding: $(p.p)")
+  print(io, " stride:  $(p.s)")
 end
 
 
@@ -518,10 +518,10 @@ function show_composite(name, io :: IO, layers)
     print(io, "$name(0)")
   else
     pp(layer) = isnothing(layer) ? print(io, "...") : show(io, layer)
-    if n <= 4
+    if n <= 2
       layers = layers
     else
-      layers = [layers[1:2]; nothing; layers[end-1:end]]
+      layers = [layers[1]; nothing; layers[end]]
     end
     print(io, "$name($n: ")
     for l in layers[1:end-1]
@@ -537,12 +537,12 @@ function show_composite(name, io :: IO, mime :: MIME"text/plain", layers, gpu, i
   n = length(layers)
   at = gpu ? "GPU" : "CPU"
   ind = join(repeat(" ", indent))
-  ind2 = join(repeat(" ", indent+2))
+  ind2 = join(repeat(" ", indent+1))
   print(io, ind)
   if n == 1
-    println(io, "$name{$at} with 1 layer")
+    println(io, "$name{$at} with 1 layer:")
   else
-    println(io, "$name{$at} with $n layers")
+    println(io, "$name{$at} with $n layers:")
   end
   for (i, layer) in enumerate(layers)
     if layer isa PrimitiveLayer

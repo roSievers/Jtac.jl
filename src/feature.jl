@@ -92,4 +92,5 @@ end
 feature_name(f :: ConstantFeature) = f.name
 feature_length(f :: ConstantFeature, :: Type{<:AbstractGame}) = length(f.data)
 
+Base.show(io :: IO, f :: ConstantFeature) = print(io, "ConstantFeature($(f.name))")
 

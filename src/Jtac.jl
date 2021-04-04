@@ -177,6 +177,7 @@ end # module Model
 module Player
 
   using Random, Statistics, LinearAlgebra
+  using Printf
   using ..Jtac
   using ..Util
   using ..Game
@@ -199,7 +200,7 @@ module Player
          turn!,
          compete
 
-  export Rank
+  export Ranking
 
 end # module Player
 

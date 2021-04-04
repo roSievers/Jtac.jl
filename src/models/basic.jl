@@ -47,6 +47,7 @@ end
 
 Base.copy(m :: DummyModel) = m
 
+Base.show(io :: IO, m :: DummyModel) = print(io, "DummyModel")
 
 # -------- Random Model ------------------------------------------------------ #
 
@@ -66,6 +67,7 @@ end
 
 Base.copy(m :: RandomModel) = m
 
+Base.show(io :: IO, m :: RandomModel) = print(io, "RandomModel")
 
 # -------- Rollout Model ----------------------------------------------------- #
 
@@ -91,4 +93,6 @@ function (m :: RolloutModel)(g :: Vector{<: AbstractGame}, args...)
 end
 
 Base.copy(m :: RolloutModel) = m
+
+Base.show(io :: IO, m :: RolloutModel) = print(io, "RolloutModel")
 

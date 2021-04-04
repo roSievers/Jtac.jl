@@ -180,21 +180,48 @@ function augment( game :: MNKGame{M, N, K}
 end
 
 
-function draw(game :: MNKGame{M, N}) :: Nothing where {M, N}
+function draw(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   board = reshape(game.board, (M,N))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
 
   for i in 1:N
     for j in 1:M
-      print(" $(symbols[board[j,i]])")
+      print(io, " $(symbols[board[j,i]])")
       if j != M
-        print(" │")
+        print(io, " │")
       end
     end
-    println()
     if i != N
-      println("───$(repeat("┼───", M - 1))")
+      println(io)
+      println(io, "───$(repeat("┼───", M - 1))")
     end
   end
 end
+
+draw(game :: MNKGame) = draw(stdout, game)
+
+function Base.show(io :: IO, game :: MNKGame{M, N, K}) where {M, N, K}
+  moves = count(!isequal(0), game.board)
+  m = moves == 1 ? "1 move" : "$moves moves"
+  if is_over(game)
+    print(io, "MNKGame{$M, $N, $K}($m, $(status(game)) won)")
+  else
+    print(io, "MNKGame{$M, $N, $K}($m, $(current_player(game)) moving)")
+  end
+end
+
+function Base.show(io :: IO, :: MIME"text/plain", game :: MNKGame{M, N, K}) where {M, N, K}
+  moves = count(!isequal(0), game.board)
+  m = moves == 1 ? "1 move" : "$moves moves"
+  s = "MNKGame{$M, $N, $K} with $m and "
+  if is_over(game)
+    println(io, s, "result $(status(game)):")
+  else
+    println(io, s, "player $(current_player(game)) moving:")
+  end
+  draw(io, game)
+end
+
+
+
 

@@ -163,6 +163,22 @@ features(m :: NeuralModel) = m.features
 
 training_model(m :: NeuralModel) = m
 
+function Base.show(io :: IO, model :: NeuralModel{G, GPU}) where {G, GPU}
+  at = GPU ? "GPU" : "CPU"
+  print(io, "NeuralModel{$G, $at}(")
+  show(io, model.trunk)
+  print(io, ")")
+end
+
+function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) where {G, GPU}
+  at = GPU ? "GPU" : "CPU"
+  println(io, "NeuralModel{$G, $at}:")
+  print(io, " trunk: "); show(io, model.trunk); println(io)
+  print(io, " vhead: "); show(io, model.vhead); println(io)
+  print(io, " phead: "); show(io, model.phead); println(io)
+  print(io, " fhead: "); show(io, model.fhead)
+end
+
 # -------- Linear Neural Model ----------------------------------------------- #
 
 function Shallow(:: Type{G}; kwargs...) where {G <: AbstractGame}
@@ -173,13 +189,10 @@ end
 # -------- Multilayer Perceptron --------------------------------------------- #
 
 function MLP(:: Type{G}, hidden, f = Knet.relu; kwargs...) where {G <: AbstractGame}
-
-  widths = [ prod(size(G)), hidden..., policy_length(G) + 1 ]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 2 ]
-  push!(layers, Dense(widths[end-1], widths[end], identity))
+  widths = [ prod(size(G)), hidden...]
+  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
 
   NeuralModel(G, Chain(layers...); kwargs...)
-
 end
 
 
@@ -192,5 +205,4 @@ function ShallowConv( :: Type{G}
                     ) where {G <: AbstractGame}
 
   NeuralModel(G, Conv(size(G)[3], filters, f); kwargs...)
-
 end

@@ -173,27 +173,48 @@ function augment(game :: MetaTac, label :: Vector{Float32})
   labels = [ vcat(label[1], reshape(mp, (81,))) for mp in matpols ]
 
   augment(game), labels
-
 end
 
 
-function draw(game :: MetaTac) :: Nothing
+function draw(io :: IO, game :: MetaTac) :: Nothing
 
   board = reshape(game.board, (9,9))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
 
   for i in 1:9
     for j in 1:9
-      print(" $(symbols[board[j,i]])")
+      print(io, " $(symbols[board[j,i]])")
       if j == 3 || j == 6 
-        print(" ║") 
+        print(io, " ║") 
       end
     end
-    println()
+    if i != 9
+      println(io)
+    end
     if i == 3 || i == 6  
-      println("═══════╬═══════╬═══════") 
+      println(io, "═══════╬═══════╬═══════") 
     end
   end
 end
 
+function Base.show(io :: IO, game :: MetaTac)
+  moves = count(!isequal(0), game.board)
+  m = moves == 1 ? "1 move" : "$moves moves"
+  if is_over(game)
+    print(io, "MetaTac($m, $(status(game)) won)")
+  else
+    print(io, "MetaTac($m, $(current_player(game)) moving)")
+  end
+end
 
+function Base.show(io :: IO, :: MIME"text/plain", game :: MetaTac)
+  moves = count(!isequal(0), game.board)
+  m = moves == 1 ? "1 move" : "$moves moves"
+  s = "MetaTac game with $m and "
+  if is_over(game)
+    println(io, s, "result $(status(game)):")
+  else
+    println(io, s, "player $(current_player(game)) moving:")
+  end
+  draw(io, game)
+end

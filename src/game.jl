@@ -196,9 +196,10 @@ end
 
 
 """
-    draw(game)
+    draw([io,] game)
 
 Draw a unicode representation of `game`.
 """
-draw(:: AbstractGame) :: Nothing = error("drawing $(typeof(game)) not implemented.")
+draw(io :: IO, game :: AbstractGame) :: Nothing = error("drawing $(typeof(game)) not implemented.")
+draw(game) = draw(stdout, game)
 

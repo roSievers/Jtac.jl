@@ -96,6 +96,18 @@ features(m :: Async) = Feature[]
 worker_model_to_cpu(m :: Async) = switch_model(m, to_cpu(m.model))
 worker_model_to_gpu(m :: Async) = switch_model(m, to_gpu(m.model))
 
+function Base.show(io :: IO, m :: Async{G}) where {G <: AbstractGame}
+  print(io, "Async($(m.max_batchsize), $(m.buffersize), ")
+  show(io, m.model)
+  print(io, ")")
+end
+
+function Base.show(io :: IO, mime :: MIME"text/plain", m :: Async{G}) where {G <: AbstractGame}
+  print(io, "Async($(m.max_batchsize), $(m.buffersize)) ")
+  show(io, mime, m.model)
+end
+
+
 
 # -------- Async Worker ------------------------------------------------------ #
 

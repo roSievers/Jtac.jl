@@ -1,10 +1,4 @@
 
-module Rank
-
-using Printf
-import Random
-import ..Jtac
-
 # -------- ELO Estimation ---------------------------------------------------- #
 
 include("mlelo.jl")
@@ -53,7 +47,7 @@ outcomes `k` (`0`: loss, `1`: draw, `2`: win) when player `i` played against
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
-                ; game = Jtac.derive_gametype(players)()
+                ; game = derive_gametype(players)()
                 , callback = () -> nothing
                 , distributed = false
                 , tickets = nothing )
@@ -83,7 +77,7 @@ function compete( players
     if i != j && (i in active || j in active)
 
       asyncmap(1:matches[l]) do _
-        k = Jtac.pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+        k = pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
         results[i, j, k] += 1
         callback()
       end
@@ -136,12 +130,25 @@ function Ranking(players :: Vector{String}, results :: Array{Int, 3}; steps = 10
 end
 
 function Ranking(players, results :: Array{Int, 3}; steps = 100)
-  Ranking(Jtac.name.(players), results, steps = steps)
+  Ranking(name.(players), results, steps = steps)
 end
 
 function Ranking(players, args...; steps = 100, kwargs...)
   results = compete(players, args...; kwargs...)
   Ranking(players, results; steps = steps)
+end
+
+function Base.show(io :: IO, r :: Ranking)
+  n = sum(r.results)
+  p = length(r.players)
+  print(io, "Ranking($p players, $n games)")
+end
+
+function Base.show(io :: IO, :: MIME"text/plain", r :: Ranking)
+  n = sum(r.results)
+  p = length(r.players)
+  println(io, "Ranking with $p players and $n games:")
+  print(io, string(r, true))
 end
 
 
@@ -194,4 +201,3 @@ end
 
 visualize(rk :: Ranking, args...) = visualize(stdout, rk, args...)
 
-end # module Rank
