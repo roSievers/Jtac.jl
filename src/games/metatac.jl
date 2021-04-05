@@ -138,7 +138,7 @@ policy_length(:: Type{MetaTac}) :: Int = 81
 Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 3)
 
 # Data representation of the game as layered 2d image
-function representation(game :: MetaTac) :: Array{Float32, 3}
+function array(game :: MetaTac) :: Array{Float32, 3}
   data = zeros(Float32, 81, 3)
   board = game.current_player .* game.board
   data[board .== 1, 1] .= 1

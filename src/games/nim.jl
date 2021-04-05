@@ -94,7 +94,7 @@ policy_length(:: Type{Nim}) :: Int = 16
 Base.size(:: Type{Nim}) :: Tuple{Int, Int, Int} = (15 + 3, 1, 1)
 
 # Data representation of the game as layered 2d image
-function representation(game :: Nim) :: Array{Float32, 3}
+function array(game :: Nim) :: Array{Float32, 3}
   reshape([game.board; represent_actions_left(game.actions_left)], (15+3, 1, 1))
 end
 

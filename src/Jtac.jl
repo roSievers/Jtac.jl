@@ -66,7 +66,7 @@ module Game
          legal_actions,
          apply_action!, 
          is_action_legal,
-         representation,
+         array,
          policy_length,
          random_playout, 
          augment,

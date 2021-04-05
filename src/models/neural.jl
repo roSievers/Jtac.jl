@@ -63,6 +63,7 @@ function NeuralModel( :: Type{G}
 
   @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
   @assert length(unique(features)) == length(features) "Provided features are not unique"
+  features = convert(Vector{Feature}, features)
 
   pl = policy_length(G)
   fl = feature_length(features, G)
@@ -119,7 +120,7 @@ function (m :: NeuralModel{G, GPU})( games :: Vector{G}
                                    ) where {G <: AbstractGame, GPU}
 
   at = atype(GPU)
-  data = convert(at, representation(games))
+  data = convert(at, Game.array(games))
 
   m(data, use_features)
 

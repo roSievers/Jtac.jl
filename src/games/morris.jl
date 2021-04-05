@@ -200,7 +200,7 @@ The second channel encodes game.actions_left
 Base.size(:: Type{Morris}) :: Tuple{Int, Int, Int} = (3, 3, 2)
 
 # Data representation of the game as layered 2d image
-function representation(game :: Morris) :: Array{Float32, 3}
+function array(game :: Morris) :: Array{Float32, 3}
   # first layer
   firstLayer = reshape(game.current_player .* game.board, (3, 3, 1))
   # countdown layer

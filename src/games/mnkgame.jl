@@ -128,7 +128,7 @@ function Base.size(:: Type{<:MNKGame{M, N}}) :: Tuple{Int, Int, Int} where {M, N
 end
 
 # Data representation of the game as layered 2d image
-function representation(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
+function array(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
   reshape(game.current_player .* game.board, (M, N, 1))
 end
 

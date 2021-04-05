@@ -79,22 +79,22 @@ is_over(game :: AbstractGame) = is_over(status(game))
 # Data representation of the game as layered 2d image from the perspective of
 # the active player (active player plays with 1, other with -1)
 """
-    representation(game)
-    representation(games)
+    array(game)
+    array(games)
 
 Data representation of `game` as three-dimensional array. If a vector
 of `games` is given, a four-dimensional array is returned.
 """
-representation(:: AbstractGame) = error("unimplemented")
+array(:: AbstractGame) = error("unimplemented")
 
-function representation(games :: Vector{G}) where G <: AbstractGame
+function array(games :: Vector{G}) where G <: AbstractGame
 
   @assert !isempty(games) "Invalid representation of empty game vector"
 
   results = zeros(Float32, (size(games[1])..., length(games)))
 
   for i in 1:length(games)
-    results[:,:,:,i] = representation(games[i])
+    results[:,:,:,i] = array(games[i])
   end
 
   results

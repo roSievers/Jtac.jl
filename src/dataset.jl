@@ -187,7 +187,7 @@ function Datacache( ds :: Dataset{G}
   vplabel = hcat(ds.label...)
 
   # Convert to at
-  data = convert(at, representation(ds.games))
+  data = convert(at, Game.array(ds.games))
   vlabel = convert(at, vplabel[1, :])
   plabel = convert(at, vplabel[2:end, :])
   flabel = use_features ? convert(at, hcat(ds.flabel...)) : nothing

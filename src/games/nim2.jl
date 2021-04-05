@@ -97,7 +97,7 @@ policy_length(:: Type{Nim2}) :: Int = 2
 Base.size(:: Type{Nim2}) :: Tuple{Int, Int, Int} = (15 + 3, 1, 1)
 
 # Data representation of the game as layered 2d image
-function representation(game :: Nim2) :: Array{Float32, 3}
+function array(game :: Nim2) :: Array{Float32, 3}
   repr = zeros(Float32, 15+3)
   for i in 1:game.remaining
     repr[i] = 1
