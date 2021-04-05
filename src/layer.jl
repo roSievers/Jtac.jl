@@ -830,8 +830,8 @@ given.
 # The following two calls will create the same networks
 # Both of them are compatible with the game TicTacToe
 
-Chain([ Conv(1, 32, relu), Dense(32, 50) ])
-@chain TicTacToe Conv(32, relu) Dense(50)
+Model.Chain([ Model.Conv(1, 32, relu), Model.Dense(32, 50) ])
+Model.@chain Game.TicTacToe Conv(32, relu) Dense(50)
 ```
 """
 macro chain(ex, layers...)

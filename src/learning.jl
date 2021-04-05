@@ -515,22 +515,22 @@ arguments can be used to adapt the behavior of `with_contest`:
 # Examples
 ```julia
 
-G = TicTacToe
-loss = Loss(policy = 0.25)
-opponents = [MCTSPlayer(power = 50), MCTSPlayer(power = 500)]
+G = Game.TicTacToe
+loss = Training.Loss(policy = 0.25)
+opponents = [Player.MCTSPlayer(power = 50), Player.MCTSPlayer(power = 500)]
 
-model = NeuralModel(G, @chain G Conv(100, relu) Dense(32, relu))
-player = MCTSPlayer(model, power = 25)
+model = Model.NeuralModel(G, Model.@chain G Conv(100, relu) Dense(32, relu))
+player = Player.MCTSPlayer(model, power = 25)
 
-with_contest( train_self!
-            , player
-            , loss = loss
-            , cache = 1000
-            , length = 500
-            , opponents = opponents
-            , interval = 5
-            , epochs = 20
-            , playings = 150 )
+Training.with_contest( Training.train_self!
+                     , player
+                     , loss = loss
+                     , cache = 1000
+                     , length = 500
+                     , opponents = opponents
+                     , interval = 5
+                     , epochs = 20
+                     , playings = 150 )
 ```
 
 """
@@ -603,10 +603,10 @@ function with_contest( trainf!     # the training function
 
     # Create the cache for games between passive players
     cache_results = zeros(Int, n, n, 3)
-    cache_results[1:np,1:np,:] = Rank.compete( passive
-                                             , cache
-                                             , distributed = distributed
-                                             , callback = step )
+    cache_results[1:np,1:np,:] = compete( passive
+                                        , cache
+                                        , distributed = distributed
+                                        , callback = step )
 
     # Remove the progress bar
     finish()
@@ -629,12 +629,12 @@ function with_contest( trainf!     # the training function
 
       step, finish = stepper("# Contest...", len)
 
-      results = Rank.compete( players, len, aidx
-                            , distributed = distributed , callback = step )
+      results = compete( players, len, aidx
+                       , distributed = distributed , callback = step )
       finish()
 
       # special printing, since we want to prepend '# ' to each line
-      print_ranking(Rank.Ranking(players, results .+ cache_results))
+      print_ranking(Ranking(players, results .+ cache_results))
 
       if 0 < epoch < epochs
         print_loss_header(loss, feature_compatibility(loss, player))

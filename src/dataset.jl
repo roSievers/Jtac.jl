@@ -450,14 +450,16 @@ game state. The feature labels are calculated by applying the provided features
 # Examples
 ```julia
 # Record 20 self-playings of an classical MCTS player with power 250
-player = MCTSPlayer(power = 250)
-dataset = record_self(player, 20, game = TicTacToe(), branch = branch(0.25))
+G = Game.TicTacToe
+player = Player.MCTSPlayer(power = 250)
+dataset = Training.record_self(player, 20, game = G(), branch = Training.branch(prob = 0.25))
 
 # Record 10 self-playings of MCTS player with shallow predictor network and
 # power 50
-model = NeuralModel(TicTacToe, @chain TicTacToe Dense(50))
-player = MCTSPlayer(model, power = 50)
-dataset = record_self(player, 10, augment = false)
+G = Game.TicTacToe
+model = Model.NeuralModel(G, Model.@chain G Dense(50))
+player = Player.MCTSPlayer(model, power = 50)
+dataset = Training.record_self(player, 10, augment = false)
 ```
 """
 function record_self( p :: AbstractPlayer{G}

@@ -105,7 +105,7 @@ before calling `finish`.
 # Examples
 
 ```julia
-step, finish = stepper("Progress", 15)
+step, finish = Util.stepper("Progress", 15)
 
 # Do some calculations in a parallel fashion
 pmap(1:15) do i 
