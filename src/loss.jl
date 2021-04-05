@@ -64,6 +64,18 @@ end
 
 Model.features(l :: Loss) = l.features
 
+function Base.show(io :: IO, l :: Loss)
+  v = l.value.weight
+  p = l.policy.weight
+  r = l.reg.weight
+  print(io, "Loss($v value, $p policy, $r reg")
+  for (i, (f, w)) in enumerate(zip(l.features, l.fweights))
+    print(io, ", $w $(Model.feature_name(f))")
+  end
+  print(io, ")")
+end
+
+
 # -------- Loss Calculation -------------------------------------------------- #
 
 function loss( l :: Loss

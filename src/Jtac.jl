@@ -222,7 +222,7 @@ module Training
   include("loss.jl")
   include("learning.jl")
 
-  export Dataset
+  export Dataset, Loss
 
   export save_dataset,
          load_dataset,
@@ -232,7 +232,6 @@ module Training
          prepare,
          record_self,
          record_against,
-         Loss,
          loss,
          caption,
          set_optimizer!,
@@ -242,7 +241,6 @@ module Training
          train_against!,
          train_from_model!,
          with_contest
-
 
 
   # -------- Distributed creation of datasets ---------------------------------- #
