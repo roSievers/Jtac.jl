@@ -148,31 +148,3 @@ function stepper(description, n :: Int, kwargs...)
 
 end
 
-# -------- Random Branching Helpers ------------------------------------------ #
-
-prepare(; steps = 0) = game -> random_turns!(copy(game), steps)
-
-function branch(; prob = 0., steps = 1)
-  game -> rand() < prob ? random_turns!(copy(game), steps) : nothing
-end
-
-# -------- Neural Network Head Creation -------------------------------------- #
-
-function prepare_head(head, s, l, gpu)
-
-  if isnothing(head)
-
-    head = Dense(prod(s), l, gpu = gpu)
-
-  else
-
-    @assert valid_insize(head, s) "Head incompatible with trunk."
-    @assert prod(outsize(head, s)) == l "Head incompatible with game."
-    head = (on_gpu(head) == gpu) ? head : swap(head)
-
-  end
-
-  head
-
-end
-

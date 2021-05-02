@@ -42,6 +42,7 @@ end
 
 Model.features(ds :: Dataset) = ds.features
 Base.length(d :: Dataset) = length(d.games)
+Base.lastindex(d :: Dataset) = length(d)
 
 # -------- Saving and Loading Datasets --------------------------------------- #
 
@@ -160,8 +161,7 @@ end
 function Base.show(io :: IO, :: MIME"text/plain", d :: Dataset{G}) where G <: AbstractGame
   n = length(d.features)
   features = n == 1 ? "1 feature" : "$n features"
-  println(io, "Dataset{$G} with $(length(d)) elements and $features:")
-  print(io, " features: ")
+  print(io, "Dataset{$G} with $(length(d)) elements and $features")
   show(io, d.features)
 end
 
@@ -536,7 +536,7 @@ The function takes the following arguments:
 - `features`: List of features for which feature labels are created.
 - `start`: Function that determines the starting player (-1: enemy, 1: player).
 - `augment`: Whether to apply symmetry augmentation on the generated dataset.
-- `merge = false`: Whether to return one merged dataset or seperate playings.
+- `merge = true`: Whether to return one merged dataset or seperate playings.
 - `callback`: Function that is called afer each finished game.
 - `prepare`: Function applied on `game` that returns the initial state for
    a single playing. Can be used to randomize the initial positions, for
@@ -646,7 +646,7 @@ end
 function record_self_distributed( p :: AbstractPlayer
                                 , n :: Int = 1
                                 ; workers = workers()
-                                , merge = false
+                                , merge = true
                                 , kwargs... )
 
   # Create the record function
@@ -655,10 +655,10 @@ function record_self_distributed( p :: AbstractPlayer
   end
 
   # Use the with_workers function defined in src/distributed.jl
-  ds = with_workers(record, [p], n; workers = workers, kwargs...)
+  ds = Player.with_workers(record, [p], n; workers = workers, kwargs...)
   ds = vcat(ds...)
 
-  merge ? Base.merge(ds) : ds
+  merge ? Base.merge(ds...) : ds
 
 end
 
@@ -667,7 +667,7 @@ function record_against_distributed( p :: AbstractPlayer
                                    , enemy :: AbstractPlayer
                                    , n :: Int = 1
                                    ; workers = workers()
-                                   , merge = false
+                                   , merge = true
                                    , kwargs... )
 
   # Create the record function
@@ -676,7 +676,7 @@ function record_against_distributed( p :: AbstractPlayer
   end
 
   # Use the with_workers function defined in src/distributed.jl
-  ds = with_workers(record, [p, enemy], n; workers = workers, kwargs...)
+  ds = Player.with_workers(record, [p, enemy], n; workers = workers, kwargs...)
   ds = vcat(ds...)
 
   merge ? Base.merge(ds) : ds

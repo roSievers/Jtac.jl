@@ -177,7 +177,9 @@ end # module Model
 module Player
 
   using Random, Statistics, LinearAlgebra
-  using Printf
+  using Printf, Distributed
+  import CUDA
+
   using ..Jtac
   using ..Util
   using ..Game
@@ -186,6 +188,7 @@ module Player
   include("mc.jl")
   include("player.jl")
   include("rank.jl")
+  include("distributed.jl")
 
   export AbstractPlayer,
          RandomPlayer,
@@ -198,7 +201,8 @@ module Player
          think,
          decide,
          turn!,
-         compete
+         compete,
+         switch_model
 
   export Ranking
 
@@ -241,15 +245,6 @@ module Training
          train_against!,
          train_from_model!,
          with_contest
-
-
-  # -------- Distributed creation of datasets ---------------------------------- #
-
-  include("distributed.jl")
-
-  export record_self_distributed,
-         record_against_distributed,
-         compete_distributed
 
 end # module Training
 

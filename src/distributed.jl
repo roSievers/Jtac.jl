@@ -5,20 +5,20 @@ function pack(p :: Union{IntuitionPlayer, MCTSPlayer})
 
   # Convert the playing model to cpu
   m = playing_model(p)
-  m = isa(m, Async) ? worker_model_to_cpu(m) : to_cpu(m)
+  m = isa(m, Async) ? Model.worker_model_to_cpu(m) : to_cpu(m)
 
   # Temporarily replace the model by DummyModel
   pt = switch_model(p, DummyModel()) 
 
-  (pt, decompose(m), on_gpu(training_model(p)))
+  (pt, Model.decompose(m), on_gpu(training_model(p)))
 
 end
 
 function unpack(p :: Union{IntuitionPlayer, MCTSPlayer}, dm, gpu)
   
   # Reconstruct the model and bring it to the GPU if wanted
-  m = compose(dm)
-  gpu && (m = isa(m, Async) ? worker_model_to_gpu(m) : to_gpu(m))
+  m = Model.compose(dm)
+  gpu && (m = isa(m, Async) ? Model.worker_model_to_gpu(m) : to_gpu(m))
 
   # Replace DummyModel by the reconstructed model
   switch_model(p, m)
@@ -68,7 +68,7 @@ function with_workers( f :: Function
 
   # Count the GPUs
   gpu = models_on_gpu(splayers)
-  devices = Knet.cudaGetDeviceCount()
+  devices = length(CUDA.devices())
   m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 
   # Start let the workers work on the tickets

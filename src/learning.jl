@@ -38,7 +38,7 @@ end
 
 # -------- Logging Losses while Training ------------------------------------- #
 
-function print_loss_header(loss, use_features)
+function print_loss_header(loss, use_features = true)
   names = use_features ? loss_names(loss) : loss_names(loss)[1:3]
   components = map(names) do c
     Printf.@sprintf("%10s", string(c)[1:min(end, 10)])
@@ -101,7 +101,6 @@ model = Model.NeuralModel(G, Model.@chain G Dense(50))
 loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
 Training.train!(model, dataset, loss = loss, epochs = 15)
 ```
-
 """
 function train!( player  :: Union{AbstractPlayer, AbstractModel}
                , trainset :: Dataset
