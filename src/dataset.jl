@@ -128,7 +128,6 @@ function Base.split(d :: Dataset{G}, size :: Int; shuffle = true) where {G}
 
 end
 
-
 function Game.augment(d :: Dataset{G}) :: Vector{Dataset{G}} where G <: AbstractGame
 
   # NOTE: Augmentation will render flabel information useless.
@@ -162,7 +161,6 @@ function Base.show(io :: IO, :: MIME"text/plain", d :: Dataset{G}) where G <: Ab
   n = length(d.features)
   features = n == 1 ? "1 feature" : "$n features"
   print(io, "Dataset{$G} with $(length(d)) elements and $features")
-  show(io, d.features)
 end
 
 # -------- Raw Dataset Representation: Caches -------------------------------- #
