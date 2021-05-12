@@ -151,10 +151,11 @@ end
 
 Play off `game` with random actions by both players.
 """
-function random_playout!(game :: AbstractGame)
+function random_playout!(game :: AbstractGame, callback :: Function = _ -> nothing )
 
   while !is_over(game)
     random_turn!(game)
+    callback(game)
   end
 
   game
@@ -162,13 +163,24 @@ function random_playout!(game :: AbstractGame)
 end
 
 """
+    random_playout_count_moves(game)
+
+Random playout that counts the moves that happened and returns this.
+"""
+function random_playout_count_moves(game :: AbstractGame)::Int64
+  counter = 0
+  random_playout!(copy(game), _ -> counter = counter + 1)
+  counter
+end
+
+"""
     random_playout(game)
 
 Random playout with initial state `game` without modifying it.
 """
-function random_playout(game :: AbstractGame)
+function random_playout(game :: AbstractGame, callback :: Function = _ -> nothing )
 
-  random_playout!(copy(game))
+  random_playout!(copy(game), callback)
 
 end
 
