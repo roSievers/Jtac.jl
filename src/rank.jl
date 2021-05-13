@@ -47,7 +47,7 @@ outcomes `k` (`0`: loss, `1`: draw, `2`: win) when player `i` played against
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
-                ; game = derive_gametype(players)()
+                ; game = derive_gametype(players...)
                 , callback = () -> nothing
                 , distributed = false
                 , tickets = nothing )
@@ -89,8 +89,14 @@ function compete( players
   results
 end
 
-function compete_distributed(args...; kwargs...) 
-  sum(with_workers(compete, args...; kwargs...))
+function compete_distributed(args...; game, kwargs...) 
+  compete_unfreeze = (args...; game, kwargs...) -> begin
+    Game.unfreeze!(game)
+    compete(args...; game = game, kwargs...)
+  end
+  game = Game.freeze(game)
+  data = with_workers(compete_unfreeze, args...; game = game, kwargs...)
+  sum(data)
 end
 
 # -------- Rankings ---------------------------------------------------------- #

@@ -73,7 +73,9 @@ module Game
          draw,
          is_over,
          random_turn!,
-         random_turns!
+         random_turns!,
+         instance
+
 
   # -------- Game implementations ---------------------------------------------- #
 

@@ -357,7 +357,7 @@ Base.show(io :: IO, p :: HumanPlayer) = print(io, "HumanPlayer($(p.name))")
 
 # -------- PvP --------------------------------------------------------------- #
 
-function derive_gametype(players)
+function derive_gametype(players...)
 
   gt = mapreduce(gametype, typeintersect, players, init = AbstractGame)
 
@@ -366,7 +366,6 @@ function derive_gametype(players)
 
   gt
 end
-
 
 """
     pvp(player1, player2 [; game, callback])
@@ -378,10 +377,10 @@ perspective of `player1` (-1, 0, 1) is returned.
 """
 function pvp( p1 :: AbstractPlayer
             , p2 :: AbstractPlayer
-            ; game :: AbstractGame = derive_gametype([p1, p2])()
+            ; game = derive_gametype(p1, p2)
             , callback = (_) -> nothing )
 
-  game = copy(game)
+  game = copy(Game.instance(game))
 
   while !is_over(game)
     if current_player(game) == 1
@@ -406,10 +405,10 @@ states is returned.
 """
 function pvp_games( p1 :: AbstractPlayer
                   , p2 :: AbstractPlayer
-                  ; game :: AbstractGame = derive_gametype([p1, p2])()
+                  ; game :: AbstractGame = derive_gametype(p1, p2)
                   , callback = (_) -> nothing )
 
-  game  = copy(game)
+  game  = copy(Game.instance(game))
   games = [copy(game)]
 
   while !is_over(game)

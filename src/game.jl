@@ -215,3 +215,37 @@ Draw a unicode representation of `game`.
 draw(io :: IO, game :: AbstractGame) :: Nothing = error("drawing $(typeof(game)) not implemented.")
 draw(game) = draw(stdout, game)
 
+
+"""
+    instance(game or gen)
+
+Obtain a game instance. If the argument is an instance of `AbstractGame`, this
+returns the same instance. Otherwise, the argument is understood as a game
+generator and is called.
+"""
+instance(game :: AbstractGame) = game
+instance(gen) = gen()
+
+"""
+    freeze(game)
+
+Returns a frozen version of `game`. This function is used before `game` is
+transported to another process or saved to disk. May return `game` itself.
+May also make `game` unusable for the `AbstractGame` interface until `unfreeze!`
+is called.
+
+One use case are game implementations that rely on pointers, which become
+invalid on another process.
+"""
+freeze(game :: AbstractGame) = game
+freeze(gen) = gen
+
+"""
+    unfreeze!(game)
+
+Unfreeze a previously frozen game. This function is always called after `game` has
+been transported to another process or was loaded from disk.
+"""
+unfreeze!(game :: AbstractGame) = nothing
+unfreeze!(gen) = nothing
+

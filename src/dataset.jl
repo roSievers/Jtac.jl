@@ -55,7 +55,7 @@ Save `dataset` under filename `name` with automatically appended extension
 function save_dataset(fname :: String, d :: Dataset)
   
   # Save the file
-  BSON.bson(fname * ".jtd", dataset = d) 
+  BSON.bson(fname * ".jtd", dataset = Game.freeze(d)) 
 
 end
 
@@ -65,7 +65,7 @@ end
 Load a dataset from file "name", where the extension ".jtd" is automatically
 appended.
 """
-load_dataset(fname :: String) = BSON.load(fname * ".jtd")[:dataset]
+load_dataset(fname :: String) = Game.unfreeze!(BSON.load(fname * ".jtd")[:dataset])
 
 
 # -------- Dataset Operations ------------------------------------------------ #
@@ -146,9 +146,23 @@ function Game.augment(d :: Dataset{G}) :: Vector{Dataset{G}} where G <: Abstract
     label = map(x -> x[j], ls)
 
     Dataset(games, label, copy(d.flabel), features = d.features)
-
   end
+end
 
+function Game.freeze(d :: Dataset)
+  Dataset(Game.freeze.(d.games), d.label, d.flabel, d.features)
+end
+
+function Game.freeze(ds :: Vector{D}) where D <: Dataset
+  Game.freeze.(ds)
+end
+
+function Game.unfreeze!(d :: Dataset)
+  for game in d.games Game.unfreeze!(game) end
+end
+
+function Game.unfreeze!(ds :: Vector{D}) where D <: Dataset
+  for d in ds Game.unfreeze!(d) end
 end
 
 function Base.show(io :: IO, d :: Dataset{G}) where G <: AbstractGame
@@ -267,7 +281,7 @@ end
 # -------- Generating Datasets ----------------------------------------------- #
 
 function _record( play :: Function # maps game to dataset
-                , root :: G
+                , root
                 , n :: Int
                 ; features 
                 , ntasks 
@@ -275,15 +289,14 @@ function _record( play :: Function # maps game to dataset
                 , callback = () -> nothing
                 , merge = true
                 , prepare = prepare(steps = 0)
-                , branch = branch(prob = 0, steps = 1)
-                ) where {G <: AbstractGame}
+                , branch = branch(prob = 0, steps = 1) )
 
   # Extend the provided play function by random branching 
   # and the call to callback
   play_with_branching = _ -> begin
 
     # Play the (prepared) game once without branching inbetween
-    dataset = play(prepare(root))
+    dataset = play(prepare(Game.instance(root)))
     
     # Create branchpoints and play them, too
     branchpoints = filter(!isnothing, branch.(dataset.games[1:end-1]))
@@ -297,7 +310,7 @@ function _record( play :: Function # maps game to dataset
 
     # Augment the datasets (if desired)
     augment && (datasets = mapreduce(Game.augment, vcat, datasets))
-    
+
     # Calculate features (if there are any)
     datasets = map(d -> _record_features!(d, features), datasets)
 
@@ -425,7 +438,7 @@ game state. The feature labels are calculated by applying the provided features
 (see keyword arguments) to each stored game state and the corresponding history.
 
 # Arguments
-- `game`: Initial game state that is compatible with `player`. Derived by default.
+- `game`: Initial game type or state that is compatible with `player`. Derived by default.
 - `features`: List of features for which labels are created. Derived by default.
 - `augment = true`: Whether to apply augmentation on the generated dataset.
 - `merge = true`: Whether to return one merged dataset or `n` seperate ones.
@@ -450,7 +463,7 @@ game state. The feature labels are calculated by applying the provided features
 # Record 20 self-playings of an classical MCTS player with power 250
 G = Game.TicTacToe
 player = Player.MCTSPlayer(power = 250)
-dataset = Training.record_self(player, 20, game = G(), branch = Training.branch(prob = 0.25))
+dataset = Training.record_self(player, 20, game = G, branch = Training.branch(prob = 0.25))
 
 # Record 10 self-playings of MCTS player with shallow predictor network and
 # power 50
@@ -460,15 +473,14 @@ player = Player.MCTSPlayer(model, power = 50)
 dataset = Training.record_self(player, 10, augment = false)
 ```
 """
-function record_self( p :: AbstractPlayer{G}
+function record_self( p :: AbstractPlayer
                     , n :: Int = 1
-                    ; game :: T = G()
+                    ; game = Player.derive_gametype(p)
                     , features = features(p)
                     , distributed = false
                     , tickets = nothing
                     , callback_move = () -> nothing
-                    , kwargs...
-                    ) where {G, T <: G}
+                    , kwargs... )
 
   # If self-playing is to be distributed, get the list of workers and
   # cede to the corresponding distributed function, defined below
@@ -490,7 +502,7 @@ function record_self( p :: AbstractPlayer{G}
   # Function that plays a single game of player against itself
   play = game -> begin
 
-    dataset = Dataset{T}()
+    dataset = Dataset{typeof(game)}()
 
     while !is_over(game)
 
@@ -530,7 +542,7 @@ The datasets are recorded similarly to `record_self`.
 
 # Arguments
 The function takes the following arguments:
-- `game`: Initial game state that is compatible with `player`.
+- `game`: Initial game type or state that is compatible with `player` and `enemy`.
 - `features`: List of features for which feature labels are created.
 - `start`: Function that determines the starting player (-1: enemy, 1: player).
 - `augment`: Whether to apply symmetry augmentation on the generated dataset.
@@ -550,16 +562,15 @@ The function takes the following arguments:
 - `tickets`: Number of chunks in which the workload is distributed if
    `distributed != false`. By default, it is set to the number of workers.
 """
-function record_against( p :: AbstractPlayer{G}
-                       , enemy :: AbstractPlayer{H}
+function record_against( p :: AbstractPlayer
+                       , enemy :: AbstractPlayer
                        , n :: Int = 1
-                       ; game :: T = G()
+                       ; game = Player.derive_gametype(p, enemy)
                        , start :: Function = () -> rand([-1, 1])
                        , features = features(p)
                        , distributed = false
                        , tickets = nothing
-                       , kwargs...
-                       ) where {G, H, T <: typeintersect(G, H)}
+                       , kwargs... )
 
   # If playing is to be distributed, get the list of workers and
   # cede to the corresponding function in distributed.jl
@@ -580,7 +591,7 @@ function record_against( p :: AbstractPlayer{G}
 
   play = game -> begin
 
-    dataset = Dataset{T}()
+    dataset = Dataset{typeof(game)}()
 
     # Roll the dice to see who starts. Our player (i = 1) or the enemy (i = -1)?
     s = start()
@@ -643,42 +654,54 @@ end
 
 function record_self_distributed( p :: AbstractPlayer
                                 , n :: Int = 1
-                                ; workers = workers()
+                                ; game = Player.derive_gametype(p)
+                                , workers = workers()
                                 , merge = true
                                 , kwargs... )
 
   # Create the record function
-  record = (ps, n; kwargs...) -> begin
-    record_self(ps[1], n; merge = merge, kwargs...)
+  record = (ps, n; game, kwargs...) -> begin
+    Game.unfreeze!(game)
+    record_self(ps[1], n; game = game, merge = merge, kwargs...) |> Game.freeze
   end
 
   # Use the with_workers function defined in src/distributed.jl
-  ds = Player.with_workers(record, [p], n; workers = workers, kwargs...)
+  game = Game.freeze(game)
+  ds = Player.with_workers(record, [p], n; workers = workers, game = game, kwargs...)
   ds = vcat(ds...)
 
-  merge ? Base.merge(ds...) : ds
+  # After transferring the datasets from other processes, make sure that they
+  # are unfrozen
+  Game.unfreeze!(ds)
 
+  merge ? Base.merge(ds...) : ds
 end
 
 
 function record_against_distributed( p :: AbstractPlayer
                                    , enemy :: AbstractPlayer
                                    , n :: Int = 1
-                                   ; workers = workers()
+                                   ; game = Player.derive_gametype(p, enemy)
+                                   , workers = workers()
                                    , merge = true
                                    , kwargs... )
 
   # Create the record function
-  record = (ps, n; kwargs...) -> begin
-    record_against(ps[1], ps[2], n; merge = merge, kwargs...)
+  record = (ps, n; game, kwargs...) -> begin
+    Game.unfreeze!(game)
+    record_against(ps[1], ps[2], n; game = game, merge = merge, kwargs...) |> Game.freeze
   end
 
   # Use the with_workers function defined in src/distributed.jl
-  ds = Player.with_workers(record, [p, enemy], n; workers = workers, kwargs...)
+  game = Game.freeze(game)
+  ds = Player.with_workers(record, [p, enemy], n; workers = workers, game = game, kwargs...)
   ds = vcat(ds...)
 
-  merge ? Base.merge(ds) : ds
+  # After transferring the datasets from other processes, make sure that they
+  # are unfrozen
+  Game.unfreeze!(ds)
 
+  merge ? Base.merge(ds) : ds
 end
 
 
