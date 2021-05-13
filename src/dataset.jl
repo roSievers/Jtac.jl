@@ -65,7 +65,7 @@ end
 Load a dataset from file "name", where the extension ".jtd" is automatically
 appended.
 """
-load_dataset(fname :: String) = Game.unfreeze!(BSON.load(fname * ".jtd")[:dataset])
+load_dataset(fname :: String) = Game.unfreeze(BSON.load(fname * ".jtd")[:dataset])
 
 
 # -------- Dataset Operations ------------------------------------------------ #
@@ -157,12 +157,8 @@ function Game.freeze(ds :: Vector{D}) where D <: Dataset
   Game.freeze.(ds)
 end
 
-function Game.unfreeze!(d :: Dataset)
-  for game in d.games Game.unfreeze!(game) end
-end
-
-function Game.unfreeze!(ds :: Vector{D}) where D <: Dataset
-  for d in ds Game.unfreeze!(d) end
+function Game.unfreeze(d :: Dataset)
+  Dataset(Game.unfreeze.(d.games), d.label, d.flabel, d.features)
 end
 
 function Base.show(io :: IO, d :: Dataset{G}) where G <: AbstractGame
@@ -661,7 +657,7 @@ function record_self_distributed( p :: AbstractPlayer
 
   # Create the record function
   record = (ps, n; game, kwargs...) -> begin
-    Game.unfreeze!(game)
+    game = Game.unfreeze(game)
     record_self(ps[1], n; game = game, merge = merge, kwargs...) |> Game.freeze
   end
 
@@ -672,7 +668,7 @@ function record_self_distributed( p :: AbstractPlayer
 
   # After transferring the datasets from other processes, make sure that they
   # are unfrozen
-  Game.unfreeze!(ds)
+  ds = Game.unfreeze.(ds)
 
   merge ? Base.merge(ds...) : ds
 end
@@ -688,7 +684,7 @@ function record_against_distributed( p :: AbstractPlayer
 
   # Create the record function
   record = (ps, n; game, kwargs...) -> begin
-    Game.unfreeze!(game)
+    game = Game.unfreeze(game)
     record_against(ps[1], ps[2], n; game = game, merge = merge, kwargs...) |> Game.freeze
   end
 
@@ -699,7 +695,7 @@ function record_against_distributed( p :: AbstractPlayer
 
   # After transferring the datasets from other processes, make sure that they
   # are unfrozen
-  Game.unfreeze!(ds)
+  ds = Game.unfreeze.(ds)
 
   merge ? Base.merge(ds) : ds
 end

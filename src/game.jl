@@ -231,8 +231,8 @@ instance(gen) = gen()
 
 Returns a frozen version of `game`. This function is used before `game` is
 transported to another process or saved to disk. May return `game` itself.
-May also make `game` unusable for the `AbstractGame` interface until `unfreeze!`
-is called.
+The returned game state may be unusable for the `AbstractGame` interface, but it
+is guaranteed that `unfreeze` will recover the original game state.
 
 One use case are game implementations that rely on pointers, which become
 invalid on another process.
@@ -241,11 +241,18 @@ freeze(game :: AbstractGame) = game
 freeze(gen) = gen
 
 """
-    unfreeze!(game)
+    unfreeze(game)
 
 Unfreeze a previously frozen game. This function is always called after `game` has
 been transported to another process or was loaded from disk.
 """
-unfreeze!(game :: AbstractGame) = nothing
-unfreeze!(gen) = nothing
+unfreeze(game :: AbstractGame) = game
+unfreeze(gen) = gen
+
+"""
+    is_frozen(game)
+
+Indicates whether `game` is in its frozen state.
+"""
+is_frozen(game :: AbstractGame) = false
 

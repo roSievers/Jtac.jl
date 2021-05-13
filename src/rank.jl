@@ -91,8 +91,7 @@ end
 
 function compete_distributed(args...; game, kwargs...) 
   compete_unfreeze = (args...; game, kwargs...) -> begin
-    Game.unfreeze!(game)
-    compete(args...; game = game, kwargs...)
+    compete(args...; game = Game.unfreeze(game), kwargs...)
   end
   game = Game.freeze(game)
   data = with_workers(compete_unfreeze, args...; game = game, kwargs...)
