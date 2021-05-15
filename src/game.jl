@@ -65,9 +65,19 @@ legal_actions(:: AbstractGame) :: Vector{ActionIndex} = error("unimplemented")
 """
     apply_action!(game, action)
 
-Modify `game` by applying `action`.
+Modify `game` by applying `action`. Returns `game`.
 """
 apply_action!(:: AbstractGame, :: ActionIndex) :: AbstractGame = error("unimplemented")
+
+"""
+    apply_actions!(game, actions)
+
+Modify `game` by applying all actions in the iterable `actions`. Returns `game`.
+"""
+function apply_actions!(game :: AbstractGame, actions)
+  for action in actions apply_action!(game, action) end
+  game
+end
 
 """
     is_over(game)

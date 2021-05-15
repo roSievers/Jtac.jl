@@ -65,6 +65,7 @@ module Game
          current_player,
          legal_actions,
          apply_action!, 
+         apply_actions!,
          is_action_legal,
          array,
          policy_length,
