@@ -266,3 +266,10 @@ Indicates whether `game` is in its frozen state.
 """
 is_frozen(game :: AbstractGame) = false
 
+
+# -------- Register new games ------------------------------------------------ #
+
+const GAMES = Dict{Symbol, Function}()
+
+register!(f :: Function, G :: Type{<:AbstractGame}) = (GAMES[nameof(G)] = f)
+register!(G :: Type{<:AbstractGame}) = register!(() -> G, G)

@@ -99,11 +99,14 @@ function compose(:: Val{:gametype}, d)
   @assert isa(name, Symbol) "Cannot compose gametype"
   @assert all(isbits, params) "Cannot compose gametype"
 
-  if isempty(d[:params])
-    eval(name)
-  else
-    eval(Expr(:curly, name, params...))
-  end
+  Game.GAMES[name](d[:params]...)
+#  if isempty(d[:params])
+#    Game.construct_type(name)
+#    eval(name)
+#  else
+#    Game.construct_type(name, params...)
+#    eval(Expr(:curly, name, params...))
+#  end
 end
 
 # -------- Layers ------------------------------------------------------------ #

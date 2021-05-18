@@ -11,6 +11,10 @@ mutable struct MNKGame{M, N, K} <: AbstractGame
   move_count :: Int
 end
 
+register!(MNKGame) do m, n, k
+  eval(Expr(:curly, nameof(MNKGame), m, n, k))
+end
+
 const TicTacToe = MNKGame{3, 3, 3}
 
 function MNKGame{M, N, K}() where {M, N, K}

@@ -173,6 +173,11 @@ function Base.show(io :: IO, :: MIME"text/plain", d :: Dataset{G}) where G <: Ab
   print(io, "Dataset{$G} with $(length(d)) elements and $features")
 end
 
+function Random.rand(rng, d :: Dataset, n :: Int)
+  indices = Random.rand(rng, 1:length(d), n)
+  d[indices]
+end
+
 # -------- Raw Dataset Representation: Caches -------------------------------- #
 
 struct Datacache{G <: AbstractGame, GPU}

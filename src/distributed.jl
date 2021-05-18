@@ -1,31 +1,70 @@
 
-# -------- Serializing (Async) Players --------------------------------------- #
+"""
+Specification of an MCTS or Intuition player used to bring players to other
+processes.
+"""
+struct PlayerSpec
+
+  # Reference model
+  model :: AbstractModel{G, false} where {G <: AbstractGame}
+
+  # Player parameters
+  power       :: Int      # power = 0 is used for IntuitionPlayers
+  temperature :: Float32
+  exploration :: Float32
+  dilution    :: Float32
+  name        :: String
+
+end
+
+function PlayerSpec(player :: MCTSPlayer)
+  model = Model.base_model(player) |> Model.to_cpu
+  PlayerSpec( model, player.power, player.temperature
+            , player.exploration, player.dilution, player.name )
+end
+
+function PlayerSpec(player :: IntuitionPlayer)
+  model = Model.base_model(player) |> Model.to_cpu
+  PlayerSpec(model, 0, player.temperature, 0., 0., player.name)
+end
+
+"""
+    build_player(spec; gpu = false, async = false)
+
+Derive a player from a specification `spec`. The model of the player is
+transfered to the gpu or brought in async mode if the respective flags are set.
+"""
+function build_player(spec :: PlayerSpec; gpu = false, async = false)
+  model = spec.model
+  if model isa Model.NeuralModel 
+    model = gpu   ? Model.to_gpu(model) : model
+    model = async ? Model.Async(model)  : model
+  end
+  if spec.power <= 0
+    Player.IntuitionPlayer( model
+                          , temperature = spec.temperature
+                          , name = spec.name )
+  else
+    Player.MCTSPlayer( model
+                     , power = spec.power
+                     , temperature = spec.temperature
+                     , exploration = spec.exploration
+                     , dilution = spec.dilution
+                     , name = spec.name )
+  end
+end
+
+# -------- Packing (Async) Players ------------------------------------------- #
 
 function pack(p :: Union{IntuitionPlayer, MCTSPlayer})
-
-  # Convert the playing model to cpu
-  m = playing_model(p)
-  m = isa(m, Async) ? Model.worker_model_to_cpu(m) : to_cpu(m)
-
-  # Temporarily replace the model by DummyModel
-  pt = switch_model(p, DummyModel()) 
-
-  (pt, Model.decompose(m), on_gpu(training_model(p)))
-
+  (PlayerSpec(p), isa(playing_model(p), Async), on_gpu(training_model(p)))
 end
 
-function unpack(p :: Union{IntuitionPlayer, MCTSPlayer}, dm, gpu)
-  
-  # Reconstruct the model and bring it to the GPU if wanted
-  m = Model.compose(dm)
-  gpu && (m = isa(m, Async) ? Model.worker_model_to_gpu(m) : to_gpu(m))
-
-  # Replace DummyModel by the reconstructed model
-  switch_model(p, m)
-
+function unpack(p :: Tuple{PlayerSpec, Bool, Bool})
+  build_player(p[1]; async = p[2], gpu = p[3])
 end
 
-models_on_gpu(splayers) = any(p[3] for p in splayers)
+models_on_gpu(packs) = count(p[3] for p in packs)
 
 # -------- Distributed Calculations ------------------------------------------ #
 
@@ -63,11 +102,11 @@ function with_workers( f :: Function
   # Fill the buffer asynchronously
   task = @async map(_ -> take!(res), 1:tickets)
 
-  # Serialize the players
+  # Make players serializable (no gpu memory and async worker threads allowed)
   splayers = pack.(players)
 
   # Count the GPUs
-  gpu = models_on_gpu(splayers)
+  gpu = models_on_gpu(splayers) > 0
   devices = length(CUDA.devices())
   m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 

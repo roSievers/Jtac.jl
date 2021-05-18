@@ -10,9 +10,12 @@ mutable struct MetaTac <: AbstractGame
   region_status_cache :: Vector{Status}
 end
 
+register!(MetaTac)
+
 function MetaTac()
   MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
 end
+
 
 function Base.copy(s :: MetaTac) :: MetaTac
   MetaTac(
