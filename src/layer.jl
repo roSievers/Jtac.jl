@@ -105,7 +105,7 @@ struct Pointwise{GPU} <: PrimitiveLayer{GPU}
   f # Activation function
 end
 
-Pointwise( f = Knet.identity; gpu = false ) = Pointwise{gpu}(f)
+Pointwise(; f = Knet.identity, gpu = false) = Pointwise{gpu}(f)
 
 (p :: Pointwise)(x) = p.f.(x)
 
@@ -136,8 +136,7 @@ struct Dense{GPU} <: PrimitiveLayer{GPU}
   f  # Activation function
 end
 
-function Dense( i :: Int, o :: Int, f = Knet.identity; 
-                bias = true, gpu = false )
+function Dense( i :: Int, o :: Int; f = Knet.identity, bias = true, gpu = false )
   at = atype(gpu)
   w = Knet.param(o, i, atype = at)
   b = bias ? Knet.param0(o, atype = at) : convert(at, zeros(Float32, o))
@@ -164,7 +163,7 @@ valid_insize(d :: Dense, s) = (prod(s) == size(d.w, 2))
 
 # Get the correct output size for a respective input size
 function outsize(d :: Dense, s)
-  @assert valid_insize(d, s) "Layer cannot be applied to input of size $s"
+  @assert valid_insize(d, s) "Dense layer cannot be applied to input of size $s"
   size(d.w, 1)
 end
 
@@ -194,7 +193,7 @@ struct Conv{GPU} <: PrimitiveLayer{GPU}
   s  # Stride for the convolution
 end
 
-function Conv( ci :: Int, co :: Int, f = Knet.identity; 
+function Conv( ci :: Int, co :: Int; f = Knet.identity,
                window = 3, padding = 0, 
                stride = 1, bias = true, gpu = false )
 
@@ -236,7 +235,7 @@ function valid_insize(c :: Conv, s)
 end
 
 function outsize(c :: Conv, s)
-  @assert valid_insize(c, s) "Layer cannot be applied to input of size $s"
+  @assert valid_insize(c, s) "Conv layer cannot be applied to input of size $s"
   ( 1 + (div(s[1] + 2c.p[1] - size(c.w, 1), c.s[1]) |> floor),
     1 + (div(s[2] + 2c.p[2] - size(c.w, 2), c.s[2]) |> floor),
     size(c.w, 4)
@@ -274,7 +273,7 @@ struct Deconv{GPU} <: PrimitiveLayer{GPU}
   s  # Stride for the convolution
 end
 
-function Deconv( ci :: Int, co :: Int, f = Knet.identity; 
+function Deconv( ci :: Int, co :: Int; f = Knet.identity,
                  window = 3, padding = 0, 
                  stride = 1, bias = true, gpu = false )
 
@@ -311,7 +310,7 @@ end
 valid_insize(d :: Deconv, s) = (length(s) == 3)
 
 function outsize(d :: Deconv, s)
-  @assert valid_insize(d, s) "Layer cannot be applied to input of size $s"
+  @assert valid_insize(d, s) "Deconv layer cannot be applied to input of size $s"
   ( size(d.w, 1) + d.s[1] * (s[1] - 1) - 2d.p[1],
     size(d.w, 2) + d.s[2] * (s[1] - 1) - 2d.p[2],
     size(d.w, 3) )
@@ -345,8 +344,7 @@ struct Pool{GPU} <: PrimitiveLayer{GPU}
   f  # Activation function
 end
 
-function Pool(f = Knet.identity; 
-              window = 2, padding = 0, stride = window, gpu = false)
+function Pool(; f = Knet.identity, window = 2, padding = 0, stride = window, gpu = false)
   w, p, s = expand_to_pair.((window, padding, stride))
   Pool{gpu}(w, p, s, f)
 end
@@ -365,7 +363,7 @@ function valid_insize(p :: Pool, s)
 end
 
 function outsize(p :: Pool, s)
-  @assert valid_insize(p, s) "Layer cannot be applied to input of size $s"
+  @assert valid_insize(p, s) "Pool layer cannot be applied to input of size $s"
   ( 1 + div(s[1] + 2p.p[1] - p.w[1], p.s[1]),
     1 + div(s[2] + 2p.p[2] - p.w[2], p.s[2]),
     s[3]
@@ -400,7 +398,7 @@ struct Dropout{GPU} <: PrimitiveLayer{GPU}
   f
 end
 
-Dropout(prob, f = Knet.identity; gpu = false) = Dropout{gpu}(prob, f)
+Dropout(prob; f = Knet.identity, gpu = false) = Dropout{gpu}(prob, f)
 
 function (d :: Dropout)(x)
   if isa(x, AutoGrad.Value)
@@ -437,7 +435,7 @@ struct Batchnorm{GPU} <: PrimitiveLayer{GPU}
   f
 end
 
-function Batchnorm(channels, f = Knet.identity; gpu = false)
+function Batchnorm(channels; f = Knet.identity, gpu = false)
   b = Batchnorm{false}(Knet.bnmoments(), Knet.bnparams(Float32, channels), f)
   gpu ? swap(b) : b
 end
@@ -654,17 +652,18 @@ shape-conserving.
 """
 struct Residual{GPU} <: CompositeLayer{GPU}
   chain :: Chain{GPU}
+  f
 end
 
-function Residual(layers :: Layer{GPU}...; gpu = GPU) where {GPU}
+function Residual(layers :: Layer{GPU}...; f = Knet.identity, gpu = GPU) where {GPU}
   ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
-  Residual(Chain(ls...))
+  Residual(Chain(ls...), f)
 end
 
-(r :: Residual)(x) = r.chain(x) .+ x
+(r :: Residual)(x) = r.f.(r.chain(x) .+ x)
 
-swap(r :: Residual{GPU}) where {GPU} = Residual{!GPU}(swap(r.chain))
-Base.copy(r :: Residual{GPU}) where {GPU} = Residual{GPU}(copy(r.chain))
+swap(r :: Residual{GPU}) where {GPU} = Residual{!GPU}(swap(r.chain), r.f)
+Base.copy(r :: Residual{GPU}) where {GPU} = Residual{GPU}(copy(r.chain), r.f)
 
 function valid_insize(r :: Residual, s)
 
@@ -855,3 +854,4 @@ Macro to comfortably create residual blocks. It works like `@chain`.
 macro residual(ex, layers...)
   composite_macro_body(:(Jtac.Model.Residual), ex, layers...)
 end
+

@@ -25,7 +25,7 @@ queuing.
 """
 function Async( model :: AbstractModel{G}; 
                 max_batchsize = 50, 
-                buffersize = 2*max_batchsize ) where {G <: AbstractGame}
+                buffersize = 10max_batchsize ) where {G <: AbstractGame}
 
   # Make sure that the buffer is larger than the maximal allowed batchsize
   @assert buffersize >= max_batchsize "buffersize must be larger than max_batchsize"

@@ -180,30 +180,4 @@ function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) 
   print(io, " fhead: "); show(io, model.fhead)
 end
 
-# -------- Linear Neural Model ----------------------------------------------- #
 
-function Shallow(:: Type{G}; kwargs...) where {G <: AbstractGame}
-  NeuralModel(G, Pointwise(); kwargs...)
-end
-
-
-# -------- Multilayer Perceptron --------------------------------------------- #
-
-function MLP(:: Type{G}, hidden, f = Knet.relu; kwargs...) where {G <: AbstractGame}
-  widths = [ prod(size(G)), hidden...]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
-
-  NeuralModel(G, Chain(layers...); kwargs...)
-end
-
-
-# -------- Shallow Convolutional Network ------------------------------------ #
-
-function ShallowConv( :: Type{G}
-                    , filters
-                    , f = Knet.relu
-                    ; kwargs...
-                    ) where {G <: AbstractGame}
-
-  NeuralModel(G, Conv(size(G)[3], filters, f); kwargs...)
-end

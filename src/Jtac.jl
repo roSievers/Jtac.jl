@@ -149,7 +149,7 @@ module Model
          @stack,
          @residual
 
-  # -------- Specific model implementations ------------------------------------ #
+  # -------- Fundamental model implementations ------------------------------- #
 
   include("models/basic.jl")
   include("models/neural.jl")
@@ -160,12 +160,27 @@ module Model
          RandomModel,
          RolloutModel,
          NeuralModel,
-         Shallow,
-         MLP,
-         ShallowConv,
          Async
 
-  # -------- Saving and loading models ----------------------------------------- #
+  # -------- Predefined NeuralModel architectures ---------------------------- #
+
+  module Zoo
+
+    using ...Jtac
+    using ...Game
+    using ..Model
+
+    include("models/zoo.jl")
+
+    export Shallow,
+           MLP,
+           ShallowConv,
+           ZeroConv,
+           ZeroRes
+
+  end # module Zoo
+
+  # -------- Saving and loading models --------------------------------------- #
 
   include("modelio.jl")
 
@@ -251,7 +266,14 @@ module Training
 
 end # module Training
 
+module Bench
+
+  include("bench.jl")
+
+end
+
 export Util,
+       Bench,
        Game,
        Model,
        Player,

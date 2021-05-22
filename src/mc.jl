@@ -67,6 +67,8 @@ function confidence( node
   # Note: In the original alpha zero implementation, dirichlet noise is used
   # instead.
   if isnothing(node.parent)
+    # TODO this is not what is intended. The logit normal should be applied to
+    # the policy, not to the confidence!
     result[:] = (1-dilution) * result + dilution * logit_normal(length(result))
   end
 

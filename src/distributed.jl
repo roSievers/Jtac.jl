@@ -81,6 +81,8 @@ take_ticket!(tic) = try take!(tic) catch _ 0 end
 # to generalize this to work on quite arbitrary cluster-systems.
 # For this, we should provide the 'with_workers' function with more information,
 # e.g., which workers will land on nodes with how many GPUs.
+# TODO: The workers in this function fail silently - this is not great and
+# should be changed for the sake of future development
 function with_workers( f :: Function
                      , players
                      , n
@@ -111,7 +113,7 @@ function with_workers( f :: Function
   m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 
   # Start let the workers work on the tickets
-  map(1:m) do i
+  spawns = map(1:m) do i
 
     @spawnat workers[i] begin
 
@@ -124,8 +126,7 @@ function with_workers( f :: Function
       end
 
       # Reconstruct the players
-      ps = [unpack(p...) for p in splayers]
-
+      ps = unpack.(splayers)
       # Wait for a ticket. If we get one, carry it out. If there are no tickets
       # left, the ticket channel is closed and we end the loop.
       while (n = take_ticket!(tic)) != 0
@@ -145,6 +146,7 @@ function with_workers( f :: Function
 
   catch exn
 
+    @show exn
     close(res); close(tic)
     interrupt(workers)
     rethrow(exn)
@@ -153,6 +155,9 @@ function with_workers( f :: Function
 
   # Close the channels
   close(res); close(tic)
+
+  # Wait for workers in order to catch errors
+  for s in spawns wait(s) end
 
   # Return the data
   data
