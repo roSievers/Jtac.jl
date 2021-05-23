@@ -97,7 +97,7 @@ Train `model`, or the training model of `player`, on `dataset`.
 ```julia
 G = Game.TicTacToe
 dataset = Training.record_self(Player.MCTSPlayer(), 10, game = G) 
-model = Model.NeuralModel(G, Model.@chain G Dense(50))
+model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
 loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
 Training.train!(model, dataset, loss = loss, epochs = 15)
 ```
@@ -291,7 +291,7 @@ training models can be trained currently.
 ```julia
 # Train a neural network model to learn TicTacToe by playing against itself
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Conv(64, relu) Dense(32, relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(64, f = relu) Dense(32, f = relu))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 Training.train_self!(player, epochs = 5, playings = 100)
 ```
@@ -364,7 +364,7 @@ with NeuralModel-based training models can be trained.
 ```julia
 # Train a neural network model by playing against an MCTS player
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Conv(64, relu) Dense(32, relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(64, f = relu) Dense(32, f = relu))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 enemy = Player.MCTSPlayer(power = 250)
 Training.train_against!(player, enemy, epochs = 5, playings = 100)
@@ -518,7 +518,7 @@ G = Game.TicTacToe
 loss = Training.Loss(policy = 0.25)
 opponents = [Player.MCTSPlayer(power = 50), Player.MCTSPlayer(power = 500)]
 
-model = Model.NeuralModel(G, Model.@chain G Conv(100, relu) Dense(32, relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(100, f = relu) Dense(32, f = relu))
 player = Player.MCTSPlayer(model, power = 25)
 
 Training.with_contest( Training.train_self!

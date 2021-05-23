@@ -469,7 +469,7 @@ dataset = Training.record_self(player, 20, game = G, branch = Training.branch(pr
 # Record 10 self-playings of MCTS player with shallow predictor network and
 # power 50
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Dense(50))
+model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
 player = Player.MCTSPlayer(model, power = 50)
 dataset = Training.record_self(player, 10, augment = false)
 ```
