@@ -15,6 +15,14 @@ Let `player` think about `game` and return a policy.
 think(p :: AbstractPlayer, game :: AbstractGame) :: Vector{Float32} = error("Not implemented")
 
 """
+    evaluate(player, game)
+
+Let `player` evaluate `game` and return a named `(value, policy)` tuple.
+Only implemented for `IntuitionPlayer` and `MCTSPlayer`.
+"""
+evaluate(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
+
+"""
     decide(player, game)
 
 Let `player` make an action decision about `game`, based on the policy
@@ -131,19 +139,20 @@ function think( p :: IntuitionPlayer{G}
   policy = zeros(Float32, policy_length(game))
 
   policy[actions] = apply(p.model, game).policy[actions]
-  
-  # Return the action that the player decides for
-  if p.temperature == 0f0
 
-    one_hot(length(policy), findmax(policy)[2])
+  # Return the policy after applying temperature
+  apply_temperature(policy, p.temperature)
+end
 
-  else
+function evaluate(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
 
-    weights = policy.^(1/p.temperature)
-    weights / sum(weights)
+  actions = legal_actions(game)
+  policy = zeros(Float32, policy_length(game))
 
-  end
+  res = apply(p.model, game)
+  policy[actions] = res.policy[actions]
 
+  (value = res.value, policy = apply_temperature(policy, p.temperature))
 end
 
 name(p :: IntuitionPlayer) = p.name
@@ -245,20 +254,35 @@ function think( p :: MCTSPlayer{G}
               ) :: Vector{Float32} where {G <: AbstractGame}
 
   # Improved policy over the allowed actions
-  p = mctree_policy( p.model
-                   , game
-                   , power = p.power
-                   , temperature = p.temperature
-                   , exploration = p.exploration
-                   , dilution = p.dilution )
+  p = mcts_policy( p.model
+                 , game
+                 , power = p.power
+                 , temperature = p.temperature
+                 , exploration = p.exploration
+                 , dilution = p.dilution )
 
   # Full policy vector
   policy = zeros(Float32, policy_length(game))
-  policy[legal_actions(game)] = p
+  policy[legal_actions(game)] .= p
 
   policy
-
 end
+
+function evaluate(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
+
+  v, p = mcts_value_policy( p.model
+                          , game
+                          , power = p.power
+                          , temperature = p.temperature
+                          , exploration = p.exploration
+                          , dilution = p.dilution )
+
+  policy = zeros(Float32, policy_length(game))
+  policy[legal_actions(game)] .= p
+
+  (value = v, policy = policy)
+end
+
 
 name(p :: MCTSPlayer) = p.name
 Model.ntasks(p :: MCTSPlayer) = Model.ntasks(p.model)

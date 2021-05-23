@@ -31,7 +31,7 @@ function logit_normal(n)
 end
 
 # Find the child index with maximal confidence, based on a policy informed upper confidence bound (puct)
-function max_puct_index(node; exploration :: Float32) :: Int
+function max_puct_index(node, exploration :: Float32) :: Int
 
   max_i = 1
   max_puct = -Inf32
@@ -60,7 +60,7 @@ function descend_to_leaf!( game :: AbstractGame
                          ; exploration ) :: Node
 
   while !is_leaf(node)
-    best_i = max_puct_index(node; exploration)
+    best_i = max_puct_index(node, exploration)
 
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
@@ -176,52 +176,47 @@ function run_mcts( model
   end
 
   root
-
 end
 
-function mctree_policy( model
-                      , game :: AbstractGame
-                      ; power = 100
-                      , temperature = 1.
-                      , kwargs...
-                      ) :: Vector{Float32}
 
-  root = run_mcts(model, game; power = power, kwargs... )
-  
+# -------- MCTS Value and Policy --------------------------------------------- #
+
+# Auxiliary function to sharpen / smoothen a probability distribution
+function apply_temperature(values :: Vector{Float32}, temp :: Float32)
+  if temp == 0f0
+    one_hot(length(values), findmax(values)[2])
+  elseif temp == 1f0
+    values / sum(values)
+  else
+    weights = values.^(1/temp)
+    weights / sum(weights)
+  end
+end
+
+function mcts_policy( model
+                    , game :: AbstractGame
+                    ; temperature = 1.f0
+                    , kwargs...
+                    ) :: Vector{Float32}
+
+  root = run_mcts(model, game; kwargs... )
+
   # During self play, we pick a move from the improved stochastic policy
   # root.visit_counter at random.
   # visit_counter seems to be prefered over expected_reward when choosing
   # the best move in a match, as it is less susceptible to random fluctuations.
-
-  if temperature == 0
-
-    # One hot policy
-    one_hot(length(root.visit_counter), findmax(root.visit_counter)[2])
-
-  else
-
-    # Weighted policy with temperature
-    weights = (root.visit_counter/power).^(1/temperature)
-    weights / sum(weights)
-
-  end
-
+  apply_temperature(root.visit_counter, temperature)
 end
 
-function mctree_action(model, game :: AbstractGame; kwargs...) :: ActionIndex
-
-  probs = mctree_policy(model, game; kwargs...)
-  index = choose_index(probs)
-  root.children[index].action
-
-end
-
-function mctree_turn!(model, game :: AbstractGame; kwargs...) :: Node
+function mcts_value_policy( model
+                            , game :: AbstractGame
+                            ; temperature = 1.f0
+                            , kwargs...
+                            ) :: Tuple{Float32, Vector{Float32}}
 
   root = Node()
-  action = mctree_action(model, game; root = root, kwargs...)
-  apply_action!(game, action)
-  root
-
+  policy = mcts_policy(model, game; root, temperature, kwargs...)
+  value = sum(policy .* root.expected_reward)
+  value, policy
 end
 
