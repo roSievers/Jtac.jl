@@ -18,22 +18,39 @@ is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 # -------- MCTS Algorithm --------------------------------------------------- #
 
+
+# Small perturbation constant for breaking symmerties in the MCTS algorithm by
+# injecting a little dose of randomness
+const mcts_eps = 1f-15
+
+# Logit normal distribution used to dilute the prior policy distribution
+# at the root node
 function logit_normal(n)
   ey = exp.(randn(Float32, n))
   ey / sum(ey)
 end
 
-# The confidence in a node, based on a policy informed upper confidence bound (puct)
-function confidence(node; exploration :: Float32) :: Array{Float32}
+# Find the child index with maximal confidence, based on a policy informed upper confidence bound (puct)
+function max_puct_index(node; exploration :: Float32) :: Int
 
-  weight = exploration * sqrt(sum(node.visit_counter))
+  max_i = 1
+  max_puct = -Inf32
 
-  result = map(1:length(node.children)) do i
+  # Precalculate the exploration weight. The constant mcts_eps is added to make
+  # sure that the model_policy matters for finding the maximum even if
+  # visit_counter only contains zeros.
+  weight = exploration * sqrt(sum(node.visit_counter)) + mcts_eps
+
+  for i in 1:length(node.children)
     explore = weight * node.model_policy[i] / (1 + node.visit_counter[i])
-    node.expected_reward[i] + explore
+    puct = node.expected_reward[i] + explore
+    if puct > max_puct
+      max_i = i
+      max_puct = puct
+    end
   end
 
-  result
+  max_i
 end
 
 # Traverse the tree from top to bottom and return a leaf.
@@ -43,11 +60,11 @@ function descend_to_leaf!( game :: AbstractGame
                          ; exploration ) :: Node
 
   while !is_leaf(node)
-    best_i = findmax(confidence(node; exploration))[2]
-  
+    best_i = max_puct_index(node; exploration)
+
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
-  
+
     node = best_child
   end
 
@@ -95,8 +112,11 @@ function expand!(node :: Node, game :: AbstractGame, model :: AbstractModel; dil
   node.visit_counter = zeros(Float32, length(node.children))
   node.expected_reward = zeros(Float32, length(node.children))
 
-  # Filter and normalize the policy vector returned by the network
-  node.model_policy = policy[actions] / sum(policy[actions])
+  # Filter and normalize the policy vector returned by the network. Addition of
+  # mcts_eps prevents divisions by zero in pathological cases (note that
+  # model_policy does not strictly have to be a probability distribution for the
+  # MCTS steps, since it is only used for calculation of the puct value).
+  node.model_policy = policy[actions] / (sum(policy[actions]) + mcts_eps) 
 
   # At the root node, we add noise to the policy prior to facilitate finding
   # unexpected but possibly good moves
@@ -105,6 +125,16 @@ function expand!(node :: Node, game :: AbstractGame, model :: AbstractModel; dil
   if isnothing(node.parent) && dilution > 0
     noise = logit_normal(length(node.model_policy))
     node.model_policy .= (1-dilution) * node.model_policy + dilution * noise
+
+  # Even if we do not want to dilute the policy, we add a tiny bit of noise
+  # for symmetry breaking.
+  # Reasoning: if the model is a rollout model, model_policy is uniformly
+  # distributed. This would cause situations in which the maximal puct is with
+  # non-negligible probability not unique. Adding some noise makes it almost
+  # surely unique.
+  else
+    noise = rand(Float32, length(node.model_policy))
+    node.model_policy .= node.model_policy .+ mcts_eps * noise
   end
 
   value * current_player(game)
