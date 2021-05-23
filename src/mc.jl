@@ -7,41 +7,14 @@ mutable struct Node
     parent :: Union{Node, Nothing}     # Where did we get here from?
     children :: Vector{Node}           # Where can we walk?
     visit_counter :: Vector{Float32}   # How often were children visited?
-    expected_reward :: Vector{Float32} 
-    model_policy :: Vector{Float32}    
+    expected_reward :: Vector{Float32} # The expected result of the various children
+    model_policy :: Vector{Float32}    # Policy prior of the model
 end
 
 Node(action = 0, parent = nothing ) = Node(action, 0, parent, [], [], [], [])
 Broadcast.broadcastable(node :: Node) = Ref(node)
 
 is_leaf(node :: Node) :: Bool = isempty(node.children)
-
-"""
-Find all children for a node and assesses them through the model.
-The state value predicted by the model is returned.
-The value is from the perspective of the first player
-"""
-function expand!(node :: Node, game :: AbstractGame, model :: AbstractModel) :: Float32
-  node.current_player = current_player(game)
-
-  # We need to first check if the game is still active
-  # and only evaluate the model on those games.
-  is_over(game) && return status(game)
-
-  actions = legal_actions(game)
-  # This value variable is from the perspective of current_player(game)
-  value, policy = apply(model, game)
-
-  # Initialize the vectors that will be filled with info about the children 
-  node.children = Node.(actions, node)
-  node.visit_counter = zeros(Float32, length(node.children))
-  node.expected_reward = zeros(Float32, length(node.children))
-
-  # Filter and normalize the policy vector returned by the network
-  node.model_policy = policy[actions] / sum(policy[actions])
-  value * current_player(game)
-end
-
 
 # -------- MCTS Algorithm --------------------------------------------------- #
 
@@ -50,11 +23,8 @@ function logit_normal(n)
   ey / sum(ey)
 end
 
-# The confidence in a node
-function confidence( node
-                   ; dilution :: Float32 = 0.10
-                   , exploration :: Float32 = 1.41
-                   ) :: Array{Float32}
+# The confidence in a node, based on a policy informed upper confidence bound (puct)
+function confidence(node; exploration :: Float32) :: Array{Float32}
 
   weight = exploration * sqrt(sum(node.visit_counter))
 
@@ -63,30 +33,17 @@ function confidence( node
     node.expected_reward[i] + explore
   end
 
-  # At the root, we blur the policy with a logit normal distribution
-  # Note: In the original alpha zero implementation, dirichlet noise is used
-  # instead.
-  if isnothing(node.parent)
-    # TODO this is not what is intended. The logit normal should be applied to
-    # the policy, not to the confidence!
-    result[:] = (1-dilution) * result + dilution * logit_normal(length(result))
-  end
-
   result
-
 end
 
-"""
-Traverse the tree from top to bottom and return a leaf.
-While this is done, the game is mutated.
-"""
+# Traverse the tree from top to bottom and return a leaf.
+# While this is done, the game is mutated.
 function descend_to_leaf!( game :: AbstractGame
                          , node :: Node
-                         ; kwargs...
-                         ) :: Node
+                         ; exploration ) :: Node
 
   while !is_leaf(node)
-    best_i = findmax(confidence(node; kwargs...))[2]
+    best_i = findmax(confidence(node; exploration))[2]
   
     best_child = node.children[best_i]
     apply_action!(game, best_child.action)
@@ -95,7 +52,6 @@ function descend_to_leaf!( game :: AbstractGame
   end
 
   node
-
 end
 
 function backpropagate!(node, p1_value) :: Nothing
@@ -116,33 +72,77 @@ function backpropagate!(node, p1_value) :: Nothing
     # Continue the backpropagation
     backpropagate!(parent, p1_value)
   end
-
 end
 
-function expand_tree_by_one!(node, game, model; kwargs...)
+"""
+Find all children for a node and assesses them through the model.
+The state value predicted by the model is returned.
+The value is from the perspective of the first player
+"""
+function expand!(node :: Node, game :: AbstractGame, model :: AbstractModel; dilution :: Float32) :: Float32
+  node.current_player = current_player(game)
+
+  # We need to first check if the game is still active
+  # and only evaluate the model on those games.
+  is_over(game) && return status(game)
+
+  actions = legal_actions(game)
+  # This value variable is from the perspective of current_player(game)
+  value, policy = apply(model, game)
+
+  # Initialize the vectors that will be filled with info about the children 
+  node.children = Node.(actions, node)
+  node.visit_counter = zeros(Float32, length(node.children))
+  node.expected_reward = zeros(Float32, length(node.children))
+
+  # Filter and normalize the policy vector returned by the network
+  node.model_policy = policy[actions] / sum(policy[actions])
+
+  # At the root node, we add noise to the policy prior to facilitate finding
+  # unexpected but possibly good moves
+  # Note: In the original alpha zero implementation (and its imitations),
+  # dirichlet noise (instead of logit normal) is used.
+  if isnothing(node.parent) && dilution > 0
+    noise = logit_normal(length(node.model_policy))
+    node.model_policy .= (1-dilution) * node.model_policy + dilution * noise
+  end
+
+  value * current_player(game)
+end
+
+function expand_tree_by_one!(node, game, model; exploration, dilution)
   new_game = copy(game)
   # Descending to a leaf also changes the new_game value. This value then
   # corresponds to the game state at the leaf.
-  new_node = descend_to_leaf!(new_game, node; kwargs...)
-  p1_value = expand!(new_node, new_game, model)
+  new_node = descend_to_leaf!(new_game, node; exploration)
+  p1_value = expand!(new_node, new_game, model; dilution)
 
   # Backpropagate the negative value, since the parent calculates its expected
   # reward from it.
   backpropagate!(new_node, p1_value)
 end
 
-# Runs the mcts algorithm, expanding the given root node.
+"""
+    run_mcts(model, game; [root, power = 100, exploration = 1.41, dilution = 0.0])
+
+Run the MCTS algorithm for `game` using `model` for policy priors and value
+evaluations. Returns the expanded `root` node.
+"""
 function run_mcts( model
                  , game :: AbstractGame
-                 ; root = Node()      # To track the expansion
+                 ; root :: Node = Node()      # To track the expansion
                  , power = 100
-                 , kwargs...
+                 , exploration = 1.41
+                 , dilution = 0.0
                  ) :: Node
 
   root.current_player = current_player(game)
-  
+
+  exploration = Float32(exploration)
+  dilution = Float32(dilution)
+
   for i = 1:power
-    expand_tree_by_one!(root, game, model; kwargs...)
+    expand_tree_by_one!(root, game, model; exploration, dilution)
   end
 
   root
@@ -158,13 +158,10 @@ function mctree_policy( model
 
   root = run_mcts(model, game; power = power, kwargs... )
   
-  # The paper states, that during self play we pick a move from the
-  # improved stochastic policy root.visit_counter at random.
-  # Note that visit_counter is generally prefered over expected_reward
-  # when choosing the best move in a match, as it is less susceptible to
-  # random fluctuations.
-  # TODO: We now also draw from root.visit_counter in real playthroughts,
-  # not only during learning. Think about this!
+  # During self play, we pick a move from the improved stochastic policy
+  # root.visit_counter at random.
+  # visit_counter seems to be prefered over expected_reward when choosing
+  # the best move in a match, as it is less susceptible to random fluctuations.
 
   if temperature == 0
 
