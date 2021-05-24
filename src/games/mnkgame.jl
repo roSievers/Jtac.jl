@@ -183,6 +183,10 @@ function augment( game :: MNKGame{M, N, K}
 
 end
 
+function hash(game :: MNKGame)
+  Base.hash(game.board)
+end
+
 
 function draw(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   board = reshape(game.board, (M,N))

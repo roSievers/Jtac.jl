@@ -237,6 +237,14 @@ instance(game :: AbstractGame) = game
 instance(gen) = gen()
 
 """
+    hash(game)
+
+`UInt64` hash value of a game. Games that lead to the same data representation
+(see `Game.array`) with the same current player should have same hash value.
+"""
+hash(game :: AbstractGame) = error("hashing for game $(typeof(game)) not implemented")
+
+"""
     freeze(game)
 
 Returns a frozen version of `game`. This function is used before `game` is

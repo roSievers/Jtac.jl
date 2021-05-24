@@ -34,11 +34,12 @@ end
 Derive a player from a specification `spec`. The model of the player is
 transfered to the gpu or brought in async mode if the respective flags are set.
 """
-function build_player(spec :: PlayerSpec; gpu = false, async = false)
+function build_player(spec :: PlayerSpec; gpu = false, async = false, cache = 0)
   model = spec.model
   if model isa Model.NeuralModel 
-    model = gpu   ? Model.to_gpu(model) : model
-    model = async ? Model.Async(model)  : model
+    model = gpu     ? Model.to_gpu(model) : model
+    model = async   ? Model.Async(model)  : model
+    model = cache > 0 ? Model.Caching(model, max_cachesize = cache) : model
   end
   if spec.power <= 0
     Player.IntuitionPlayer( model
@@ -57,14 +58,17 @@ end
 # -------- Packing (Async) Players ------------------------------------------- #
 
 function pack(p :: Union{IntuitionPlayer, MCTSPlayer})
-  (PlayerSpec(p), isa(playing_model(p), Async), on_gpu(training_model(p)))
+  m = playing_model(p)
+  cache = isa(m, Model.Caching) ? m.max_cachesize : 0
+  async = Model.is_async(playing_model(p))
+  (PlayerSpec(p), on_gpu(training_model(p)), async, cache)
 end
 
-function unpack(p :: Tuple{PlayerSpec, Bool, Bool})
-  build_player(p[1]; async = p[2], gpu = p[3])
+function unpack(p :: Tuple{PlayerSpec, Bool, Bool, Int})
+  build_player(p[1]; gpu = p[2], async = p[3], cache = p[4])
 end
 
-models_on_gpu(packs) = count(p[3] for p in packs)
+models_on_gpu(packs) = count(p[2] for p in packs)
 
 # -------- Distributed Calculations ------------------------------------------ #
 

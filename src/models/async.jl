@@ -82,19 +82,14 @@ swap(m :: Async) = @warn "Async cannot be swapped."
 Base.copy(m :: Async) = switch_model(m, copy(m.model))
 
 ntasks(m :: Async) = m.buffersize
-base_model(m :: Async) = m.model
-training_model(m :: Async) = m.model
-worker_model(m :: Async) = m.model
+base_model(m :: Async) = base_model(m.model)
+training_model(m :: Async) = training_model(m.model)
 
-# check if a model is an async model
-isasync(m) = isa(m, Async) ? true : false
+is_async(m :: Async) = true
 
 # Async networks cannot calculate features. To get the features of the
 # network on which it is based, access them via training_model(...)
 features(m :: Async) = Feature[]
-
-worker_model_to_cpu(m :: Async) = switch_model(m, to_cpu(m.model))
-worker_model_to_gpu(m :: Async) = switch_model(m, to_gpu(m.model))
 
 function Base.show(io :: IO, m :: Async{G}) where {G <: AbstractGame}
   print(io, "Async($(m.max_batchsize), $(m.buffersize), ")
@@ -127,6 +122,7 @@ function worker_thread(channel, model, max_batchsize)
         yield()
       end
 
+      #@show length(inputs)
       v, p, f = model(first.(inputs)) .|> to_cpu
 
       for i = 1:length(inputs)
