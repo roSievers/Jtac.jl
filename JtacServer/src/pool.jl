@@ -2,22 +2,22 @@
 """
 Pool of training data.
 """
-mutable struct DataPool{G <: Jtac.Game}
-  data :: Jtac.DataSet{G}
+mutable struct DataPool{G <: Game.AbstractGame}
+  data :: Training.Dataset{G}
   age  :: Vector{Int}
   use  :: Vector{Int}
   reqid :: Vector{Int}
   capacity :: Int
 end
 
-function DataPool{G}(c :: Int, features = Jtac.Feature[]) where {G <: Jtac.Game}
-  data = Jtac.DataSet{G}(; features = features)
+function DataPool{G}(c :: Int, features = Model.Feature[]) where {G <: Game.AbstractGame}
+  data = Training.Dataset{G}(; features = features)
   DataPool{G}(data, Int[], Int[], Int[], c)
 end
 
 Base.length(dp :: DataPool) = length(dp.age)
 
-function Base.getindex(dp :: DataPool{G}, I) where {G <: Jtac.Game}
+function Base.getindex(dp :: DataPool{G}, I) where {G <: Game.AbstractGame}
   DataPool{G}(dp.data[I], dp.age[I], dp.use[I], dp.reqid[I], dp.capacity)
 end
 
@@ -29,10 +29,10 @@ Add `dataset` generated under the data request `id` to `datapool`. The
 dataset.
 """
 function add!( dp :: DataPool{G}
-             , ds :: Jtac.DataSet{G}
+             , ds :: Training.Dataset{G}
              , reqid :: Int
              , latest :: Int
-             ) where {G <: Jtac.Game}
+             ) where {G <: Game.AbstractGame}
 
   k = length(ds)
   age = latest - reqid
@@ -108,7 +108,7 @@ Adjust the capacity of `datapool` to `capacity`.
 update_capacity!(dp :: DataPool, c :: Int) = (dp.capacity = c; nothing)
 
 
-# TODO: may also be super inefficient due to indexing of datapool
+# TODO: may be very inefficient due to indexing of datapool
 """
     cleanse!(datapool, context)
 

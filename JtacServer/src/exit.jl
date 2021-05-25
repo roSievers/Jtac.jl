@@ -90,8 +90,23 @@ function wait_or_exit(c, timeout :: Real)
   end
 end
 
+# Only rethrow an error if "exit" is not set
+# If the debug mode is activated, show that an error
+# is not rethrown because of "exit"
+function rethrow_or_exit(ch, err)
+  if !isready(ch["exit"])
+    rethrow(err)
+  elseif DEBUG[]
+    e = Stl.error(string(err))
+    Log.debug("caught exception absorbed by exit signal: $e")
+    throw(err)
+  end
+end
+
+# close all data channels that are not the "exit" channel
 function close_data_channels!(ch)
   for (key, c) in ch
     if key != "exit" close(c) end
   end
 end
+

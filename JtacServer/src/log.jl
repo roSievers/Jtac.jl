@@ -1,10 +1,7 @@
 
 module Stl
 
-  import ..TrainDataServe
-  import ..TrainContestServe
-  import ..ServeData
-  import ..ServeContest
+  import ..Msg
 
   struct Style
     text :: String
@@ -19,11 +16,11 @@ module Stl
   # Some automatic style conversions
   Style(x :: Real; kw...) = Style(Base.string(x); kw...)
 
-  Style(req :: TrainDataServe; kw...) = Style("D$(req.reqid)"; kw...)
-  Style(req :: TrainContestServe; kw...) = Style("C$(req.reqid)"; kw...)
+  Style(req :: Msg.ToPlay.DataReq; kw...) = Style("D$(req.reqid)"; kw...)
+  Style(req :: Msg.ToPlay.ContestReq; kw...) = Style("C$(req.reqid)"; kw...)
 
-  Style(x :: ServeData; kw...) = Style("d$(x.id)"; kw...)
-  Style(x :: ServeContest; kw...) = Style("c$(x.id)"; kw...)
+  Style(x :: Msg.FromPlay.Data; kw...) = Style("d$(x.id)"; kw...)
+  Style(x :: Msg.FromPlay.Contest; kw...) = Style("c$(x.id)"; kw...)
 
 
   function Base.show(io :: IO, s :: Style)
