@@ -33,7 +33,7 @@ module Stl
 
   name(str)    = Style(str; color = :green)
   keyword(str) = Style(str; color = :cyan)
-  quant(str)   = Style(str; color = :yellow)
+  quant(str)   = Style(str; color = :green)
   faulty(str)  = Style(str; color = :red)
   warn(str)    = Style(str; color = :red)
   error(str)   = Style(str; color = :red, bold = true)
