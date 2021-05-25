@@ -154,13 +154,15 @@ module Model
   include("models/basic.jl")
   include("models/neural.jl")
   include("models/async.jl")
+  include("models/caching.jl")
 
   export AbstractModel,
          DummyModel,
          RandomModel,
          RolloutModel,
          NeuralModel,
-         Async
+         Async,
+         Caching
 
   # -------- Predefined NeuralModel architectures ---------------------------- #
 

@@ -12,7 +12,6 @@ import Base.Filesystem
 import Dates
 
 # deep learning packages
-import Jtac
 import Knet
 import CUDA
 
@@ -20,9 +19,11 @@ import CUDA
 import Blosc
 import LazyJSON
 
+# Jtac core library
+using Jtac
 
 # constants
-const VERSION = "v0.1"
+const JTAC_VERSION = "v0.1"
 const DEBUG = Ref{Bool}(false)
 
 # exceptions
@@ -31,16 +32,24 @@ struct WorkerStopException <: Exception end
 # utilities
 include("exit.jl")
 include("compress.jl")
-include("msg.jl")
+
+# training context and data pools
+include("context.jl")
 include("pool.jl")
+
+# events and messages to other jtac services
+include("events.jl")
+include("msg.jl")
+
+# cli logging
 include("log.jl")
 
-# services
+# jtac services
 include("train.jl")
-include("serve-v2.jl")
+include("play.jl")
 #include("ai.jl")
 
-export Jtac, Knet
+export Game, Model, Player, Training, Knet
 export Context, train, serve
 export @ip_str
 

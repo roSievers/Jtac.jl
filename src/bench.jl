@@ -68,7 +68,7 @@ end
 # the threaded version is only marginally faster than the non-threaded version,
 # since most time is (probably) spent working for the Gpu.
 function record_self_threaded(player, n; augment = false, kwargs...)
-  @assert Model.playing_model(player) isa Model.Async "Threaded self plays only work with Async models"
+  @assert Model.is_async(Model.playing_model(player)) "Threaded self plays only work with Async models"
   @assert Threads.nthreads() > 1 "record_self_threaded requires at least two threads"
   @assert Threads.threadid() == 1 "record_self_threaded can only be called from the master thread"
 

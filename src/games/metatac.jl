@@ -178,6 +178,9 @@ function augment(game :: MetaTac, label :: Vector{Float32})
   augment(game), labels
 end
 
+function hash(game :: MetaTac)
+  Base.hash((game.board, game.current_player, game.focus))
+end
 
 function draw(io :: IO, game :: MetaTac) :: Nothing
 

@@ -1,914 +1,631 @@
 
 #
-# jtac play
+# jtac-play
 #
 
-import Base.Experimental: @sync
+import .Msg: Train, Play
+using .Events
 
-struct WorkerExit <: Exception end 
-
-#abstract type InternalRecord end
-
-#struct InternalDataRecord <: InternalRecord
-#  _data    :: Vector{UInt8} # compressed datasets
-#  states   :: Int
-#  playings :: Int
-#  reqid    :: Int
-#  worker   :: Int
-#  time     :: Float64
-#end
-
-#struct InternalContestRecord <: InternalRecord
-#  data   :: Array{Int, 3} 
-#  reqid  :: Int
-#  worker :: Int
-#  time   :: Float64
-#end
-
-function combine(rs :: Vector{InternalContestRecord}, dtime)
-  @assert length(rs) > 1
-  reqid = rs[1].reqid
-  @assert all(x -> x.reqid == reqid, rs)
-
-  data = sum(x -> x.data, rs)
-  InternalContestRecord(data, reqid, 0, dtime)
+function rchannel(:: Type{T}, n) where {T}
+  Distributed.RemoteChannel(() -> Channel{T}(n))
 end
 
-function subdivide(r :: TrainContestServe, playings :: Int)
-  # When we get a competition request from a train server, we will usually
-  # want to subdivide it for the different workers.
-  # Each subcompetition should have at least m playings, otherwise there
-  # are pairings that do not play.
-  m = Jtac.pairings(length(r.specs), length(r.active))
-
-  # Indeed, we only want to do subcompetitions with a length of multiples of m,
-  # such that it is guaranteed that each pairing plays equally often. We thus
-  # might play more games (l) than requested (r.length).
-  l = ceil(Int, r.length / m) * m
-
-  # When deciding how many playings to do in one subcompetition, we orient
-  # ourselves by the 'playings' value of the play server, choosing the next
-  # multiple of m that equals or is above playings.
-  r = max(1, ceil(Int, playings / m))
-
-  # k subcompetitions with length r*m will be conducted, and one subcompetition
-  # with length rem = l - (k * r * m) (which divides m by the definition of m)
-  k, rem = divrem(l, r*m)
-
-  reqs = map(1:k) do _
-    TrainContestServe(r.specs, r.active, r.names, r*m, r.era, r.reqid)
-  end
-  if rem > 0
-    push!(reqs, TrainContestServe(r.specs, r.active, r.names, rem, r.era, r.reqid))
-  end
-
-  reqs
-end
-
-
-sign_record!(r :: ServeData, id :: Int) = r.id = id
-sign_record!(r :: ServeContest, id :: Int) = r.id = id
-
-
-"""
-    play_service(<keyword arguments>)
-
-Start the Jtac play service.
-"""
-function play_service(
-                     ; ip       = ip"127.0.0.1"
-                     , port     = 7788
-                     , user     = ENV["USER"]
-                     , token    = ""
-                     , playings = 50
-                     , use_gpu  = false
-                     , async    = false
-                     , workers  = Distributed.workers()
-                     , buffer_size    = 100 
-                     , delay          = 10
-                     , accept_data    = true
-                     , accept_contest = true
-                     , kwargs... )
-
-  log_info("initializing jtac play service...")
-
-  buffersize = max(buffersize, 2length(workers))
-
-  getsocket = name -> login( name, ip, port, token
-                           , accept_data_requests
-                           , accept_contest_requests
-                           , wait_reconnect )
-
-  socket = getsocket(name)
-
-  isnothing(socket) && return
-  
-  # This slot contains the current socket. The current should ideally be only
-  # set once when the program starts, but the train server might send reconnect
-  # messages, in which case the slot will be replaced by the download task.
-
-  slot = Channel{TCPSocket}(1)
-  put!(slot, socket)
-
-  # Each coroutine has to listen to stop. If it is set to true (it
-  # should never be set to false) by any coroutine or worker, all coroutines
-  # should try their best to return quickly without exceptions. Since we
-  # may not be able to prevent that each worker tries to write to stop
-  # once (due to race conditions in a maximalist pessimistic situation),
-  # we buffer the channel generously.
-
-  stop = RemoteChannel(() -> Channel{Bool}(buffersize))
-
-  # A DataRequest is the request of the train server to produce as much
-  # self-play data as possible, following the instructions outlined in the
-  # request. There will always only be one active data request - the most
-  # recent one that the client has received.
-  #
-  # The datareq channel is only modified by the download coroutine that
-  # handles messages from the train server. It is fetched by the worker
-  # processes.
-
-  datareq = RemoteChannel(() -> Channel{DataRequest}(1))
-
-  # A ContestRequest is the request to conduct a contest between players and
-  # transmit the results. The contestreq channel is filled by the download
-  # coroutine and taken from by the compute coroutine. To prevent race
-  # conditions, taking from contestreq is not done by the workers directly,
-  # so we do not need a remote channel for constreq: locally in the compute
-  # coroutine, each worker gets it own remote channel.
-
-  contestreq = Channel{ContestRequest}(10)
-
-  # This channel stores the data created by the workers on the occasion of
-  # DataRequests or ContestRequests. The workers write to it directly, so new
-  # datasets might arrive anytime. The upload coroutine will take from buffer
-  # whenever it is ready to upload it to the train server.
-  #
-  # Under stop, this buffer has to be closed (as workers might to try to
-  # put! to it), and will consecutively be read out in order to backup the
-  # stored data that has not yet been transmitted. 
-
-  buffer_local = Channel{InternalRecord}(buffersize)
-  buffer = RemoteChannel(() -> buffer_local)
-
-  # Internal confirmation passd from download to upload coroutines that signal
-  # the server has received the uploaded data
-
-  confirm = Channel{Union{DataConfirmation,ContestConfirmation}}(buffersize)
-
-
-  # Download task that receives information and requests from the train server
-
-  download_task = @async download( name, slot, getsocket, stop
-                                 , datareq, contestreq, confirm
-                                 , accept_data_requests
-                                 , accept_contest_requests ) 
-
-
-  # Upload task that sends data to the train server
-
-  upload_task = @async upload(name, slot, stop, buffer, confirm)
-
-  # Compute task that generates self play and contest data on requests
-
-  compute_task = @async compute( name, stop, datareq, contestreq, buffer
-                               ; gpu = gpu
-                               , async = async
-                               , playings = playings
-                               , workers = workers
-                               , kwargs... )
-
-  try
-    
-    if !fetch(compute_task)
-      
-      log(name, "compute coroutine requested shutdown")
-
-    end
-
-    cleanup(name, stop, buffer_local, download_task, upload_task, compute_task, throw = true)
-
-  catch err
-
-    if err isa InterruptException
-
-      log_err(name, "Interrupted")
-
-    elseif err isa Base.IOError
-
-      log_err(name, "Connection to $ip:$port was closed unexpectedly")
-
-    else
-
-      log_err(name, "Unexpected exception: $err")
-      throw(err.task.exception)
-
-    end
-
-    cleanup(name, stop, buffer_local, download_task, upload_task, compute_task, throw = false)
-
-  end
-
-  log(name, "exiting jtac play client")
-
-end
-
-
-function login(name, ip, port, token, data, contest, sleeptime)
-
-  while true
-
-    try
-
-      log(name, "trying to log in to server $ip:$port")
-
-      socket = connect(ip, port)
-      login = PlayLogin(token = token, name = name, data = data, contest = contest)
-
-      send(socket, login)
-      reply = receive(socket, PlayAccept)
-
-      if reply.accept
-
-        log(name, "connection established: '$(reply.text)'")
-        return socket
-
-      else
-
-        log(name, "login failed: $(reply.text)")
-        log(name, "exiting jtac play client")
-        return nothing
-
-      end
-
-    catch err
-
-      if err isa InterruptException
-        log(name, "got interrupted...")
-        log(name, "exiting jtac play client")
-        return nothing
-      end
-
-      if err isa TypeError
-        log(name, "answer from server unintelligible, assuming incompability")
-        log(name, "exiting jtac play client")
-        return nothing
-      end
-
-      log(name, "connecting to $ip:$port failed")
-      log(name, "will try to connect again in $sleeptime seconds...")
-
-      sleep(sleeptime)
-
-    end
-
-  end
-  
-end
-
-
-function cleanup( name, stop, buffer, download_task, upload_task, compute_task
-                ; throw = false )
-
-  log(name, "stopping coroutines and closing connection...")
-
-  # This should enable the stopping routines of all threads
-
-  put!(stop, true)
-
-  # Rescue the buffer
-  
-  backup = []
-  for rec in buffer
-    push!(backup, rec)
-  end
-
-  if throw
-  
-    wait(download_task)
-    wait(upload_task)
-    wait(compute_task)
-
-    log(name, "all coroutines finished without exception")
-
-  else
-
-    try wait(compute_task)
-    catch err
-
-      if err isa TaskFailedException
-        log(name, "compute-coroutine raised an exception: $(err.task.exception)")
-      elseif err isa InterruptException
-        log(name, "compute-coroutine was interrupted while stopping")
-      else
-        log(name, "stopping the compute-coroutine raised an exception: $err")
-      end
-
-    end
-
-    try wait(download_task)
-    catch err 
-
-      if err isa TaskFailedException
-        log(name, "download-coroutine raised an exception: $(err.task.exception)")
-      elseif err isa InterruptException
-        log(name, "download-coroutine was interrupted while stopping")
-      else
-        log(name, "stopping download-coroutine raised an exception: $err")
-      end
-
-    end
-
-    try wait(upload_task)
-    catch err
-
-      if err isa TaskFailedException
-        log(name, "upload-coroutine raised an exception: $(err.task.exception)")
-      elseif err isa InterruptException
-        log(name, "upload-coroutine was interrupted while stopping")
-      else
-        log(name, "stopping upload-coroutine raised an exception: $err")
-      end
-
-    end
-
-  end
-    
-end
-
-
-
-function download( name, slot, getsocket, stop, datareq, contestreq
-                 , confirm, accept_data_requests, accept_contest_requests)
-
-  name = "$name-1"
-
-  log(name, "download coroutine initialized")
-
-  stopper = @async begin
-    fetch(stop)
-    close(datareq)
-    close(contestreq)
-    close(confirm)
-    close(slot)
-    close(fetch(slot))
-  end
-
-  main = @async while !eof(fetch(slot))
-
-    msg = receive(fetch(slot), Message{Train, Play})
-
-    if msg isa PlayAccept
-
-      log(name, "received unexpected login reply from server, ignoring it")
-
-    elseif msg isa Idle
-
-      log(name, "server asks us to idle: '$(msg.text)'")
-
-      if isready(datareq)
-        req = take!(datareq)
-        log(name, "discarded data request D.$(req.id)")
-      end
-
-    elseif msg isa PlayDisconnect
-
-      log(name, "server asks us to disconnect: '$(msg.text)'")
-      return
-
-    elseif msg isa PlayReconnect
-
-      log(name, "server asks us to reconnect after $(msg.time) seconds: '$(msg.text)'")
-      take!(slot)
-
-      log(name, "waiting...")
-      sleep(msg.time)
-
-      log(name, "trying to reconnect")
-      socket = getsocket(name)
-      
-      if isnothing(socket)
-        log(name, "reconnecting failed")
-        return
-      else
-        put!(slot, socket)
-      end
-
-    elseif msg isa DataRequest && accept_data_requests
-
-      if isready(datareq)
-        log(name, "received request D.$(msg.id) (replacing D.$(fetch(datareq).id))")
-      else
-        log(name, "received request D.$(msg.id)")
-      end
-
-      log(name, "  | name: $(msg.spec.name)")
-      log(name, "  | power: $(msg.spec.power)")
-      log(name, "  | temperature: $(msg.spec.temperature)")
-      log(name, "  | exploration: $(msg.spec.exploration)")
-      log(name, "  | dilution: $(msg.spec.dilution)")
-      log(name, "  | min_playings: $(msg.min_playings)")
-      log(name, "  | max_playings: $(msg.max_playings)")
-      log(name, "  | augment: $(msg.augment)")
-      log(name, "  | prepare_steps: $(msg.prepare_steps)")
-      log(name, "  | branch_steps: $(msg.branch_steps)")
-      log(name, "  | branch_prob: $(msg.branch_prob)")
-
-      isready(datareq) && take!(datareq)
-      put!(datareq, msg)
-
-    elseif msg isa ContestRequest && accept_contest_requests
-
-      log(name, "received contest request C.$(msg.id)")
-      put!(contestreq, msg)
-
-    elseif msg isa Union{DataConfirmation, ContestConfirmation}
-
-      put!(confirm, msg)
-
-    else
-
-      log(name, "received unsupported request, this should not happen")
-
-    end
-
-  end
-
-  try fetch(main)
-
-    log(name, "connection to server lost")
-    put!(stop, true)
-
-  catch err
-
-    if isready(stop)
-      log(name, "received stop signal")
-    elseif err isa InterruptException
-      log(name, "got interrupted")
-      put!(stop, true)
-    elseif err isa TaskFailedException && err.task.exception isa InterruptException
-      log(name, "got interrupted")
-      put!(stop, true)
-    else
-      log(name, "received an unexpected exception: $err")
-      put!(stop, true)
-      throw(err.task.exception)
-    end
-
-  end
-
-  fetch(stopper)
-  log(name, "exiting...")
-
-end
-
-function upload(name, slot, stop, buffer, confirm)
-
-  name = "$name-2"
-
-  log(name, "upload coroutine initialized")
-
-  stopper = @async begin
-    fetch(stop)
-    close(buffer)
-    close(confirm)
-    close(slot)
-  end
-
-  did = cid = 1
-
-  main = @async while isopen(fetch(slot))
-
-    record = fetch(buffer)
-
-    if record isa InternalDataRecord
-
-      s = round(Base.summarysize(record) / 1024^2, digits=3)
-      log(name, "uploading record d.$did:D.$(record.reqid) ($(s)MB) from w$(record.worker)...")
-
-      dtime = @elapsed begin
-        send(fetch(slot), sign_record(record, did))
-        c = take!(confirm) :: DataConfirmation
-      end
-      
-      if c.id == did
-        log(name, "sent d.$did:D.$(record.reqid) ($(s)MB) in $dtime seconds")
-      else
-        log(name, "received inconsistent confirmation id d.$(c.id) (expected d.$did)")
-        break
-      end
-
-      did += 1
-
-    elseif record isa InternalContestRecord
-
-      log(name, "uploading contest record c.$cid:C.$(record.reqid)...")
-
-      dtime = @elapsed begin
-        send(fetch(slot), sign_record(record, cid))
-        c = take!(confirm) :: ContestConfirmation
-      end
-      
-      if c.id == cid
-        log(name, "sent c.$cid:C.$(record.reqid) in $dtime seconds")
-      else
-        log(name, "received inconsistent confirmation id c.$(c.id) (expected c.$cid)")
-        break
-      end
-
-      cid += 1
-
-    else
-
-      log(name, "internal consistency: received record of unknown type (this must not happen)")
-      break
-
-    end
-
-    take!(buffer)
-
-  end
-
-  try
-
-    wait(main)
-    put!(stop, true)
-
-  catch err
-
-    if isready(stop)
-      log(name, "received stop signal")
-    elseif err isa InterruptException
-      log(name, "got interrupted")
-      put!(stop, true)
-    elseif err isa TaskFailedException && err.task.exception isa InterruptException
-      log(name, "got interrupted")
-      put!(stop, true)
-    else
-      log(name, "received an unexpected exception: $err")
-      put!(stop, true)
-      throw(err.task.exception)
-    end
-
-  end
-
-  fetch(stopper)
-  log(name, "exiting...")
-
-end
-
-
-function compute( name, stop, datareq, contestreq, buffer
-                ; playings = 100
-                , gpu = false
-                , async = false
-                , workers = Distributed.workers()
-                , kwargs... )
-
-  name = "$name-3"
-
-  log(name, "compute coroutine initialized")
-
-  # If we let the computations happen on the same process/thread that runs
-  # the coroutines, we are getting blocked all the time. We thus delegate the
-  # actual simulations to worker processes (threads do not work with Knet (yet)
-  # and seem to be generally unstable)
-
-  if workers == [1]
-
-    log_err(name, "using the main process as worker is not supported")
-    log(name, "exiting...")
-    return false
-
+function valid_workers(workers)
+  if 1 in workers
+    Log.error("using the main process as worker is not supported")
+    false
   elseif !issubset(workers, Distributed.workers())
+    diff = setdiff(workers, Distributed.workers())
+    s = Stl.faulty("$(Tuple(diff))")
+    Log.error("requested workers $s are not available")
+    false
+  else
+    true
+  end
+end
 
-    log_err(name, "requested workers are not available")
-    log(name, "exiting...")
-    return false
+"""
+    play(<keyword arguments>)
 
+Start a jtac-play instance that connects to a jtac-train instance to support it.
+The train instance sends all models and player related data to the play
+instance, and it tasks the play instance to either generate datasets for
+training (via self plays) or to simulate contests.
+
+!!! This function will abort if no worker processes are available. See option
+`workers` below.
+
+# Arguments
+- `ip` : ip address of the jtac-train instance (default: `127.0.0.1`)
+- `port` : port of the jtac-train instance (default: `7788`)
+- `user` : user name. (default: `USER` enviroment variable)
+- `token` : token to authenticate login at jtac-train instance (default: `""`)
+- `playings` : number of playings per sent dataset (default: `50`)
+- `use_gpu` : use GPU-support via Knet (default: `false`)
+- `async` : use async mcts runs (default: `true`, recommended if `use_gpu`)
+- `delay` : delay in seconds before next login attempt after failure (default: `10`)
+- `gc_interval` : interval in seconds for manual calls to `GC.gc()` on workers (default: `10`)
+- `accept_data` : data generation requests are accepted (default: `true`)
+- `accept_contest` : contest requests are accepted (default: `true`)
+- `workers` : list of worker ids that are used for computationally intensive tasks, must not contain the main process (default: all available workers)
+"""
+function play(
+             ; ip    = "127.0.0.1"
+             , port  = 7788
+             , user  = ENV["USER"]
+             , token = ""
+             , playings = 50
+             , use_gpu  = false
+             , async    = true
+             , workers  = Distributed.workers()
+             , delay    = 10
+             , gc_interval    = 10
+             , accept_data    = true
+             , accept_contest = true)
+
+  pname = Stl.name("jtac-play")
+  Log.info("initializing $pname")
+
+  # leave early if the specified workers are not valid
+  # TODO: should probably also do some other sanity checks
+  if !valid_workers(workers) return end
+
+  # initialize channels that will be used for communication between tasks
+  # / workers
+  ch = Dict{String, Distributed.RemoteChannel}(
+      "exit"            => rchannel(Bool, 1)
+    , "session"         => rchannel(String, 1)
+    , "data-request"    => rchannel(Msg.ToPlay.DataReq, 1)
+    , "contest-request" => rchannel(Msg.ToPlay.ContestReq, 100)
+    , "upload"          => rchannel(Union{Msg.FromPlay.Data, Msg.FromPlay.Contest}, 100))
+
+  # options that affect the communication
+  cos = ( ip = ipv4(ip)
+        , port = port
+        , user = user
+        , token = token
+        , delay = delay
+        , accept_data = accept_data
+        , accept_contest = accept_contest )
+
+  # options that affect the computation / workers
+  wos = ( playings = playings
+        , use_gpu = use_gpu
+        , async = async
+        , gc_interval = gc_interval )
+
+  # when the user issues ctrl-d, fill the exit channel and close other channels.
+  # all tasks and their children should see this and shut down gracefully, i.e.,
+  # without exceptions
+  on_exit() = begin
+    put!(ch["exit"], true)
+    close_data_channels!(ch)
   end
 
-  m = length(workers)
-  # TODO: Knet.cudaGetDeviceCount() is not defined in current KNET !
-  gpu_devices = gpu ? Knet.cudaGetDeviceCount() : 0
-
-  if m > gpu_devices && gpu
-    log(name, "info: $m workers will share $gpu_devices GPU device[s]")
-  end
-
-  # Print messages from the workers
-   
-  messages_local = Channel{Tuple{Int,String}}(100)
-  messages = RemoteChannel(() -> messages_local)
-
-  messager = @async for (worker, msg) in messages_local
-
-    log(name, "w$worker says: $msg")
-
-  end
-
-  # Manage contest requests
-  # Each worker gets its own channel to help prevent potential race conditions
-
-  chcreate = () -> Channel{Tuple{Int, Int, ContestRequest}}(100)
-  creqchannels = [RemoteChannel(chcreate) for _ in workers]
-  packchannel = RemoteChannel(() -> Channel{InternalContestRecord}(3m))
-
-  contests = @async begin
-    worker = 0
-    for creq in contestreq
-
-      try
-        # Subdivid the contest request in smaller contest that can be distributed
-        # to the workers
-        packs = subdivide(creq, playings)
-        k = length(packs)
-
-        log(name, "dividing request C.$(creq.id) with length $(creq.length) in $k subrequests")
-
-        for (i, pack) in enumerate(packs)
-          worker = (worker % m) + 1
-          put!(creqchannels[worker], (i, k, pack))
-        end
-
-        # Collect the next k contest results and merge them before sending the
-        # results to the buffer
-        packresults = map(1:k) do _
-          take!(packchannel)
-        end
-
-        dtime = sum(x -> x.dtime, packresults) / m # Average time per worker
-        cdata = combine(packresults, dtime)
-        l = sum(cdata.data)
-
-        log(name, "collecting record of length $l for C.$(cdata.reqid)")
-        put!(buffer, cdata)
-
-      catch err
-        log(name, "unexpected error in contest thread: $err")
-        put!(stop, true)
-        return
-      end
-
-    end
-  end
-
-  # Handle stop signals in the compute coroutine, closing all local and some
-  # global channels
-
-  stopper = @async begin
-    fetch(stop)
-    close(contestreq)
-    close(datareq)
-    close(packchannel)
-    close(buffer)
-    map(close, creqchannels)
-  end
-
-  promises = map(1:m) do i
-
-    Distributed.@spawnat workers[i] begin
-
-      callback = () -> isready(stop) && throw(WorkerExit())
-      gpu && Knet.gpu((i-1) % gpu_devices)
-
-
-      # In the workers we have to carefully handle exceptions, since even
-      # a user interruption may emerge at any point in the code that follows.
-      # If we would not communicate this to the outside (and to all other
-      # workers), we might hang -> not good...
-
-      @sync begin
-        
-        @async while !isready(stop)
-
-          j = 0
-          k = 0
-
-          req      = nothing
-          oldreqid = nothing
-          players  = nothing
-
-          try
-
-            j, k, req = take!(creqchannels[i])
-
-          catch err
-
-            if err isa InterruptException
-              put!(messages, (i, "got interrupted"))
-              put!(stop, true)
-            else
-              put!(messages, (i, "received stop signal"))
-              put!(stop, true)
-            end
-
-            break
-
-          end
-
-          try
-
-            l  = req.length
-            id = req.id
-
-            msg = "started subcontest $j / $k of length $l for request C.$id..."
-            put!(messages, (i, msg))
-
-            if req.id != oldreqid || isnothing(players)
-
-              # Prevent decompressing of players if not necessary
-              players = get_player.(req.specs, gpu = gpu, async = async)
-
-            end
-
-            dtime = @elapsed begin
-              # TODO: callback to raise WorkerExit if stop flag is set
-              data = compete(players, req.length, req.active)
-            end
-
-            record = InternalContestRecord(data, req.id, i, dtime)
-            put!(packchannel, record)
-
-            oldreqid = req.id
-
-          catch err
-
-            if err isa WorkerExit
-              put!(messages, (i, "received stop signal"))
-            elseif err isa InterruptException
-              put!(messages, (i, "got interrupted"))
-              put!(stop, true)
-            else
-              put!(messages, (i, string(err)))
-              put!(stop, true)
-            end
-
-            break
-
-          end
-
-        end
-
-        @async while !isready(stop)
-
-          req      = nothing
-          oldreqid = nothing
-          player   = nothing
-
-          try
-
-            req = fetch(datareq)
-
-          catch err
-
-            if err isa InterruptException
-              put!(messages, (i, "got interrupted"))
-              put!(stop, true)
-            else
-              put!(messages, (i, "received stop signal"))
-              put!(stop, true)
-            end
-
-            break
-
-          end
-
-          # Adapt number of playings to train server preferences
-
-          k = clamp(playings, req.min_playings, req.max_playings)
-
-          put!(messages, (i, "started $k playings for D.$(req.id)..."))
-
-          # Derive player and preparational / branching steps
-
-          if req.id != oldreqid || isnothing(player)
-
-            # Prevent that the player is decompressed unnecessarily, as this
-            # might consume relevant processing power and/or memory
-            player = get_player(req.spec, gpu = gpu, async = async)
-
-          end
-
-          psteps = req.prepare_steps[1]:req.prepare_steps[2]
-          bsteps = req.branch_steps[1]:req.branch_steps[2]
-
-          # Try to play the games, catching stop signals via the callback that
-          # is called after each move of player
-
-          try
-            
-            dtime = @elapsed begin
-              datasets = record_self( player, k
-                           ; augment = req.augment
-                           , prepare = prepare(steps = psteps)
-                           , branch = branch(prob = req.branch_prob, steps = bsteps)
-                           , merge = false
-                           , distributed = false
-                           , callback_move = callback
-                           , kwargs... )
-            end
-
-            l = length(datasets)
-            k = sum(length, datasets)
-
-            msg = "generated $k states in $(round(dtime, digits=2))s"
-            put!(messages, (i, msg))
-
-            # Sent the record to be uploaded
-
-            data_ = compress(datasets)
-            record = InternalDataRecord(data_, req.id, i, dtime)
-            put!(buffer, record)
-
-            # Remember the request id for the next iteration
-
-            oldreqid = req.id
-
-          # An exception in the code above could mean a WorkerExit, i.e., the
-          # worker received a stop signal and stopped gracefully. It could
-          # also be from an error in record_self (I'm looking at you, knet and cuda)
-          # as well as an Interrupt event from the user (who knows how it got
-          # here...)
-
-          catch err
-
-            if err isa WorkerExit
-              put!(messages, (i, "received stop signal"))
-            elseif err isa InterruptException
-              put!(messages, (i, "got interrupted"))
-              put!(stop, true)
-            else
-              put!(messages, (i, string(err)))
-              put!(stop, true)
-            end
-
-            break
-
-          end
-
-        end
-        
-      end
-
-    end
-
-  end
-
-  # Wait for all workers to finish
-  
+  # start the communication and compute tasks
   try
-
-    for t in promises wait(t) end
-
-  # Hopefully, we have treated all exceptions in the workers,
-  # so any exception received here should be an InterruptException. If it is
-  # not, then consider it a bug and throw it / let hell break loose
-
-  catch err
-
-    !isa(err, InterruptException) && throw(err)
-
-    log(name, "got interrupted")
-
-    # Signal globally that the game is over
-
-    put!(stop, true)
-
-    # Wait for the remaining tasks
-
-    for t in promises
-      !isready(t) && wait(t)
+    with_gentle_exit(on_exit, name = "jtac-play", log = Log.info) do
+      @sync begin
+        @async play_communication(ch, cos)
+        @async play_computation(ch, wos, workers)
+      end
     end
-
+  finally
+    close(ch["exit"])
+    Log.debug("finally reached toplevel. closing exit channel")
   end
 
-  # When we arrive here, we have reason to assume that all should end
+  Log.debug("exiting $pname")
+end
 
-  !isready(stop) && put!(stop, true)
+# communication task
+# ---------------------------------------------------------------------------- #
 
-  try wait(contests)
-  catch err
+function play_communication(ch, os)
+  Log.debug("entered play_communication")
 
-    if err isa InterruptException
-      log(name, "got interrupted")
+  last_session = ""    # store past jtac-train session id (to resume)
 
-    # An exception here is to be expected if global stop is set while
-    # the channels in creqchannels are overflowing. This should never happen
-    # in realistic scenarios
+  id_data     = Ref(1) # counter for the dataset id
+  id_contest  = Ref(1) # counter for the contest id
+
+  c_data    = nothing  # confirmation id of successful data upload
+  c_contest = nothing  # confirmation id of successful contest upload
+
+  sock = Ref{Any}(nothing)  # socket for communication
+  stop = nothing            # stop signal for wait_or_exit below
+
+  # if the session changes, we reset the counters above and clear data channels
+  reset_session(sess) = begin
+    id_data[] = id_contest[] = 1
+    for key in ["data-request", "contest-request", "upload"]
+      while isready(ch[key]) take!(ch[key]) end
+    end
+  end
+
+  # cleaning up all resources that are introduced in this scope
+  cleanup(s = true) = begin
+    isnothing(sock[])    || close(sock[])
+    isnothing(c_data)    || close(c_data)
+    isnothing(c_contest) || close(c_contest)
+
+    # we do not want to close stop if we are waiting for reconnect
+    s && (isnothing(stop) || close(stop))
+  end
+
+  # cleaning up on user induced exit
+  @async if fetch(ch["exit"]) cleanup() end
+
+  # try to connect. retry if the connection is lost
+  while isopen(ch["exit"]) && !isready(ch["exit"])
+    # communicate confirmation ids of data and contest uploads
+    c_data = Channel{Int}(1)
+    c_contest = Channel{Int}(1)
+
+    # this channel only exists so that it can be closed in case of user exit,
+    # which notifies wait_or_exit below
+    stop = Channel() 
+
+    # play_connect! waits for a login confirmation on the socket
+    # it creates. to make this responsive to user exit, we have
+    # to pass a reference to the socket that is modified by play_connect!
+    # session is nothing if the connection attempt failed
+    session = play_connect(ch, sock, os)
+
+    # if something is not right, wait and clean up, then try again
+    if isnothing(sock[]) || isnothing(session) || isready(ch["exit"])
+      cleanup(false)
+      sdelay = Stl.quant("$(os.delay)")
+      Log.warn("trying again in $sdelay seconds...")
+      wait_or_exit(stop, os.delay)
+    
+    # the connection is established, run the upload and download tasks
     else
-      log(name, "exception closing down contest channels: $err")
+      try
+        # check if we connected to the same session as before. if we did,
+        # notify the user
+        put!(ch["session"], session)
+        if session != last_session 
+          reset_session(session)
+        else
+          s = Stl.keyword(session)
+          Log.info("will resume previous session $s")
+        end
+        @sync begin
+          # these two functions are blocking through sock, c_data, and
+          # c_contest. they shall only throw exceptions if they encounter a hard
+          # bug. in case of connection problems (sock closes), they simply
+          # return and the loop begins anew
+          @async play_download(ch, sock[], c_data, c_contest)
+          @async play_upload(ch, sock[], c_data, c_contest, id_data, id_contest)
+        end
+      catch err
+        rethrow_or_exit(ch, err)
+      finally
+        cleanup()
+        take!(ch["session"])
+        last_session = session
+      end
     end
-
   end
 
-  close(messages)
-  wait(messager) 
-  wait(stopper)
+  Log.debug("exiting play_communication")
+end
 
-  log(name, "exiting...")
+function play_connect(ch, sock, os)
+  Log.debug("entered play_connect")
 
-  true
+  dest = Stl.name("$(os.ip):$(os.port)")
+  Log.debug("trying to log in to $dest")
 
+  # when we hit io based errors in one of the steps of connecting + login, we do
+  # not want to rethrow them, but to cancel play_connect! gracefully.
+  # throwing an error here means that it reaches the toplevel (except if
+  # user exit has been specified)
+  catch_io_exn(f, msg) = begin
+    on_catch(_) = isnothing(sock[]) || (close(sock[]); sock[] = nothing)
+    exns = [EOFError, Base.IOError, Sockets.DNSError]
+    catch_recoverable(f, ch, on_catch, msg, exns)
+  end
+
+  # try to connect to the jtac-train instance via tcp
+  catch_io_exn("cannot connect to $dest") do
+    sock[] = Sockets.connect(os.ip, os.port)
+  end
+
+  if !isnothing(sock[])
+    # if connecting was successful, send login credentials
+    catch_io_exn("sending login request to $dest failed") do
+      login = Msg.FromPlay.Login(os.user, os.token, os.accept_data, os.accept_contest)
+      Msg.send(sock[], login)
+    end
+  end
+
+  if !isnothing(sock[])
+    # wait for the train instance to reply
+    reply = catch_io_exn("receiving auth from $dest failed") do
+      Msg.receive(sock[], Msg.LoginAuth)
+    end
+
+    # the reply could not be understood
+    if isnothing(reply)
+      Log.warn("receiving auth from $dest failed: could not understand reply")
+
+    # the reply tells us that we were refused
+    elseif !reply.accept
+      smsg = Stl.string(reply.msg)
+      Log.warn("connection to $dest refused: $smsg")
+
+    # the reply tells us that we were accepted
+    else
+      smsg = Stl.string(reply.msg)
+      ssess = Stl.string(reply.session)
+      Log.info("connection to $dest established. welcoming message:")
+      Log.info("  $smsg")
+      Log.debug("exiting play_connect (session $ssess)")
+      return reply.session
+    end
+  end
+
+  Log.debug("exiting play_connect (no session)")
+end
+
+function play_download(ch, sock, c_data, c_contest)
+  Log.debug("entered play_download")
+
+  # when something goes wrong, we want to return from this function and also
+  # cause play_upload to return
+  cleanup() = (close(sock); close(c_data); close(c_contest))
+
+  catch_com_exn(f) = begin
+    exts = [InvalidStateException, Base.IOError, EOFError]
+    msg(exn) = "download routine failed: $exn"
+    catch_recoverable(f, ch, _ -> cleanup(), msg, exts)
+  end
+
+  # the train instance wants us to disconnect
+  handle(msg :: Msg.ToPlay.Disconnect) = begin
+    Log.info("received request to disconnect")
+    cleanup()
+  end
+
+  # we receive a new data generation request
+  handle(msg :: Msg.ToPlay.DataReq) = begin
+    sreq = Stl.quant(msg)
+    Log.info("received new request $sreq")
+    isready(ch["data-request"]) && take!(ch["data-request"])
+    put!(ch["data-request"], msg)
+  end
+
+  # we receive a new contest request
+  # note that contest requests can stack, while there is always only one current
+  # data request
+  handle(msg :: Msg.ToPlay.ContestReq) = begin
+    sreq = Stl.quant(msg)
+    Log.info("received new request $sreq")
+    put!(ch["contest-request"], msg)
+  end
+
+  # we receive the confirmation that a data or contest package was
+  # uploaded sucessfully. this information is passed to play_upload via
+  # c_data and c_contest
+  handle(msg :: Msg.ToPlay.DataConfirm)    = put!(c_data, msg.id)
+  handle(msg :: Msg.ToPlay.ContestConfirm) = put!(c_contest, msg.id)
+
+  # we received input that we could not parse
+  # handle(:: Nothing) =
+
+  # loop until the socket is closed
+  while isopen(sock)
+    catch_com_exn() do
+      handle(Msg.receive(sock, Msg.Message{Train, Play}))
+    end
+  end
+  Log.debug("exiting play_download")
+end
+
+function play_upload(ch, sock, c_data, c_contest, id_data, id_contest)
+  Log.debug("entered play_upload")
+
+  # when something goes wrong, we want to return from this function and also
+  # notify play_download to return
+  cleanup() = (close(sock); close(c_data); close(c_contest))
+
+  # handling exceptions related to sock, c_data, or c_contest
+  catch_com_exn(f) = begin
+    exts = [InvalidStateException, Base.IOError, EOFError]
+    msg(exn) = "upload routine failed: $exn"
+    catch_recoverable(f, ch, _ -> cleanup(), msg, exts)
+  end
+
+  # stylized printing of data and contest packages, e.g., d5:D2 for the second
+  # dataset this client uploaded in the session (for data request 2)
+  pp(r, i)     = Stl.quant("$r$i")
+  pp(r, i, ri) = Stl.quant("$r$i:$(uppercase(r))$ri")
+
+  # receive datasets from the upload channel and transfer them to the jtac-train
+  # instance as long as the socket is open
+  while isopen(sock)
+    catch_com_exn() do
+      # this channel is populated by the compute task, and it can contain data
+      # sets or contest results
+      data = take!(ch["upload"])
+      if data isa Msg.FromPlay.Data
+        r, c, id = "d", c_data, id_data
+      else
+        r, c, id = "c", c_contest, id_contest
+      end
+
+      # determine the worker id and sign the data set (= give it the correct id)
+      worker = data.id
+      data.id = id[]
+      sworker = Stl.keyword("worker $worker")
+
+      # try to upload the package and wait for a confirmation to be put in c
+      spackage = pp(r, id[], data.reqid)
+      Log.info("uploading $spackage from $sworker")
+      time = @elapsed begin
+        Msg.send(sock, data)
+        i = take!(c)
+      end
+
+      # as a consistency check, make sure that the confirmation carries the same
+      # id as the sent package
+      if i == id[]
+        stime = Stl.quant(round(time, digits = 3))
+        Log.info("upload of $spackage took $stime seconds")
+        id[] += 1
+
+      # if the consistency check fails, we disconnect and try to reconnect
+      else
+        Log.error("upload inconsistency: $(pp(r, i)) instead of $(pp(r, id[]))")
+        cleanup()
+      end
+    end
+  end
+  Log.debug("exiting play_upload")
+end
+
+
+# computation task
+# ---------------------------------------------------------------------------- #
+
+function play_computation(ch, os, workers)
+  Log.debug("entered play_computation")
+  
+  # each worker gets its own channel to be used for logging
+  mcs = [rchannel(String, 100) for _ in workers]
+
+  # function to print messages from different workers. gracefully exits if the
+  # corresponding channel is closed
+  log_msg(i) = begin
+    sworker = Stl.keyword("worker $i:")
+    try
+      while true Log.info("$sworker " * take!(mcs[i])) end
+    catch
+      nothing
+    end
+  end
+
+  # each arriving contest request is split up and distributed to the workers.
+  # for this reason, each worker also gets a channel to fetch contests from. the
+  # results are collected in a single channels and combined in by the main
+  # process.
+  req_contest = [rchannel(Msg.ToPlay.ContestReq, 100) for _ in workers]
+  res_contest = rchannel(Msg.FromPlay.Contest, 3 * length(workers))
+
+  # a cleanup function to close the resources created in this scope
+  cleanup() = begin
+    for mc in mcs close(mc) end
+    for rc in req_contest close(rc) end
+    close(res_contest)
+  end
+
+  # start listening to the user exit signal
+  @async if fetch(ch["exit"]) cleanup() end
+
+  try
+    @sync begin
+      # logging by the workers
+      for i in 1:length(workers) @async log_msg(i) end
+
+      # register new contest requests, split them up, and distribute
+      # them to the channels in req_contest
+      @async play_contests(ch, os, req_contest, res_contest)
+
+      # start all workers 
+      @async play_workers(ch, os, workers, req_contest, res_contest, mcs)
+    end
+  catch err
+    rethrow_or_exit(ch, err)
+  finally
+    cleanup()
+  end
+
+  Log.debug("exiting play_computation")
+end
+
+function play_contests(ch, os, req_contest, res_contest)
+  Log.debug("entered play_contests")
+
+  # each loop corresponds to the processing of one received contest request
+  while isopen(res_contest)
+    # we wait for the next request. take it and divide it into smaller
+    # pieces that are sent to the workers
+    req = take!(ch["contest-request"])
+    subreqs = play_subdivide_contests(req, playings) #TODO
+    k = length(subreqs)
+
+    # some logging
+    sl, sk, sreq = Stl.quant(req.length), Stl.quant(k), Stl.quant(req)
+    Log.info("dividing $sreq of length $sl in $sk sub-requests")
+
+    # place the subcontests in the respective worker queues.
+    # the workers conduct the simulations place the results in
+    # res_contest
+    for (i, subreq) in enumerate(subreqs)
+      wid = (i % m) + 1 
+      put!(req_contest[wid], subreq)
+    end
+
+    # after some time, we will receive k result contests to take 
+    res = map(_ -> take!(res_contest), 1:k)
+    time = sum(x -> x.time, res)
+
+    # all of the results are combined to a single contest result
+    # and put in the gobal upload channel
+    Log.info("simulation of $sreq finished")
+    data = combine(res, time)
+    put!(ch["upload"], data)
+  end
+  Log.debug("exiting play_contests")
+end
+
+function play_workers(ch, os, workers, req_contest, res_contest, mcs)
+  Log.debug("entered play_workers")
+
+  # count the number of available GPUs 
+  ngpu = os.use_gpu ? length(CUDA.devices()) : 0
+  if os.use_gpu && length(workers) > ngpu
+    sworkers = Stl.name("$(length(workers)) workers")
+    sngpu = Stl.quant("$ngpu")
+    Log.info("note: $sworkers will share $sngpu GPU device[s]")
+  end
+
+  # start all workers by calleng the play_work function on them
+  @sync begin
+    for i in 1:length(workers)
+      Distributed.@spawnat workers[i] begin
+        # set the CUDA GPU device
+        os.use_gpu && CUDA.device!((i-1) % ngpu)
+        # do the actual work, i.e., either conduct self plays or simulate
+        # a competition
+        play_work(ch, os, i, req_contest[i], res_contest, mcs[i])
+      end
+    end
+  end
+  Log.debug("exiting play_workers")
+end
+
+function play_work(ch, os, i, reqc, resc, mc)
+  Log.debug(mc, "entered play_work")
+  reqd = ch["data-request"]
+
+  # variable that will contain information about the prior iteration. reusing
+  # it, if the session has not changed, saves some computational effort
+  cache = nothing
+
+  # reaction if a channel is closed
+  msg = "channel became unavailable"
+  on_catch() = (close(mc); close(reqc))
+  exts = [InvalidStateException, WorkerStopException]
+
+  # main simulation loop. one iteration is one set of self plays or one contest
+  while isopen(mc)
+    catch_recoverable(ch, on_catch, msg, exts, warn = s -> Log.warn(mc, s)) do
+      # get the current session. if we are not connected to a jtac-train server
+      # this will block. the block will be released on reconnect, or if the
+      # user decides to exit (which will cause an InvalidStateException here)
+      session = fetch(ch["session"])
+
+      # TODO: I don't know how to do the selection of the next request to tackle
+      # without polling when we cannot wait / select for the first out of two
+      # events...
+      req = nothing
+      while isnothing(req)
+        if     isready(reqc) req = take!(reqc)
+        elseif isready(reqd) req = fetch(reqd)
+        else   sleep(0.25) end
+      end
+
+      # conduct the request
+      x, cache = play_selfplay(ch, os, i, reqc, resc, mc, cache, req)
+
+      # before we upload the data record, we have to check if we are still in
+      # the same session
+      if fetch(ch["session"]) == session
+        put!(ch["upload"], x)
+      
+      # if the session has changed, we have to discard the data
+      else
+        sreq = Stl.quant(req)
+        Log.warn(mc, "discarding record for $sreq (session changed)")
+        cache = nothing
+      end
+
+      # make sure that we free as much memory as possible. not doing this has
+      # shown to lead to suboptimal GC performance
+      GC.gc()
+      GC.gc()
+    end
+  end
+  Log.debug(mc, "exiting play_work")
+end
+
+function play_selfplay(ch, os, i, reqc, _, mc, cache, req :: Msg.ToPlay.DataReq)
+  Log.debug(mc, "entered play_selfplay (data)")
+
+  # how many playings will actually take place
+  k = clamp(os.playings, req.min_playings, req.max_playings)
+  sk = Stl.quant("$k")
+  sreq = Stl.quant(req)
+  Log.info(mc, "starting $sk self plays for $sreq")
+
+  # we experienced memory issues when not regularly calling GC.gc(). this
+  # callback takes care of this, and also checks if we should stop playing
+  # due to user exit
+  now = Dates.time()
+  cb() = begin
+    if isready(ch["exit"])
+      throw(WorkerStopException())
+
+    # the absolute value here makes sure that we call the GC even if the
+    # system time is changed at some point during the self playings
+    elseif abs(Dates.time() - now) > os.gc_interval
+      now = Dates.time()
+      GC.gc()
+      GC.gc()
+    end
+  end
+
+  # check the cache and reuse the old player if the request id has not changed
+  if !isnothing(cache) && req.reqid == cache[1]
+    Log.debug(mc, "reusing cached player")
+    player = cache[2]
+
+  # if the request id has changed, we have to build the player anew
+  else
+    Log.debug(mc, "building new player from request $sreq")
+    player = Player.build_player(req._spec |> decompress, gpu = os.use_gpu, async = os.async)
+  end
+  
+  # conduct the actual self plays and measure the time it takes the worker
+  # to do them
+  time = @elapsed begin
+    prepare = Training.prepare(steps = req.init_steps)
+    branch = Training.branch(prob = req.branch, steps = req.branch_steps)
+    Log.debug(mc, "generating dataset...")
+    ds = Training.record_self( player, os.playings
+                             , augment = req.augment
+                             , prepare = prepare
+                             , branch = branch
+                             , callback_move = cb
+                             , merge = false)
+  end
+
+  stime = Stl.quant(round(time, digits = 3))
+  Log.info(mc, "finished $sk self plays for $sreq in $stime seconds")
+
+  Log.debug(mc, "exiting play_selfplay (data)")
+
+  # return the data package and the new cache
+  Msg.FromPlay.Data(ds, req.reqid, i, time), (req.reqid, player)
+end
+
+
+function play_selfplay(ch, os, i, reqc, resc, mc, cache, req :: Msg.ToPlay.ContestReq)
+  Log.debug(mc, "entered play_selfplay (contest)")
+  @assert false "contests are not yet implemented"
+  Log.debug(mc, "exiting play_selfplay (contest)")
 end
 

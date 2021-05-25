@@ -7,12 +7,15 @@
 # Base.@sync has the disadvantage that tasks can fail silently and the exception
 # will never reach the outside code for error handling.
 import Base.Experimental: @sync
+import .Msg: Train, Play, Watch
+
+using .Events
 
 """
 Auxiliary type that collects information about connected clients.
 """
 struct ClientInfo{R}
-  login :: Login{R}
+  login :: Msg.Login{R}
   sock :: Sockets.TCPSocket
   ip :: Sockets.IPAddr
   port :: UInt16
@@ -34,7 +37,7 @@ end
 function parse_history(file)
   try
     map(readlines(file)) do line
-      parse_json(line, Event)
+      Events.parse(line, Event)
     end
   catch err
     if err isa SystemError
@@ -46,8 +49,8 @@ function parse_history(file)
   end
 end
 
-init_model(m :: String, folder) = Jtac.load_model(joinpath(folder, m))
-init_model(m :: Jtac.Model, _) = m
+init_model(m :: String, folder) = Model.load(joinpath(folder, m))
+init_model(m :: Model.AbstractModel, _) = m
 
 init_history(:: Nothing, _) = []
 init_history(h :: String, folder) = parse_history(joinpath(folder, h))
@@ -79,7 +82,7 @@ function initialize(context, model, folder, name, info, base, history)
   end
   model = init_model(model, folder)
   events = init_history(history, folder)
-  push!(events, Event(Model(model, name, info, base)), Event(context))
+  push!(events, Event(ModelBody(model, name, info, base)), Event(ContextBody(context)))
   context, model, base, events
 end
 
@@ -88,7 +91,7 @@ end
 
 Start a jtac train session with initial model `model` and context `context`.
 """
-function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
+function train( model :: Union{String, Model.NeuralModel{<: Game.AbstractGame, false}}
               , model_name :: String
               , context :: Context
               ; ip          = "127.0.0.1"
@@ -111,12 +114,12 @@ function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
   channels = Dict{String, Distributed.RemoteChannel}(
       "context"          => remote_channel( Context, 1 )
     , "context-update"   => remote_channel( Context, 1 )
-    , "ref-model"        => remote_channel( Jtac.NeuralModel, 1 )
-    , "ref-model-update" => remote_channel( Jtac.NeuralModel, 1 )
-    , "data-request"     => remote_channel( TrainDataServe, 1 )
-    , "data"             => remote_channel( Tuple{String, ServeData}, 100 )
-    , "contest-request"  => remote_channel( TrainContestServe, 100 )
-    , "contest"          => remote_channel( ServeContest, 100 )
+    , "ref-model"        => remote_channel( Model.NeuralModel, 1 )
+    , "ref-model-update" => remote_channel( Model.NeuralModel, 1 )
+    , "data-request"     => remote_channel( Msg.ToPlay.DataReq, 1 )
+    , "data"             => remote_channel( Tuple{String, Msg.FromPlay.Data}, 100 )
+    , "contest-request"  => remote_channel( Msg.ToPlay.ContestReq, 100 )
+    , "contest"          => remote_channel( Msg.FromPlay.Contest, 100 )
     , "history"          => remote_channel( Vector{Event}, 100 )
     , "shutdown"         => remote_channel( Bool, 1 ) )
 
@@ -159,16 +162,16 @@ function train( model :: Union{String, Jtac.NeuralModel{<: Jtac.Game, false}}
 
   # TODO: Better options to choose jth and jtm file name / path
   jth = joinpath(folder, "$model_name.jth")
-  write(jth, join(json.(com.result), "\n"))
+  write(jth, join(Events.json.(com.result), "\n"))
   Log.info("saved the history of the training session as '$jth'")
 
   if isnothing(trn.result)
     Log.warn("could not save model: nothing returned by training task")
   elseif trn.result isa Exception
     Log.warn("could not save model: training task returned exception")
-  elseif trn.result isa Jtac.NeuralModel
+  elseif trn.result isa Model.NeuralModel
     jtm = joinpath(folder, model_name)
-    Jtac.save_model(jtm, trn.result)
+    Model.save(jtm, trn.result)
     Log.info("saved model returned by the training task as '$jtm.jtm'")
   else
     Log.warn("could not save model")
@@ -323,22 +326,22 @@ Returns either `nothing` (in case of failed authentication) or a value of type
 function authenticate(login, sock, ip, port, token, user, sess)
   # TODO: DANGEROUS: getpeername can cause a segfault if called when not
   # connected !!!
-  reject(msg) = (send(sock, LoginAuth(false, msg, sess)); close(sock))
+  reject(msg) = (Msg.send(sock, Msg.LoginAuth(false, msg, sess)); close(sock))
 
   if login.token != token
     Log.info("authentication of $ip:$port failed: wrong token '$(login.token)'")
     reject("token '$(login.token)' incorrect.")
 
-  elseif login.version != VERSION
+  elseif login.version != JTAC_VERSION
     Log.info("authentication of $ip:$port failed: wrong version '$(login.version)'")
     msg = "jtac server version $(login.version) " *
-          "is not supported (need $(VERSION))."
+          "is not supported (need $(JTAC_VERSION))."
     reject(msg)
 
   else
     msg1 = "Welcome, $(login.name)! "
     msg2 = "Thanks for supporting the jtac training session of $(user)."
-    send(sock, LoginAuth(true, msg1 * msg2, sess))
+    Msg.send(sock, Msg.LoginAuth(true, msg1 * msg2, sess))
     ClientInfo(login, sock, ip, port)
   end
 end
@@ -358,18 +361,18 @@ been established and authentication was successful.
 Information obtained from the client / information intended to be sent to the
 client is communicated through the program via `channels` and `history`.
 """
-function handle_client!(channels, _, client :: ClientInfo{Serve})
+function handle_client!(channels, _, client :: ClientInfo{Play})
 
   name = client.login.name
-  contest = Channel{ServeContest}(1)
+  contest = Channel{Msg.FromPlay.Contest}(1)
   history = channels["history"]
 
-  body = Client(name, string(client.ip), client.port, false)
+  body = ClientBody(name, string(client.ip), client.port, false)
   put!(history, [Event(body)])
   Log.info("connection to serve client $(client.ip):$(client.port) ($name) established")
 
   send_request(req, type) = try
-    send(client.sock, req)
+    Msg.send(client.sock, req)
   catch err
     if !shutdown_exn(err)
       Log.error("sending $type request to client $name failed: $err")
@@ -404,8 +407,8 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
         # after some time, a contest should arrive
         data = take!(contest)
         put!(channels["contests"], data)
-        send(client.sock, TrainContestConfirmServe(data.id))
-        body = Contest(client.login.name, r, data)
+        Msg.send(client.sock, Msg.ToPlay.ContestConfirm(data.id))
+        body = ContestBody(client.login.name, r, data)
         put!(history, [Event(body)])
       end
       sleep(1)
@@ -414,7 +417,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
 
   receive_message() = try
     !eof(client.sock)
-    receive(client.sock, Message{Serve, Train})
+    Msg.receive(client.sock, Msg.Message{Play, Train})
   catch err
     if err isa Base.IOError
       Log.error("receiving data from client $name failed: connection closed")
@@ -426,12 +429,12 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
 
   receive_loop() = while isopen(client.sock)
     data = receive_message()
-    if data isa ServeData
+    if data isa Msg.FromPlay.Data
       put!(channels["data"], (name, data))
-      body = Data(name, data)
+      body = DataBody(name, data)
       put!(history, [Event(body)])
-      send(client.sock, TrainDataConfirmServe(data.id))
-    elseif data isa ServeContest
+      Msg.send(client.sock, Msg.ToPlay.DataConfirm(data.id))
+    elseif data isa Msg.FromPlay.Contest
       if length(contest.data) < contest.sz_max
         put!(contest, data)
       else
@@ -439,9 +442,9 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
         take!(contest, data)
         put!(contest, data)
       end
-    elseif data isa ServeLogout
+    elseif data isa Msg.FromPlay.Logout
       close(client.sock)
-      body = Client(name, client.ip, client.port, true)
+      body = ClientBody(name, string(client.ip), client.port, true)
       put!(history, [Event(body)])
     elseif isnothing(data)
       break
@@ -449,7 +452,7 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
   end
 
   disconnect() = begin
-    body = Client(name, string(client.ip), client.port, true)
+    body = ClientBody(name, string(client.ip), client.port, true)
     put!(history, [Event(body)])
     Log.info("disconnected from client $name")
   end
@@ -476,14 +479,14 @@ function handle_client!(channels, _, client :: ClientInfo{Serve})
 
 end
 
-function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Monitor})
+function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Watch})
 
   count = length(hist)
   name  = client.login.name
   Log.info("connection to monitor $(client.ip):$(client.port) ($name) established")
 
   send_events(events) = try
-    for ev in events send(client.sock, ev) end
+    for ev in events Msg.send(client.sock, ev) end
   catch err
     if !shutdown_exn(err)
       Log.error("failed to send event to monitor $name: $err")
@@ -502,7 +505,7 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
 
   receive_context() = try
     if !eof(client.sock)
-      receive(client.sock, Event)
+      Msg.receive(client.sock, Event)
     end
   catch err
     if err isa Union{Base.IOError, EOFError}
@@ -515,14 +518,14 @@ function handle_client!(channels, hist :: Vector{Event}, client :: ClientInfo{Mo
 
   context_loop() = while isopen(client.sock)
     ev = receive_context()
-    if !isnothing(ev) && ev.body isa Context
-      i = findlast(e -> e.body isa Context, hist)
-      ev.body.id = isnothing(i) ? 0 : hist[i].body.id + 1
+    if !isnothing(ev)
+      i = findlast(e -> e.body isa ContextBody, hist)
+      ev.body.ctx.id = isnothing(i) ? 0 : hist[i].body.ctx.id + 1
       put!(channels["history"], [Event(ev.body)])
-      put!(channels["context-update"], ev.body)
-      Log.info("received context $(ev.body.id) from monitor $name")
+      put!(channels["context-update"], ev.body.ctx)
+      Log.info("received context $(ev.body.ctx.id) from monitor $name")
       # TODO: When we quickly add two contests, they get the same id, since
-      # update of hist is slower than receiving second context
+      # update of hist may be slower than receiving second context
     end
   end
 
@@ -577,7 +580,7 @@ function handle_clients!(channels, server, history, token, user, max_clients)
   ctasks = []
 
   on_connection(sock, ip, port) = try
-    login = receive(sock, Login)
+    login = Msg.receive(sock, Msg.Login)
     client = authenticate(login, sock, ip, port, token, user, sess)
     if isnothing(client)
       Log.info("connection request from $ip:$port rejected (login failed)")
@@ -587,7 +590,9 @@ function handle_clients!(channels, server, history, token, user, max_clients)
     end
   catch err
     if !check_shutdown(channels) && !shutdown_exn(err)
+      @show err
       Log.warn("client $ip:$port disconnected during login")
+      # make sure that the connection is closed after this!
     else
       rethrow(err)
     end
@@ -722,7 +727,7 @@ function adapt_optimizer!(model, c, cold)
   lr = c.learning_rate
   gamma = c.momentum
   if isnothing(cold) || gamma != cold.momentum || lr != cold.learning_rate
-    Jtac.set_optimizer!(model, Knet.Momentum, lr = lr, gamma = gamma)
+    Training.set_optimizer!(model, Knet.Momentum, lr = lr, gamma = gamma)
   end
 end
 
@@ -742,18 +747,19 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
   Log.info(msg, "selected training data of quality $qavg for epoch $epoch")
 
   l = ctx.loss_weights
-  loss = Jtac.Loss(value = l[1], policy = l[2], reg = l[3])
-  time = @elapsed Jtac.train!( model, trainset
-                             ; loss = loss
-                             , callback_step = cb
-                             , batchsize = ctx.batch_size
-                             , epochs = ctx.iterations )
+  loss = Training.Loss(value = l[1], policy = l[2], reg = l[3])
+  time = @elapsed Training.train!( model, trainset
+                                 ; loss = loss
+                                 , callback_step = cb
+                                 , batchsize = ctx.batch_size
+                                 , epochs = ctx.iterations
+                                 , quiet = true )
 
   losses = map([trainset, test.data]) do ds
-    names = Jtac.loss_names(loss)
+    names = Training.loss_names(loss)
     # TODO: make maxbatch adaptable when starting jtac train instance
     if length(ds) > 0
-      ls = Jtac.loss(loss, model, ds, maxbatch = 1024)
+      ls = Training.loss(loss, model, ds, maxbatch = 1024)
     else
       ls = [0. for _ in names]
     end
@@ -762,7 +768,7 @@ function train_epoch!(model, train, test, ctx, epoch, era, channels, msg)
 
   len = length(trainset)
   Log.info(msg, "finished epoch $epoch in $time seconds")
-  ep = Epoch(epoch, losses..., qavg, cap, length(trainset), ctx.id, era)
+  ep = EpochBody(epoch, losses..., qavg, cap, length(trainset), ctx.id, era)
   put!(channels["history"], [Event(ep)])
   len 
 end
@@ -781,7 +787,7 @@ function conclude_era(model, folder, name, epoch, era, epochcount, channels, msg
       # save the model (with possibly updated context)
       path = joinpath(folder, "$(name)-$era")
       Log.info(msg, "saving reference model as '$path.jtm'")
-      Jtac.save_model(path, model |> Jtac.to_cpu)
+      Model.save(path, model |> Model.to_cpu)
 
       # remove backup files that are too old
       if ctx.backups > 0 && era - ctx.backups >= 1
@@ -796,8 +802,8 @@ function conclude_era(model, folder, name, epoch, era, epochcount, channels, msg
   end
 
   # initiate new era
-  change!(channels["ref-model-update"], copy(model |> Jtac.to_cpu))
-  put!(channels["history"], [Event(Era(era+1, epoch, []))])
+  change!(channels["ref-model-update"], copy(model |> Model.to_cpu))
+  put!(channels["history"], [Event(EraBody(era+1, epoch, []))])
   Log.info(msg, "era $(era+1) starts")
 
   true
@@ -822,13 +828,13 @@ end
 function precompile_trainstep(msg, model)
   Log.info(msg, "simulating training step to trigger precompilation...")
   m = copy(model)
-  gt = Jtac.gametype(m)
-  len = Jtac.policy_length(gt)
+  gt = Model.gametype(m)
+  len = Game.policy_length(gt)
   games = [gt() for _ in 1:100]
   label = [rand(Float32, 1+len) for _ in 1:100]
   flabel = Vector{Float32}[]
-  ds = Jtac.DataSet(games, label, flabel)
-  Jtac.train!(m, ds, epochs = 1, batchsize = 20)
+  ds = Training.Dataset(games, label, flabel)
+  Training.train!(m, ds, epochs = 1, batchsize = 20, quiet = true)
   Log.info(msg, "precompilation done")
 end
 
@@ -839,13 +845,13 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
   # get reference model and start era
   model = fetch(channels["ref-model"])
   change!(channels["ref-model-update"], model)
-  put!(channels["history"], [Event(Era(0, 0, []))]) # TODO: era metrics
+  put!(channels["history"], [Event(EraBody(0, 0, []))]) # TODO: era metrics
 
   # actual model that is used for training
-  model = use_gpu ? Jtac.to_gpu(model) : copy(model)
+  model = use_gpu ? Model.to_gpu(model) : copy(model)
 
-  trainpool = DataPool{Jtac.gametype(model)}(0)
-  testpool = DataPool{Jtac.gametype(model)}(0)
+  trainpool = DataPool{Model.gametype(model)}(0)
+  testpool = DataPool{Model.gametype(model)}(0)
 
   era   = 0
   epoch = 0
@@ -863,7 +869,7 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
       ok = refresh_data!(trainpool, testpool, data, reqid, ctx, msg)
 
       if !ok
-        Log.info(msg, "waiting for fresh data before training can continue")
+        Log.info(msg, "waiting for new data before training can continue")
         await_data(channels)
         continue
       end
@@ -883,11 +889,11 @@ function train_worker(channels, folder, name, use_gpu, reqid, return_model, msg)
     end
   catch err
     if shutdown_exn(err) || check_shutdown(channels)
-      change!(return_model, model |> Jtac.to_cpu)
+      change!(return_model, model |> Model.to_cpu)
       Log.info(msg, "received shutdown signal")
       throw_shutdown()
     else
-      change!(return_model, model |> Jtac.to_cpu)
+      change!(return_model, model |> Model.to_cpu)
       Log.error(msg, "unexpected error: $err")
       rethrow(err)
     end
@@ -907,8 +913,8 @@ function trntask(channels, folder, name, use_gpu, proc)
 
   commit_request(ctx, model, msg) = begin
     rid = fetch(reqid) + 1
-    change!(channels["data-request"], TrainDataServe(rid, ctx, model))
-    put!(channels["history"], [Event(Datareq(rid, ctx.id))])
+    change!(channels["data-request"], Msg.ToPlay.DataReq(rid, ctx, model))
+    put!(channels["history"], [Event(DataReqBody(rid, ctx.id))])
     Log.info("prepared new data request D$rid ($msg)")
     change!(reqid, rid)
   end
@@ -937,7 +943,7 @@ function trntask(channels, folder, name, use_gpu, proc)
     end
   end
 
-  return_model = remote_channel(Jtac.NeuralModel, 1)
+  return_model = remote_channel(Model.NeuralModel, 1)
   start_worker() = wrap_train_worker(proc, channels, folder, name, use_gpu, reqid, return_model, msg)
 
   tasks = [handle_msg, handle_context_changes, handle_ref_changes, start_worker]
