@@ -2,9 +2,10 @@
 # -------- Layer ------------------------------------------------------------- # 
 
 """
-Layers are the functional units for `NeuralNetworkModel`s. They are composable
-and allow for the easy creation of neural networks that are compatible to
-a given game by the macros `@chain` and `@stack`.
+Layers are the computational units of `NeuralModel`s. They come in primitive
+(`PrimitiveLayer`, like `Dense` or `Conv`) and composite (`CompositeLayer`, like
+`Chain`) forms. See the macros `@chain`, `@stack`, and `@residual` for the
+convenient creation of composite layers.
 """
 abstract type Layer{GPU} <: Element{GPU} end
 

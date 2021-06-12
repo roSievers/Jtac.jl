@@ -31,11 +31,39 @@ Let `player` make an action decision about `game`, based on the policy
 decide(p :: AbstractPlayer, game :: AbstractGame) = choose_index(think(p, game))
 
 """
+    decide_chain(player, game)
+
+Let `player` make a chain of action decisions until the active player changes.
+"""
+function decide_chain(p :: AbstractPlayer, game :: AbstractGame)
+  actions = []
+  game = copy(game)
+  current = Game.current_player(game)
+  while Game.current_player(game) == current && !Game.is_over(game)
+    action = decide(p, game)
+    apply_action!(game, action)
+    push!(actions, action)
+  end
+  actions
+end
+
+"""
     turn!(game, player)
 
 Modify `game` by letting `player` take one turn.
 """
 turn!(game :: AbstractGame, p :: AbstractPlayer) = apply_action!(game, decide(p, game))
+
+"""
+    turn_chain!(game, player)
+
+Modify `game` by letting `player` finish one chain.
+"""
+function turn_chain!(game :: AbstractGame, p :: AbstractPlayer)
+  for action in decide_chain(p, game)
+    apply_action!(game, action)
+  end
+end
 
 """
     name(player)
@@ -270,19 +298,54 @@ end
 
 function evaluate(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 
-  v, p = mcts_value_policy( p.model
-                          , game
-                          , power = p.power
-                          , temperature = p.temperature
-                          , exploration = p.exploration
-                          , dilution = p.dilution )
+  v, pol = mcts_value_policy( p.model
+                            , game
+                            , power = p.power
+                            , temperature = p.temperature
+                            , exploration = p.exploration
+                            , dilution = p.dilution )
 
   policy = zeros(Float32, policy_length(game))
-  policy[legal_actions(game)] .= p
+  policy[legal_actions(game)] .= pol
 
   (value = v, policy = policy)
 end
 
+function decide_chain( p :: MCTSPlayer{G}
+                     , game :: G
+                     ; cap_power = false ) where {G <: AbstractGame}
+  actions = []
+  game = copy(game)
+  root = Node()
+  current = Game.current_player(game)
+
+  # act as long as the game is not finished and it is our turn
+  while !Game.is_over(game) && Game.current_player(game) == current
+    remaining_power = round(Int, sum(root.visit_counter))
+    power = cap_power ? p.power - remaining_power : p.power
+    pol = mcts_policy( p.model
+                     , game
+                     , root = root
+                     , power = power
+                     , temperature = p.temperature
+                     , exploration = p.exploration
+                     , dilution = p.dilution )
+
+    # select a child index that performed well
+    index = choose_index(pol)
+
+    # move the root to the chosen child and forget the past
+    root = root.children[index]
+    root.parent = nothing
+
+    # apply and record the action
+    action = legal_actions(game)[index]
+    apply_action!(game, action)
+    push!(actions, action)
+  end
+
+  actions
+end
 
 name(p :: MCTSPlayer) = p.name
 Model.ntasks(p :: MCTSPlayer) = Model.ntasks(p.model)

@@ -1,10 +1,10 @@
 
 """
-Module that implements the Alpha Zero learning design.
+Julia module that implements the Alpha Zero learning design.
 
-The module exports implementations of various two-player board games, like
-tic-tac-toe, functions for creating neural networks that act on the states of
-games, and functionality to generate datasets through selfplay of a Monte-Carlo
+The module exports implementations of various two-player board games (like
+tic-tac-toe), functions for creating neural networks that evaluate the states of
+games, and functionality to generate datasets through selfplay via a Monte-Carlo
 Tree Search player assisted by a neural model.
 """
 module Jtac
@@ -13,7 +13,7 @@ module Jtac
 
 using Random, Statistics, LinearAlgebra
 
-import AutoGrad, Knet
+import AutoGrad, Knet, CUDA
 import Knet: identity,
              relu,
              elu,
@@ -21,7 +21,7 @@ import Knet: identity,
              tanh,
              sigm
 
-export AutoGrad, Knet
+export Knet, CUDA
 
 export identity,
        relu,

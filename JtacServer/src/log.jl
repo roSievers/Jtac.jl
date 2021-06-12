@@ -32,4 +32,3 @@ end
 function debug(c :: RemoteChannel{Channel{String}}, str)
   if DEBUG[] put!(c, "$sdebug $str") end
 end
-
