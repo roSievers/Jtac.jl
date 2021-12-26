@@ -41,8 +41,9 @@ function record_self(player, n; augment = false, kwargs...)
       update(time())
     end
     @async begin
-      dss = Training.record_self(player, n; callback = game_cb, callback_move = move_cb
-                       , merge = false, augment = augment, kwargs...)
+      dss = Training.record_self( player, n
+                                ; callback = game_cb, callback_move = move_cb
+                                , merge = false, augment = augment, kwargs...)
       put!(move_ch, false)
       put!(game_ch, false)
     end
@@ -54,7 +55,6 @@ function record_self(player, n; augment = false, kwargs...)
   min = minimum(states_per_game)
   max = maximum(states_per_game)
 
-  # TODO: print peak rate and average rate
   @printf "\n%d states created in %.2f seconds\n" sum(states_per_game) (time() - start_time)
   @printf "peak: %.2f m/s, avg: %.2f m/s\n" peak (sum(states_per_game) / (time() - start_time))
   @printf "%.2f ± %.2f states per game (min: %d, max: %d)\n" avg std min max
@@ -92,22 +92,24 @@ function record_self_threaded(player, n; augment = false, kwargs...)
     @printf "\e[2K\e[1G%.2f m/s (%d / %.2f)  |  %d game(s) finished" mps moves[] dt games[]
   end
 
-  # variable to save datasets
-  dss = nothing
-
   # We only want to work on non-master threads
-  nworkerthreads = Threads.nthreads() - 1
-  tickets = Player.ticket_sizes(n, nworkerthreads)
-  tasks = map(1:nworkerthreads) do i
-    Threads.@spawn begin
-      @assert Threads.threadid() != 1 "master thread received workload"
-      println("Thread $(Threads.threadid()) with index $i starts working")
-      ds = Training.record_self( player, tickets[i]
-                 , callback = game_cb, callback_move = move_cb
-                 , merge = false, distributed = false, augment = augment, kwargs...)
-      ds
+  nworkers = Threads.nthreads() - 1
+  tickets = Player.ticket_sizes(n, nworkers)
+  tasks = Vector{Task}(undef, nworkers)
+
+  Threads.@threads for i in 1:Threads.nthreads()
+    if i != 1
+      tasks[i-1] = @async begin
+        println("Thread $(Threads.threadid()) with index $i starts working")
+        Training.record_self( player, tickets[i-1]
+                            , callback = game_cb, callback_move = move_cb
+                            , merge = false, distributed = false
+                            , augment = augment, kwargs...)
+      end
     end
   end
+
+  dss = nothing
 
   @sync begin
     @async begin
