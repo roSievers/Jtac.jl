@@ -23,7 +23,14 @@ end
 @testset "Models" begin
   for G in [Game.TicTacToe, Game.MetaTac]
     game = G()
-    for model in [Model.Shallow(G), Model.ShallowConv(G, 20), Model.MLP(G, [200, 50])]
+    models = [
+        Model.Zoo.Shallow(G)
+      , Model.Zoo.ShallowConv(G, filters = 20)
+      , Model.Zoo.MLP(G, [200, 50])
+      , Model.Zoo.ZeroConv(G)
+      , Model.Zoo.ZeroRes(G)
+    ]
+    for model in models
       value, policy = model(game)
       @test length(value) == 1
       @test length(policy) == Model.policy_length(G)

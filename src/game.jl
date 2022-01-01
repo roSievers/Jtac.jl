@@ -277,7 +277,29 @@ is_frozen(game :: AbstractGame) = false
 
 # -------- Register new games ------------------------------------------------ #
 
-const GAMES = Dict{Symbol, Function}()
+"""
+Constant variable that maps registered game names to a function that maps
+template arguments to a game type.
+"""
+const GAMES = Dict{String, Function}()
 
-register!(f :: Function, G :: Type{<:AbstractGame}) = (GAMES[nameof(G)] = f)
+"""
+    register!(G)
+    register!(f, G)
+
+Register a new jtac game type `G`. If `G` takes template arguments, the function
+`f` must be provided. Applying `f` to the template arguments must yield the
+concrete game type. For example, to register a game with type `Game{A, B}`, you
+can use the code
+```
+register!(Game) do a, b
+  eval(Expr(:curly, :Game, a, b))
+end
+"""
+function register!(f :: Function, G :: Type{<:AbstractGame})
+  key = String(nameof(G))
+  GAMES[key] = f
+end
+
 register!(G :: Type{<:AbstractGame}) = register!(() -> G, G)
+

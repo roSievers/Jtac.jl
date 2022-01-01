@@ -10,7 +10,7 @@ end
 
 function MLP(G :: Type{<: AbstractGame}, hidden; f = Knet.relu, kwargs...)
   widths = [ prod(size(G)), hidden...]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
+  layers = [ Dense(widths[j], widths[j+1]; f) for j in 1:length(widths) - 1 ]
 
   NeuralModel(G, Chain(layers...); kwargs...)
 end
@@ -23,7 +23,7 @@ function ShallowConv( G :: Type{<: AbstractGame}
                     , filters = 64
                     , kwargs... )
 
-  NeuralModel(G, Conv(size(G)[3], filters, f); kwargs...)
+  NeuralModel(G, Conv(size(G)[3], filters; f); kwargs...)
 end
 
 

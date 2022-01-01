@@ -12,7 +12,7 @@ mutable struct MNKGame{M, N, K} <: AbstractGame
 end
 
 register!(MNKGame) do m, n, k
-  eval(Expr(:curly, nameof(MNKGame), m, n, k))
+  eval(Expr(:curly, nameof(MNKGame), Int(m), Int(n), Int(k)))
 end
 
 const TicTacToe = MNKGame{3, 3, 3}

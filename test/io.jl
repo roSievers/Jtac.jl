@@ -1,12 +1,12 @@
 
 
 @testset "IO" begin
-  for (l, r) in [ (Model.Dense(20, 30, relu), rand(Float32, 20, 2))
-                , (Model.Pointwise(tanh), rand(Float32, 15, 24, 2, 5))
+  for (l, r) in [ (Model.Dense(20, 30, f = relu), rand(Float32, 20, 2))
+                , (Model.Pointwise(f = tanh), rand(Float32, 15, 24, 2, 5))
                 , (Model.Conv(3, 5), rand(Float32, 7, 7, 3, 12))
                 , (Model.Deconv(5, 3), rand(Float32, 8, 8, 5, 4))
                 , (Model.Pool(), rand(Float32, 5, 5, 5, 5))
-                , (Model.Dropout(0.7, elu), rand(Float32, 7,7,7,7))
+                , (Model.Dropout(0.7, f = elu), rand(Float32, 7,7,7,7))
                 , (Model.Batchnorm(10), rand(Float32, 10, 5)) ]
 
     ld = l |> Model.decompose |> Model.compose
@@ -25,7 +25,7 @@
     model2 = Model.load(name)
     @test typeof(model) == typeof(model2)
 
-    game = Game.random_turn!(G())
+    game = Game.random_turns!(G(), 3)
     @test model(game) == model2(game)
 
     player = Player.MCTSPlayer(model, power = 10)

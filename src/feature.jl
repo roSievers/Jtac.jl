@@ -5,7 +5,7 @@
 A feature that describes additional information about a game state.
 
 Subtypes of this abstract type must be callable as
-    
+
     (f :: MyFeature)(game :: G, history :: Vector{G})
 
 on instances `game` of games `G <: Game` that are supported by the feature, and
@@ -79,12 +79,12 @@ This feature produces a constant feature vector on all game states of all game
 types. It uses the l2 loss function to evaluate the feature prediction quality.
 """
 struct ConstantFeature <: Feature 
-  name :: Symbol
+  name :: String
   data :: Vector{Float32}
 end
 
-function ConstantFeature(data; name = :const)
-  ConstantFeature(Symbol(name), data)
+function ConstantFeature(data; name = "const")
+  ConstantFeature(name, data)
 end
 
 (f :: ConstantFeature)(:: G, :: Vector{G}) where {G <: AbstractGame} = f.data

@@ -3,7 +3,7 @@
 Specification of an MCTS or Intuition player used to bring players to other
 processes.
 """
-struct PlayerSpec
+mutable struct PlayerSpec
 
   # Reference model
   model :: AbstractModel{G, false} where {G <: AbstractGame}
@@ -29,10 +29,11 @@ function PlayerSpec(player :: IntuitionPlayer)
 end
 
 """
-    build_player(spec; gpu = false, async = false)
+    build_player(spec; gpu = false, async = false, cache = 0)
 
 Derive a player from a specification `spec`. The model of the player is
 transfered to the gpu or brought in async mode if the respective flags are set.
+If `cache > 0`, the model is wrapped by `Model.Caching` with `max_cachesize = cache` 
 """
 function build_player(spec :: PlayerSpec; gpu = false, async = false, cache = 0)
   model = spec.model

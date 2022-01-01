@@ -9,6 +9,8 @@ Tree Search player assisted by a neural model.
 """
 module Jtac
 
+const _version = v"0.1"
+
 # -------- Packages ---------------------------------------------------------- #
 
 using Random, Statistics, LinearAlgebra
@@ -21,7 +23,7 @@ import Knet: identity,
              tanh,
              sigm
 
-export Knet, CUDA
+export Knet, CUDA, AutoGrad
 
 export identity,
        relu,
@@ -101,7 +103,9 @@ end #module Game
 module Model
 
   using Random, Statistics, LinearAlgebra
-  using CUDA, BSON
+  using CUDA
+  import MsgPack
+
   using ..Jtac
   using ..Util
   using ..Game
