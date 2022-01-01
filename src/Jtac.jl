@@ -15,7 +15,7 @@ const _version = v"0.1"
 
 using Random, Statistics, LinearAlgebra
 
-import AutoGrad, Knet, CUDA, MsgPack
+import AutoGrad, Knet, CUDA
 import Knet: identity,
              relu,
              elu,
@@ -32,9 +32,9 @@ export identity,
        tanh,
        sigm
 
-
 # -------- MsgPack Configuration --------------------------------------------- #
 
+import MsgPack
 include("msgpack.jl")
 
 # -------- Utilities --------------------------------------------------------- #
@@ -44,12 +44,16 @@ module Util
   using Distributed
   import ProgressMeter
 
+  using ..Jtac
+
   include("util.jl")
 
   export one_hot,
          choose_index,
          apply_dihedral_group,
          apply_klein_four_group,
+         prepare,
+         branch,
          stepper
 
 end # module Util
@@ -60,6 +64,7 @@ module Game
 
   using Random, Statistics, LinearAlgebra
   import MsgPack
+
   using ..Jtac
   using ..Util
 
@@ -238,12 +243,11 @@ module Player
 
 end # module Player
 
-# -------- Training ---------------------------------------------------------- #
+# -------- Datasets ---------------------------------------------------------- #
 
-module Training
+module Data
 
   using Random, Statistics, LinearAlgebra
-  using Printf, Distributed
   import MsgPack
 
   using ..Jtac
@@ -253,20 +257,37 @@ module Training
   using ..Player
 
   include("dataset.jl")
+
+  export Dataset, Datacache, Batches
+
+  export save,
+         load,
+         augment,
+         record_self,
+         record_against
+
+end # Data
+
+# -------- Training ---------------------------------------------------------- #
+
+module Training
+
+  using Random, Statistics, LinearAlgebra
+  using Printf, Distributed
+
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Model
+  using ..Player
+  using ..Data
+
   include("loss.jl")
   include("learning.jl")
 
   export Dataset, Loss
 
-  export save,
-         load,
-         augment,
-         minibatch, 
-         branch,
-         prepare,
-         record_self,
-         record_against,
-         loss,
+  export loss,
          caption,
          set_optimizer!,
          train_step!,
@@ -289,6 +310,7 @@ export Util,
        Game,
        Model,
        Player,
+       Data,
        Training
 
 end # module Jtac

@@ -29,11 +29,11 @@
     @test model(game) == model2(game)
 
     player = Player.MCTSPlayer(model, power = 10)
-    dataset = Training.record_self(player, 1, augment = true)
+    dataset = Data.record_self(player, 1, augment = true)
 
     name = tempname()
-    Training.save(name, dataset)
-    ds = Training.load(name)
+    Data.save(name, dataset)
+    ds = Data.load(name)
     @test all(Game.array(ds.games) .== Game.array(dataset.games))
     @test all(ds.label .== dataset.label)
     @test all(ds.flabel .== dataset.flabel)

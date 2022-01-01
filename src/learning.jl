@@ -96,7 +96,7 @@ Train `model`, or the training model of `player`, on `dataset`.
 # Examples
 ```julia
 G = Game.TicTacToe
-dataset = Training.record_self(Player.MCTSPlayer(), 10, game = G) 
+dataset = Data.record_self(Player.MCTSPlayer(), 10, game = G) 
 model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
 loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
 Training.train!(model, dataset, loss = loss, epochs = 15)

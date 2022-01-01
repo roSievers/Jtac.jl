@@ -471,7 +471,6 @@ end
 
 # -------- Generating Datasets: API ------------------------------------------ #
 
-
 """
     record_self(player [, n]; <keyword arguments>)
 
@@ -508,14 +507,14 @@ game state. The feature labels are calculated by applying the provided features
 # Record 20 self-playings of an classical MCTS player with power 250
 G = Game.TicTacToe
 player = Player.MCTSPlayer(power = 250)
-dataset = Training.record_self(player, 20, game = G, branch = Training.branch(prob = 0.25))
+dataset = Data.record_self(player, 20, game = G, branch = Util.branch(prob = 0.25))
 
 # Record 10 self-playings of MCTS player with shallow predictor network and
 # power 50
 G = Game.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
 player = Player.MCTSPlayer(model, power = 50)
-dataset = Training.record_self(player, 10, augment = false)
+dataset = Data.record_self(player, 10, augment = false)
 ```
 """
 function record_self( p :: AbstractPlayer

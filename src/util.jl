@@ -86,6 +86,14 @@ function apply_klein_four_group(action :: Int, s :: Tuple)
   ]
 end
 
+# -------- Random Branching Helpers ------------------------------------------ #
+
+prepare(; steps = 0) = game -> Game.random_turns!(copy(game), steps)
+
+function branch(; prob = 0., steps = 1)
+  game -> rand() < prob ? Game.random_turns!(copy(game), steps) : nothing
+end
+
 
 # -------- Parallel-Stable Progress Maps ------------------------------------- #
 

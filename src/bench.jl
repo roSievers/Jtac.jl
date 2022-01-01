@@ -41,9 +41,9 @@ function record_self(player, n; augment = false, kwargs...)
       update(time())
     end
     @async begin
-      dss = Training.record_self( player, n
-                                ; callback = game_cb, callback_move = move_cb
-                                , merge = false, augment = augment, kwargs...)
+      dss = Data.record_self( player, n
+                            ; callback = game_cb, callback_move = move_cb
+                            , merge = false, augment = augment, kwargs...)
       put!(move_ch, false)
       put!(game_ch, false)
     end
@@ -101,10 +101,10 @@ function record_self_threaded(player, n; augment = false, kwargs...)
     if i != 1
       tasks[i-1] = @async begin
         println("Thread $(Threads.threadid()) with index $i starts working")
-        Training.record_self( player, tickets[i-1]
-                            , callback = game_cb, callback_move = move_cb
-                            , merge = false, distributed = false
-                            , augment = augment, kwargs...)
+        Data.record_self( player, tickets[i-1]
+                        , callback = game_cb, callback_move = move_cb
+                        , merge = false, distributed = false
+                        , augment = augment, kwargs...)
       end
     end
   end
