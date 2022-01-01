@@ -248,7 +248,7 @@ end # module Player
 module Data
 
   using Random, Statistics, LinearAlgebra
-  import MsgPack
+  import MsgPack, TranscodingStreams, CodecZstd
 
   using ..Jtac
   using ..Util

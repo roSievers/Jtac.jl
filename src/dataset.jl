@@ -52,64 +52,66 @@ Base.lastindex(d :: Dataset) = length(d)
 #  MsgPack.StructType()
 #end
 
-
 function serialize(io, dataset :: Dataset{G}) where G <: AbstractGame
+  stream = CodecZstd.ZstdCompressorStream(io)
   gameinfo = Dict(
       "name" => String(nameof(G))
     , "params" => Tuple(G.parameters)
   )
-  MsgPack.pack(io, gameinfo)
-  MsgPack.pack(io, Game.freeze.(dataset.games))
-  MsgPack.pack(io, dataset.label)
-  MsgPack.pack(io, dataset.flabel)
-  MsgPack.pack(io, length(dataset.features))
+  MsgPack.pack(stream, gameinfo)
+  MsgPack.pack(stream, Game.freeze.(dataset.games))
+  MsgPack.pack(stream, dataset.label)
+  MsgPack.pack(stream, dataset.flabel)
+  MsgPack.pack(stream, length(dataset.features))
   for feat in dataset.features
     F = typeof(feat)
     featinfo = Dict(
         "name" => String(nameof(F))
       , "params" => Tuple(F.parameters)
     )
-    MsgPack.pack(io, featinfo)
-    MsgPack.pack(io, feat)
+    MsgPack.pack(stream, featinfo)
+    MsgPack.pack(stream, feat)
   end
-#  MsgPack.pack(io, Game.freeze(dataset))
+  write(stream, TranscodingStreams.TOKEN_END)
+  flush(stream)
 end
 
 function deserialize(io)
-  gameinfo = MsgPack.unpack(io)
+  stream = CodecZstd.ZstdDecompressorStream(io)
+  gameinfo = MsgPack.unpack(stream)
   G = Game.GAMES[gameinfo["name"]](gameinfo["params"]...)
-  games = MsgPack.unpack(io, Vector{G})
-  label = MsgPack.unpack(io, Vector{Vector{Float32}})
-  flabel = MsgPack.unpack(io, Vector{Vector{Float32}})
-  nfeats = MsgPack.unpack(io, Int)
+  games = MsgPack.unpack(stream, Vector{G})
+  label = MsgPack.unpack(stream, Vector{Vector{Float32}})
+  flabel = MsgPack.unpack(stream, Vector{Vector{Float32}})
+  nfeats = MsgPack.unpack(stream, Int)
   features = Feature[]
   for _ in 1:nfeats
-    featinfo = MsgPack.unpack(io)
+    featinfo = MsgPack.unpack(stream)
     F = Model.FEATURES[featinfo["name"]](featinfo["params"]...)
-    feat = MsgPack.unpack(io, F)
+    feat = MsgPack.unpack(stream, F)
     push!(features, feat)
   end
   Dataset(games, label, flabel, features)
 end
 
 """
-    save(name, dataset)
+    save(name, dataset; ext = ".jtd")
 
 Save `dataset` under filename `name` with automatically appended extension
-`".jtd"`. Dataset caches are not saved.
+`ext`. Dataset caches are not saved.
 """
-save(fname :: String, d :: Dataset) = open(fname, "w") do io
-  serialize(io, d)
+function save(fname :: String, d :: Dataset; ext = ".jtd")
+  open(io -> serialize(io, d), fname * ext, "w")
 end
 
 """
-    load(name, G)
+    load(name)
 
-Load a dataset for games of type `G` from file `name`, where the extension
-`".jtd"` is automatically appended.
+Load a dataset for games from file `name`, where the extension `ext` is
+automatically appended.
 """
-load(fname :: String) where G <: AbstractGame = open(fname) do io
-  deserialize(io)
+function load(fname :: String; ext = ".jtd") where G <: AbstractGame
+  open(io -> deserialize(io), fname * ext)
 end
 
 # -------- Dataset Operations ------------------------------------------------ #
@@ -313,14 +315,6 @@ function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame,
 
   # Return the (cache, new_start) state tuple
   cache, stop + 1
-end
-
-# -------- Random Branching Helpers ------------------------------------------ #
-
-prepare(; steps = 0) = game -> random_turns!(copy(game), steps)
-
-function branch(; prob = 0., steps = 1)
-  game -> rand() < prob ? random_turns!(copy(game), steps) : nothing
 end
 
 # -------- Generating Datasets ----------------------------------------------- #
