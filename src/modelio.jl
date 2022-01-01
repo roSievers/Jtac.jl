@@ -23,11 +23,9 @@ compose(p :: Float64) = p
 compose(p :: String)  = p
 #compose(p :: Symbol)  = p
 
-decompose(p :: Vector{Int})     = dict("intvector", value = p)
 decompose(p :: Tuple{Int, Int}) = dict("pair", a = p[1], b = p[2])
 decompose(p :: Nothing)         = dict("nothing")
 
-compose(:: Val{:intvector}, d) = d["value"]
 compose(:: Val{:pair}, d)    = (Int(d["a"]), Int(d["b"]))
 compose(:: Val{:nothing}, d) = nothing
 
@@ -35,11 +33,10 @@ compose(:: Val{:nothing}, d) = nothing
 #  dict("intarray", dims = collect(size(p)), value = reshape(p, :))
 #end
 
-# TODO: think about how we might be able to prevent "collect" here,
-# so that no copying is necessary. Currently needed for MsgPack, see below
+decompose(p :: Vector{Int}) = dict("intvector", value = p)
+
 function decompose(p :: Array{Float32})
-  data = reinterpret(UInt8, reshape(p, :))
-  dict("floatarray", dims = collect(size(p)), value = collect(data))
+  dict("floatarray", dims = decompose(collect(size(p))), value = reshape(p, :))
 end
 
 #function compose(:: Val{:intarray}, d)
@@ -47,9 +44,11 @@ end
 #  reshape(convert(Array{Int}, d["value"]), dims...)
 #end
 
+compose(:: Val{:intvector}, d) = reinterpret(Int, d["value"])
+
 function compose(:: Val{:floatarray}, d)
-  dims = Int.(d["dims"])
-  data = reinterpret(Float32, convert(Vector{UInt8}, d["value"]))
+  dims = compose(d["dims"])
+  data = reinterpret(Float32, d["value"])
   reshape(collect(data), dims...)
 end
 
@@ -213,8 +212,8 @@ end
 # Force messagepack to see UInt8 vectors as binary data
 # Together with storing the data of decomposed Float32 arrays as UInt8 vectors,
 # this dramatically improves the saving / loading time for models
-MsgPack.msgpack_type( :: Type{Vector{UInt8}}) = MsgPack.BinaryType()
-MsgPack.to_msgpack( :: MsgPack.BinaryType, x :: Vector{UInt8}) = x
+#MsgPack.msgpack_type( :: Type{Vector{UInt8}}) = MsgPack.BinaryType()
+#MsgPack.to_msgpack( :: MsgPack.BinaryType, x :: Vector{UInt8}) = x
 #MsgPack.from_msgpack( :: Type{Vector{UInt8}}, bytes :: Vector{UInt8}) = bytes
 
 """

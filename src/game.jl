@@ -274,6 +274,38 @@ Indicates whether `game` is in its frozen state.
 """
 is_frozen(game :: AbstractGame) = false
 
+# -------- Serialization via MsgPack ----------------------------------------- #
+
+MsgPack.msgpack_type(::Type{G}) where G <: AbstractGame = MsgPack.StructType()
+
+"""
+    serialize([io], game)
+
+Serialize `game` to binary data (`Vector{UInt8}`) or write it to `io`.
+"""
+serialize(game :: AbstractGame) = MsgPack.pack(freeze(game))
+serialize(io, game :: AbstractGame) = MsgPack.pack(io, freeze(game))
+
+function serialize(games :: Vector{G}) where {G <: AbstractGame}
+  MsgPack.pack(freeze.(games))
+end
+
+function serialize(io, games :: Vector{G}) where {G <: AbstractGame}
+  MsgPack.pack(io, freeze.(games))
+end
+
+"""
+    deserialize(io, G)
+
+Read a serialized game of type `G <: AbstractGame` from `io`.
+"""
+function deserialize(io, :: Type{G}) where G <: AbstractGame
+  MsgPack.unpack(io, G; strict=(G,)) |> unfreeze
+end
+
+function deserialize(io, :: Type{Vector{G}}) where G <: AbstractGame
+  MsgPack.unpack(io, Vector{G}; strict=(G,)) .|> unfreeze
+end
 
 # -------- Register new games ------------------------------------------------ #
 

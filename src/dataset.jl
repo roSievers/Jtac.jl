@@ -44,29 +44,73 @@ Model.features(ds :: Dataset) = ds.features
 Base.length(d :: Dataset) = length(d.games)
 Base.lastindex(d :: Dataset) = length(d)
 
-# -------- Saving and Loading Datasets --------------------------------------- #
+# -------- Serialization and IO of Datasets ---------------------------------- #
 
-"""
-    save_dataset(name, dataset)
+# This creates problems because of the abstract Feature vector in Dataset
+# Therefore, we go the manual route below
+#function MsgPack.msgpack_type(::Type{Dataset{G}}) where G <: AbstractGame
+#  MsgPack.StructType()
+#end
 
-Save `dataset` under filename `name` with automatically appended extension
-".jtd". Dataset caches are not saved.
-"""
-function save_dataset(fname :: String, d :: Dataset)
-  
-  # Save the file
-  BSON.bson(fname * ".jtd", dataset = Game.freeze(d)) 
 
+function serialize(io, dataset :: Dataset{G}) where G <: AbstractGame
+  gameinfo = Dict(
+      "name" => String(nameof(G))
+    , "params" => Tuple(G.parameters)
+  )
+  MsgPack.pack(io, gameinfo)
+  MsgPack.pack(io, Game.freeze.(dataset.games))
+  MsgPack.pack(io, dataset.label)
+  MsgPack.pack(io, dataset.flabel)
+  MsgPack.pack(io, length(dataset.features))
+  for feat in dataset.features
+    F = typeof(feat)
+    featinfo = Dict(
+        "name" => String(nameof(F))
+      , "params" => Tuple(F.parameters)
+    )
+    MsgPack.pack(io, featinfo)
+    MsgPack.pack(io, feat)
+  end
+#  MsgPack.pack(io, Game.freeze(dataset))
+end
+
+function deserialize(io)
+  gameinfo = MsgPack.unpack(io)
+  G = Game.GAMES[gameinfo["name"]](gameinfo["params"]...)
+  games = MsgPack.unpack(io, Vector{G})
+  label = MsgPack.unpack(io, Vector{Vector{Float32}})
+  flabel = MsgPack.unpack(io, Vector{Vector{Float32}})
+  nfeats = MsgPack.unpack(io, Int)
+  features = Feature[]
+  for _ in 1:nfeats
+    featinfo = MsgPack.unpack(io)
+    F = Model.FEATURES[featinfo["name"]](featinfo["params"]...)
+    feat = MsgPack.unpack(io, F)
+    push!(features, feat)
+  end
+  Dataset(games, label, flabel, features)
 end
 
 """
-    load_dataset(name)
+    save(name, dataset)
 
-Load a dataset from file "name", where the extension ".jtd" is automatically
-appended.
+Save `dataset` under filename `name` with automatically appended extension
+`".jtd"`. Dataset caches are not saved.
 """
-load_dataset(fname :: String) = Game.unfreeze(BSON.load(fname * ".jtd")[:dataset])
+save(fname :: String, d :: Dataset) = open(fname, "w") do io
+  serialize(io, d)
+end
 
+"""
+    load(name, G)
+
+Load a dataset for games of type `G` from file `name`, where the extension
+`".jtd"` is automatically appended.
+"""
+load(fname :: String) where G <: AbstractGame = open(fname) do io
+  deserialize(io)
+end
 
 # -------- Dataset Operations ------------------------------------------------ #
 

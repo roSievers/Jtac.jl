@@ -15,7 +15,7 @@ const _version = v"0.1"
 
 using Random, Statistics, LinearAlgebra
 
-import AutoGrad, Knet, CUDA
+import AutoGrad, Knet, CUDA, MsgPack
 import Knet: identity,
              relu,
              elu,
@@ -31,6 +31,11 @@ export identity,
        softmax,
        tanh,
        sigm
+
+
+# -------- MsgPack Configuration --------------------------------------------- #
+
+include("msgpack.jl")
 
 # -------- Utilities --------------------------------------------------------- #
 
@@ -54,6 +59,7 @@ end # module Util
 module Game
 
   using Random, Statistics, LinearAlgebra
+  import MsgPack
   using ..Jtac
   using ..Util
 
@@ -238,7 +244,7 @@ module Training
 
   using Random, Statistics, LinearAlgebra
   using Printf, Distributed
-  import BSON
+  import MsgPack
 
   using ..Jtac
   using ..Util
@@ -252,8 +258,8 @@ module Training
 
   export Dataset, Loss
 
-  export save_dataset,
-         load_dataset,
+  export save,
+         load,
          augment,
          minibatch, 
          branch,

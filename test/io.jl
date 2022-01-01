@@ -32,8 +32,8 @@
     dataset = Training.record_self(player, 1, augment = true)
 
     name = tempname()
-    Training.save_dataset(name, dataset)
-    ds = Training.load_dataset(name)
+    Training.save(name, dataset)
+    ds = Training.load(name)
     @test all(Game.array(ds.games) .== Game.array(dataset.games))
     @test all(ds.label .== dataset.label)
     @test all(ds.flabel .== dataset.flabel)
