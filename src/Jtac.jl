@@ -141,6 +141,7 @@ module Model
          to_cpu,
          swap,
          on_gpu,
+         tune,
          base_model,
          playing_model,
          training_model,

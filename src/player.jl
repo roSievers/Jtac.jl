@@ -520,6 +520,6 @@ end
 Tune the model that `player` is based on. See `Model.tune` for details.
 """
 function tune!(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
-  player.model = tune(model; kwargs...)
+  player.model = tune(player.model; kwargs...)
 end
 
