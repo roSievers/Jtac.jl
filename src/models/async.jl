@@ -3,8 +3,8 @@
 
 """
 Asynchronous model wrapper that allows a model to be called on a batch of games
-in parallel when the single calls take place in an async context. Note that
-an Async model always returns CPU arrays, even if the model works on the GPU.
+in parallel when the single calls take place in an async context. Note that an
+Async model always returns CPU arrays, even if the worker model acts on the GPU.
 """
 mutable struct Async{G} <: AbstractModel{G, false}
   model          :: AbstractModel{G}
@@ -26,8 +26,13 @@ function Async( model :: AbstractModel{G};
                 max_batchsize = 50, 
                 buffersize = 10max_batchsize ) where {G <: AbstractGame}
 
+  # It does not make sense to wrap Async or Caching models, since these
+  # are not suited for batch evaluation
+  @assert !(model isa Async) "Cannot wrap Async model in Async"
+  @assert !(model isa Caching) "Cannot wrap Caching model in Async"
+
   # Make sure that the buffer is larger than the maximal allowed batchsize
-  @assert buffersize >= max_batchsize "buffersize must be larger than max_batchsize"
+  @assert buffersize >= max_batchsize "Buffersize must be larger than max_batchsize"
 
   # Open the channel in which the inputs are dumped
   channel = Channel(buffersize)
@@ -63,7 +68,7 @@ function (m :: Async{G})( games :: Vector{G}
                         , use_features = false
                         ) where {G <: AbstractGame}
 
-  @assert !use_features "Features cannot be used in Async. "
+  @assert !use_features "Features cannot be used in Async."
   @warn "Calling Async model in batched mode is not recommended." maxlog=1
 
   outputs = asyncmap(x -> m(x, use_features), games, ntasks = m.buffersize)
@@ -90,6 +95,14 @@ is_async(m :: Async) = true
 # network on which it is based, access them via training_model(...)
 features(m :: Async) = Feature[]
 
+function tune( m :: Async
+             ; gpu = on_gpu(base_model(m))
+             , async = m.max_batchsize
+             , cache = false )
+
+  tune(m.model; gpu, async, cache)
+end
+
 function Base.show(io :: IO, m :: Async{G}) where {G <: AbstractGame}
   print(io, "Async($(m.max_batchsize), $(m.buffersize), ")
   show(io, m.model)
@@ -100,7 +113,6 @@ function Base.show(io :: IO, mime :: MIME"text/plain", m :: Async{G}) where {G <
   print(io, "Async($(m.max_batchsize), $(m.buffersize)) ")
   show(io, mime, m.model)
 end
-
 
 
 # -------- Async Worker ------------------------------------------------------ #

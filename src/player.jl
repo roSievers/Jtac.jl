@@ -206,11 +206,11 @@ Base.copy(p :: IntuitionPlayer) = switch_model(p, copy(p.model))
 swap(p :: IntuitionPlayer) = switch_model(p, swap(p.model))
 
 function Base.show(io :: IO, p :: IntuitionPlayer{G}) where {G <: AbstractGame}
-  print(io, "IntuitionPlayer{$G}($(p.name), $(p.temperature))")
+  print(io, "IntuitionPlayer{$(Game.name(G))}($(p.name), $(p.temperature))")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: IntuitionPlayer{G}) where {G <: AbstractGame}
-  println(io, "IntuitionPlayer{$G}:")
+  println(io, "IntuitionPlayer{$(Game.name(G))}:")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
   print(io, " model: "); show(io, p.model)
@@ -374,11 +374,11 @@ swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 
 function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
-  print(io, "MCTSPlayer{$G}($(p.name), $(p.power), $(p.temperature), $(p.exploration), $(p.dilution))")
+  print(io, "MCTSPlayer{$(Game.name(G))}($(p.name), $(p.power), $(p.temperature), $(p.exploration), $(p.dilution))")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
-  println(io, "MCTSPlayer{$G} with power $(p.power):")
+  println(io, "MCTSPlayer{$(Game.name(G))} with power $(p.power):")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
   print(io, " model: "); show(io, p.model); println(io)
@@ -510,5 +510,16 @@ function pvp_games( p1 :: AbstractPlayer
 
   games
 
+end
+
+# TODO: this is a nice-to have function for distributed computing and for the
+# daemon
+"""
+    tune!(player; gpu, async, caching)
+
+Tune the model that `player` is based on. See `Model.tune` for details.
+"""
+function tune!(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
+  player.model = tune(model; kwargs...)
 end
 

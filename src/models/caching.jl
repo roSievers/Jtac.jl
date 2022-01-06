@@ -22,6 +22,10 @@ cached before, and if fewer game states that `max_cachesize` are currently
 stored, it is added to the cache.
 """
 function Caching(model :: AbstractModel; max_cachesize = 100000)
+
+  # It does not make sense to wrap Caching models
+  @assert !(model isa Caching) "Cannot wrap Caching model in Caching"
+
   cache = Dict{UInt64, Tuple{Float32, Vector{Float32}}}()
   sizehint!(cache, max_cachesize)
   Caching(model, max_cachesize, cache, 0, 0)
@@ -73,8 +77,15 @@ base_model(m :: Caching) = base_model(m.model)
 training_model(m :: Caching) = training_model(m.model)
 
 is_async(m :: Caching) = is_async(m.model)
-
 features(m :: Caching) = Feature[]
+
+function tune( m :: Caching
+             ; gpu = on_gpu(base_model(m))
+             , async = is_async(m) ? m.model.max_batchsize : false
+             , cache = m.max_cachesize )
+
+  tune(m.model; gpu, async, cache)
+end
 
 function Base.show(io :: IO, m :: Caching{G}) where {G <: AbstractGame}
   print(io, "Caching($(length(m.cache)), $(m.max_cachesize), ")
@@ -86,7 +97,4 @@ function Base.show(io :: IO, mime :: MIME"text/plain", m :: Caching{G}) where {G
   print(io, "Caching($(length(m.cache)), $(m.max_cachesize)) ")
   show(io, mime, m.model)
 end
-
-
-
 

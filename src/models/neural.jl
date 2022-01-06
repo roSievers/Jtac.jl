@@ -166,18 +166,34 @@ training_model(m :: NeuralModel) = m
 
 function Base.show(io :: IO, model :: NeuralModel{G, GPU}) where {G, GPU}
   at = GPU ? "GPU" : "CPU"
-  print(io, "NeuralModel{$G, $at}(")
+  print(io, "NeuralModel{$(Game.name(G)), $at}(")
   show(io, model.trunk)
   print(io, ")")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) where {G, GPU}
   at = GPU ? "GPU" : "CPU"
-  println(io, "NeuralModel{$G, $at}:")
+  println(io, "NeuralModel{$(Game.name(G)), $at}:")
   print(io, " trunk: "); show(io, model.trunk); println(io)
-  print(io, " vhead: "); show(io, model.vhead); println(io)
-  print(io, " phead: "); show(io, model.phead); println(io)
-  print(io, " fhead: "); show(io, model.fhead)
+  print(io, " value head: "); show(io, model.vhead); println(io)
+  print(io, " policy head: "); show(io, model.phead); println(io)
+  print(io, " feature head: "); show(io, model.fhead)
 end
+
+function tune( m :: NeuralModel{G, GPU}
+             ; gpu = GPU
+             , async = false
+             , cache = false
+             ) where {G, GPU}
+
+  I = Union{Signed, Unsigned} # Grr, in julia, Bool <: Integer....
+  gpu != GPU && (m = swap(m))
+  async == true && (m = Async(m))
+  async isa I && async > 0 && (m = Async(m, max_batchsize = async))
+  cache == true && (m = Caching(m))
+  cache isa I && cache > 0 && (m = Caching(m, max_cachesize = cache))
+  m
+end
+
 
 

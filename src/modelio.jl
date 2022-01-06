@@ -209,13 +209,6 @@ end
 
 # -------- Saving & Loading -------------------------------------------------- #
 
-# Force messagepack to see UInt8 vectors as binary data
-# Together with storing the data of decomposed Float32 arrays as UInt8 vectors,
-# this dramatically improves the saving / loading time for models
-#MsgPack.msgpack_type( :: Type{Vector{UInt8}}) = MsgPack.BinaryType()
-#MsgPack.to_msgpack( :: MsgPack.BinaryType, x :: Vector{UInt8}) = x
-#MsgPack.from_msgpack( :: Type{Vector{UInt8}}, bytes :: Vector{UInt8}) = bytes
-
 """
     save(name, model)
 
@@ -223,12 +216,12 @@ Save `model` under the filename `name` with automatically appended extension
 ".jtm". Note that only the basic model `training_model(model) |> to_cpu` is saved,
 so gpu, async, or caching information is lost.
 """
-function save(fname :: String, model :: AbstractModel{G}) where {G}
+function save(fname :: String, model :: AbstractModel{G}; ext = ".jtm") where {G}
   # Decompose the training_model after bringing it to the cpu
   dict = model |> training_model |> to_cpu |> decompose
 
   # Save the decomposed model
-  open(fname * ".jtm", "w") do io
+  open(fname * ext, "w") do io
     MsgPack.pack(io, dict)
   end
 end
@@ -239,7 +232,7 @@ end
 Load a model from file `name`, where the extension ".jtm" is automatically
 appended.
 """
-load(fname :: String) = open(fname * ".jtm", "r") do io
+load(fname :: String; ext = ".jtm") = open(fname * ext, "r") do io
   MsgPack.unpack(io) |> compose
 end
 
@@ -259,10 +252,10 @@ end
 """
     deserialize(io)
 
-Deserialize a Jtac model from `io`. Note that this function only accepts models
+Deserialize a Jtac model from `io`. Note that this function only returns models
 that live on the CPU.
 """
-function deserialize(io) :: AbstractModel{G, false} where {G}
+function deserialize(io) :: AbstractModel
   MsgPack.unpack(io) |> compose
 end
 

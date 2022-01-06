@@ -257,8 +257,9 @@ module Data
   using ..Player
 
   include("dataset.jl")
+  include("pool.jl")
 
-  export Dataset, Datacache, Batches
+  export Dataset, Datacache, Batches, Pool
 
   export save,
          load,

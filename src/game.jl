@@ -225,6 +225,14 @@ Draw a unicode representation of `game`.
 draw(io :: IO, game :: AbstractGame) :: Nothing = error("drawing $(typeof(game)) not implemented.")
 draw(game) = draw(stdout, game)
 
+"""
+    name(G)
+    name(game)
+
+Pretty printable name of the game.
+"""
+name(G :: Type{<: AbstractGame}) = split(string(G), ".")[end]
+name(game :: AbstractGame) = name(typeof(game))
 
 """
     instance(game or gen)

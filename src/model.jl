@@ -106,3 +106,23 @@ Count the number of free parameters in `model`.
 """
 count_params(model :: AbstractModel) = sum(length, Knet.params(model))
 
+"""
+    tune(; gpu, async, cache)
+    tune(model; gpu, async, cache)
+
+Auxiliary function to flexibly adapt the GPU status or the Async / Caching
+wrappers of a `model` with base model `NeuralModel`. The first function call
+returns a function mapping a model to the given configuration, while the second
+function call returns the configured model
+
+The argument `gpu` is boolean, while `async` and `cache` can be both boolean or
+positive integers (setting the parameters `max_batchsize` for `Async` and
+`max_cachesize` for `Caching`, respectively).
+"""
+function tune(model; gpu, async, cache)
+  @warn "trying to tune model of type $(typeof(model)) failed" maxlog = 1
+  model
+end
+
+tune(; kwargs...) = model -> tune(model; kwargs...)
+

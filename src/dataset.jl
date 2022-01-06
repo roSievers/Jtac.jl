@@ -210,13 +210,13 @@ end
 function Base.show(io :: IO, d :: Dataset{G}) where G <: AbstractGame
   n = length(d.features)
   features = n == 1 ? "1 feature" : "$n features"
-  print(io, "Dataset{$G}($(length(d)) elements, $features)")
+  print(io, "Dataset{$(Game.name(G))}($(length(d)) elements, $features)")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", d :: Dataset{G}) where G <: AbstractGame
   n = length(d.features)
   features = n == 1 ? "1 feature" : "$n features"
-  print(io, "Dataset{$G} with $(length(d)) elements and $features")
+  print(io, "Dataset{$(Game.name(G))} with $(length(d)) elements and $features")
 end
 
 function Random.rand(rng, d :: Dataset, n :: Int)
