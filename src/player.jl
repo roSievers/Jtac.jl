@@ -213,7 +213,7 @@ function Base.show(io :: IO, :: MIME"text/plain", p :: IntuitionPlayer{G}) where
   println(io, "IntuitionPlayer{$(Game.name(G))}:")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
-  print(io, " model: "); show(io, p.model)
+  print(io, " model: "); show(io, MIME"text/plain"(), p.model)
 end
 
 
@@ -381,9 +381,9 @@ function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <
   println(io, "MCTSPlayer{$(Game.name(G))} with power $(p.power):")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
-  print(io, " model: "); show(io, p.model); println(io)
-  print(io, " exploration: $(p.exploration)"); println(io)
-  print(io, " dilution: $(p.dilution)")
+  print(io, " dilu: $(p.dilution)"); println(io)
+  print(io, " expl: $(p.exploration)"); println(io)
+  print(io, " model: "); show(io, MIME"text/plain"(), p.model)
 end
 
 
@@ -515,11 +515,11 @@ end
 # TODO: this is a nice-to have function for distributed computing and for the
 # daemon
 """
-    tune!(player; gpu, async, caching)
+    tune(player; gpu, async, caching)
 
 Tune the model that `player` is based on. See `Model.tune` for details.
 """
-function tune!(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
-  player.model = tune(player.model; kwargs...)
+function Model.tune(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
+  switch_model(player, tune(player.model; kwargs...))
 end
 
