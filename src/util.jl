@@ -18,6 +18,8 @@ function one_hot(n, k)
   r
 end
 
+nameof(T) = Base.nameof(T) |> String |> lowercase
+
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])

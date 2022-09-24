@@ -4,7 +4,7 @@ using Distributed
 using Statistics
 using Printf
 
-function record_self(player, n; augment = false, kwargs...)
+function record(player, n; augment = false, kwargs...)
 
   start_time = time()
   moves = 0
@@ -41,9 +41,9 @@ function record_self(player, n; augment = false, kwargs...)
       update(time())
     end
     @async begin
-      dss = Data.record_self( player, n
-                            ; callback = game_cb, callback_move = move_cb
-                            , merge = false, augment = augment, kwargs...)
+      dss = Data.record( player, n
+                       ; callback = game_cb, callback_move = move_cb
+                       , merge = false, augment = augment, kwargs...)
       put!(move_ch, false)
       put!(game_ch, false)
     end
@@ -62,15 +62,15 @@ function record_self(player, n; augment = false, kwargs...)
 end
 
 # Note: Threading like done in this function works as intended, but it does not
-# seem to yield significant performance advantages for NeuralModels.  For small
+# seem to yield significant performance advantages for NeuralModel.  For small
 # networks, multiprocessing (and occupying the GPU with several independently
 # working copies of the network) seems to perform better; for large networks,
 # the threaded version is only marginally faster than the non-threaded version,
-# since most time is (probably) spent working for the Gpu.
-function record_self_threaded(player, n; augment = false, kwargs...)
+# since most time is (probably) spent in the GPU anyway.
+function record_threaded(player, n; augment = false, kwargs...)
   @assert Model.is_async(Model.playing_model(player)) "Threaded self plays only work with Async models"
-  @assert Threads.nthreads() > 1 "record_self_threaded requires at least two threads"
-  @assert Threads.threadid() == 1 "record_self_threaded can only be called from the master thread"
+  @assert Threads.nthreads() > 1 "record_threaded requires at least two threads"
+  @assert Threads.threadid() == 1 "record_threaded can only be called from the master thread"
 
   # count moves and games
   moves = Threads.Atomic{Int}(0)
@@ -101,10 +101,10 @@ function record_self_threaded(player, n; augment = false, kwargs...)
     if i != 1
       tasks[i-1] = @async begin
         println("Thread $(Threads.threadid()) with index $i starts working")
-        Data.record_self( player, tickets[i-1]
-                        , callback = game_cb, callback_move = move_cb
-                        , merge = false, distributed = false
-                        , augment = augment, kwargs...)
+        Data.record( player, tickets[i-1]
+                   , callback = game_cb, callback_move = move_cb
+                   , merge = false, distributed = false
+                   , augment = augment, kwargs...)
       end
     end
   end

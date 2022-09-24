@@ -147,7 +147,12 @@ module Model
          training_model,
          gametype
 
-  export Pointwise,
+  export LayerWeight,
+         LayerActivation,
+         Layer,
+         PrimitiveLayer,
+         CompositeLayer,
+         Pointwise,
          Dense,
          Conv,
          Deconv,
@@ -248,7 +253,7 @@ end # module Player
 
 module Data
 
-  using Random, Statistics, LinearAlgebra
+  using Random, Statistics, LinearAlgebra, Distributed
   import MsgPack, TranscodingStreams, CodecZstd
 
   using ..Jtac
@@ -265,7 +270,7 @@ module Data
   export save,
          load,
          augment,
-         record_self,
+         record,
          record_against
 
 end # Data
@@ -294,7 +299,6 @@ module Training
          set_optimizer!,
          train_step!,
          train!,
-         train_self!,
          train_against!,
          train_from_model!,
          with_contest

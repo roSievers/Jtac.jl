@@ -96,7 +96,7 @@ Train `model`, or the training model of `player`, on `dataset`.
 # Examples
 ```julia
 G = Game.TicTacToe
-dataset = Data.record_self(Player.MCTSPlayer(), 10, game = G) 
+dataset = Data.record(Player.MCTSPlayer(), 10, game = G) 
 model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
 loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
 Training.train!(model, dataset, loss = loss, epochs = 15)
@@ -259,7 +259,7 @@ end
 
 
 """
-    train_self!(player; <keyword arguments>)
+    train!(player; <keyword arguments>)
 
 Train an MCTS `player` via playing against itself.
 
@@ -278,8 +278,8 @@ training models can be trained currently.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
-- `branch`: Random branching function. See `record_self`.
-- `prepare`: Preparation function. See `record_self`.
+- `branch`: Random branching function. See `Data.record`.
+- `prepare`: Preparation function. See `Data.record`.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
@@ -293,33 +293,33 @@ training models can be trained currently.
 G = Game.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Conv(64, f = relu) Dense(32, f = relu))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-Training.train_self!(player, epochs = 5, playings = 100)
+Training.train!(player, epochs = 5, playings = 100)
 ```
 """
-function train_self!( player :: MCTSPlayer
-                    ; loss = Loss()
-                    , prepare = prepare(steps = 0)
-                    , branch = branch(prob = 0.)
-                    , augment = true
-                    , distributed = false
-                    , tickets = nothing
-                    , kwargs... )
+function train!( player :: MCTSPlayer
+               ; loss = Loss()
+               , prepare = prepare(steps = 0)
+               , branch = branch(prob = 0.)
+               , augment = true
+               , distributed = false
+               , tickets = nothing
+               , kwargs... )
 
   # Only use player-enabled features for recording if they are compatible with
   # the loss
   features = feature_compatibility(loss, player) ? Jtac.features(player) : Feature[]
 
   # Function to generate datasets through selfplays
-  gen_data = (cb, n) -> record_self( player
-                                   , n
-                                   , prepare = prepare
-                                   , branch = branch
-                                   , augment = augment
-                                   , features = features
-                                   , merge = false
-                                   , callback = cb 
-                                   , distributed = distributed
-                                   , tickets = tickets )
+  gen_data = (cb, n) -> record( player
+                              , n
+                              , prepare = prepare
+                              , branch = branch
+                              , augment = augment
+                              , features = features
+                              , merge = false
+                              , callback = cb 
+                              , distributed = distributed
+                              , tickets = tickets )
 
 
   _train!(player, gen_data; loss = loss, kwargs...)
@@ -351,8 +351,8 @@ with NeuralModel-based training models can be trained.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
-- `branch`: Random branching function. See `record_against`.
-- `prepare`: Preparation function. See `record_against`.
+- `branch`: Random branching function. See `Data.record_against`.
+- `prepare`: Preparation function. See `Data.record_against`.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
@@ -491,7 +491,7 @@ end
 Train `player` according to `train_function` while conducting regular contests
 during the training process.
 
-The argument `train_function` must be one of `train_self!`, `train_against!`, or
+The argument `train_function` must be one of `train!`, `train_against!`, or
 `train_from!`. The function `with_contest` will always at least print the
 results of a contest before training and after training. 
 
@@ -521,7 +521,7 @@ opponents = [Player.MCTSPlayer(power = 50), Player.MCTSPlayer(power = 500)]
 model = Model.NeuralModel(G, Model.@chain G Conv(100, f = relu) Dense(32, f = relu))
 player = Player.MCTSPlayer(model, power = 25)
 
-Training.with_contest( Training.train_self!
+Training.with_contest( Training.train!
                      , player
                      , loss = loss
                      , cache = 1000

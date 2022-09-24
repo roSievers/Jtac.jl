@@ -73,6 +73,10 @@ models_on_gpu(packs) = count(p[2] for p in packs)
 
 # -------- Distributed Calculations ------------------------------------------ #
 
+struct WorkerStopException <: Exception
+  exn :: Exception
+end
+
 function ticket_sizes(n, m)
   ns = zeros(Int, m)
   ns .+= floor(Int, n / m)
@@ -103,6 +107,9 @@ function with_workers( f :: Function
   tic = RemoteChannel(() -> Channel(tickets))
   res = RemoteChannel(() -> Channel(m))
 
+  # Channel to communicate that something went wrong and we should stop
+  stop = RemoteChannel(() -> Channel(m))
+
   # Divide the n tasks as evenly as possible and fill the ticket supply
   foreach(s -> put!(tic, s), ticket_sizes(n, tickets))
 
@@ -112,9 +119,14 @@ function with_workers( f :: Function
   # Make players serializable (no gpu memory and async worker threads allowed)
   splayers = pack.(players)
 
+  # Check if CUDA is available
+  cuda = CUDA.functional()
+
   # Count the GPUs
   gpu = models_on_gpu(splayers) > 0
-  devices = length(CUDA.devices())
+  @assert !gpu || cuda "GPU cannot be used since CUDA is not available"
+
+  devices = cuda ? length(CUDA.devices()) : 0
   m > devices && gpu && @info "Multiple workers will share one GPU device" maxlog = 1
 
   # Start let the workers work on the tickets
@@ -130,32 +142,40 @@ function with_workers( f :: Function
         CUDA.device!((i-1) % devices)
       end
 
+      callback_error = () -> begin
+        if isready(stop)
+          exn = fetch(stop)
+          throw(WorkerStopException(exn))
+        end
+      end
+
       # Reconstruct the players
       ps = unpack.(splayers)
       # Wait for a ticket. If we get one, carry it out. If there are no tickets
       # left, the ticket channel is closed and we end the loop.
       while (n = take_ticket!(tic)) != 0
-
-        put!(res, f(ps, n, args...; kwargs...))
-
+        try
+          put!(res, f(ps, n, args...; callback_error, kwargs...))
+        catch err
+          if err isa WorkerStopException
+            @error "stopped due to WorkerStopException: $(err.exn)"
+          else
+            isready(stop) || put!(stop, err)
+            throw(err)
+          end
+        end
       end
-
     end
-
   end
 
   # Fetch the data with error handling if something unexpected happens
   data = try
-
     fetch(task)
-
   catch exn
-
     @show exn
     close(res); close(tic)
-    interrupt(workers)
+#    interrupt(workers)
     rethrow(exn)
-
   end
 
   # Close the channels
@@ -166,6 +186,5 @@ function with_workers( f :: Function
 
   # Return the data
   data
-
 end
 

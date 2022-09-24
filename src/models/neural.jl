@@ -19,6 +19,10 @@ function prepare_head(head, s, l, gpu)
 
 end
 
+# -------- Policy activation Function ---------------------------------------- #
+
+register_activation!("softmax", Knet.softmax)
+
 # -------- Neural Model ------------------------------------------------------ #
 
 """
@@ -32,12 +36,12 @@ struct NeuralModel{G, GPU} <: AbstractModel{G, GPU}
   trunk :: Layer{GPU}           # Takes input and returns layer before logits
   features :: Vector{Feature}   # Features that the network must predict
 
-  vhead :: Layer{GPU}                  # value head
-  phead :: Layer{GPU}                  # policy head
-  fhead :: Union{Nothing, Layer{GPU}}  # feature head
+  vhead :: Layer{GPU}                 # value head
+  phead :: Layer{GPU}                 # policy head
+  fhead :: Union{Nothing, Layer{GPU}} # feature head
 
-  vconv                         # Converts value-logit to value
-  pconv                         # Converts policy-logits to policy
+  vconv :: Activation    # Converts value-logit to value
+  pconv :: Activation    # Converts policy-logits to policy
 
 end
 
@@ -57,8 +61,8 @@ function NeuralModel( :: Type{G}
                     ; vhead :: Union{Nothing, Layer{GPU}} = nothing
                     , phead :: Union{Nothing, Layer{GPU}} = nothing
                     , fhead :: Union{Nothing, Layer{GPU}} = nothing
-                    , vconv = Knet.tanh
-                    , pconv = Knet.softmax
+                    , vconv = "tanh"
+                    , pconv = "softmax"
                     ) where {G, GPU}
 
   @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
@@ -89,8 +93,8 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: AbstractG
   fl = feature_length(m.features, G)  # feature length
 
   # Apply the converters for value and policy on suitable reshapes
-  v = m.vconv.(reshape(m.vhead(out), bs))
-  p = m.pconv(reshape(m.phead(out), pl, bs), dims=1)
+  v = m.vconv.f.(reshape(m.vhead(out), bs))
+  p = m.pconv.f(reshape(m.phead(out), pl, bs), dims=1)
 
   # Apply the feature head if features are to be calculated
   if use_features && !isnothing(m.fhead)
@@ -174,10 +178,10 @@ end
 function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) where {G, GPU}
   at = GPU ? "GPU" : "CPU"
   println(io, "NeuralModel{$(Game.name(G)), $at}:")
-  print(io, " trunk: "); show(io, model.trunk); println(io)
-  print(io, " value head: "); show(io, model.vhead); println(io)
-  print(io, " policy head: "); show(io, model.phead); println(io)
-  print(io, " feature head: "); show(io, model.fhead)
+  print(io, "  trunk: "); show(io, model.trunk); println(io)
+  print(io, "  vhead: "); show(io, model.vhead); println(io)
+  print(io, "  phead: "); show(io, model.phead); println(io)
+  print(io, "  fhead: "); show(io, model.fhead)
 end
 
 function tune( m :: NeuralModel{G, GPU}
@@ -194,6 +198,5 @@ function tune( m :: NeuralModel{G, GPU}
   cache isa I && cache > 0 && (m = Caching(m, max_cachesize = cache))
   m
 end
-
 
 

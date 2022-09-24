@@ -133,7 +133,6 @@ function worker_thread(channel, model, max_batchsize)
         yield()
       end
 
-      #@show length(inputs)
       v, p, f = model(first.(inputs)) .|> to_cpu
 
       for i = 1:length(inputs)
@@ -144,7 +143,8 @@ function worker_thread(channel, model, max_batchsize)
 
   catch err
 
-    error("Worker died: $err")
+    close(channel)
+    throw(err)
 
   end
 

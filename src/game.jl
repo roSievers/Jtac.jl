@@ -337,8 +337,7 @@ register!(Game) do a, b
 end
 """
 function register!(f :: Function, G :: Type{<:AbstractGame})
-  key = String(nameof(G))
-  GAMES[key] = f
+  GAMES[Util.nameof(G)] = f
 end
 
 register!(G :: Type{<:AbstractGame}) = register!(() -> G, G)

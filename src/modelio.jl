@@ -14,14 +14,12 @@ decompose(p :: Int)     = p
 decompose(p :: Float32) = p
 decompose(p :: Float64) = p
 decompose(p :: String)  = p
-#decompose(p :: Symbol)  = p
 
 compose(p :: Bool)    = p
 compose(p :: Integer) = Int(p)
 compose(p :: Float32) = p
 compose(p :: Float64) = p
 compose(p :: String)  = p
-#compose(p :: Symbol)  = p
 
 decompose(p :: Tuple{Int, Int}) = dict("pair", a = p[1], b = p[2])
 decompose(p :: Nothing)         = dict("nothing")
@@ -29,20 +27,11 @@ decompose(p :: Nothing)         = dict("nothing")
 compose(:: Val{:pair}, d)    = (Int(d["a"]), Int(d["b"]))
 compose(:: Val{:nothing}, d) = nothing
 
-#function decompose(p :: Array{Int})
-#  dict("intarray", dims = collect(size(p)), value = reshape(p, :))
-#end
-
 decompose(p :: Vector{Int}) = dict("intvector", value = p)
 
 function decompose(p :: Array{Float32})
   dict("floatarray", dims = decompose(collect(size(p))), value = reshape(p, :))
 end
-
-#function compose(:: Val{:intarray}, d)
-#  dims = Int.(d["dims"])
-#  reshape(convert(Array{Int}, d["value"]), dims...)
-#end
 
 compose(:: Val{:intvector}, d) = reinterpret(Int, d["value"])
 
@@ -97,7 +86,7 @@ compose(:: Val{:bnmoments}, d) = @compose Knet.Ops20.BNMoments d
 
 # -------- Layer Conversions ------------------------------------------------- #
 
-decompose(v :: Vector{Layer})   = dict("layers", value = decompose.(v))
+decompose(v :: Vector{Layer{false}})   = dict("layers", value = decompose.(v))
 compose(:: Val{:layers}, d)   = Layer[compose(l) for l in d["value"]]
 
 
@@ -105,6 +94,7 @@ compose(:: Val{:layers}, d)   = Layer[compose(l) for l in d["value"]]
 
 # TODO: we need to be able to register features as we are to register games
 # for safe compositions
+# TODO: feature registration works, now have to implement it here!
 decompose(f :: ConstantFeature) = @decompose "constantfeature" f
 compose(:: Val{:constantfeature}, d) = @compose ConstantFeature d
 
@@ -189,7 +179,7 @@ function compose(:: Val{:async}, d)
   model = compose(d["model"])
   max_batchsize = compose(d["max_batchsize"])
   buffersize = compose(d["buffersize"])
-  Async(model, max_batchsize = max_batchsize, buffersize = buffersize)
+  Async(model; max_batchsize, buffersize)
 end
 
 # -------- Caching Models ---------------------------------------------------- #
@@ -204,7 +194,7 @@ end
 function compose(:: Val{:caching}, d)
   model = compose(d["model"])
   max_cachesize = compose(d["max_cachesize"])
-  Caching(model, max_cachesize = max_cachesize)
+  Caching(model; max_cachesize)
 end
 
 # -------- Saving & Loading -------------------------------------------------- #

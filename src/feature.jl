@@ -95,7 +95,7 @@ register!(Feat) do a, b
 end
 """
 function register_feature!(f :: Function, F :: Type{<:Feature})
-  key = String(nameof(F))
+  key = Util.nameof(F)
   FEATURES[key] = f
 end
 
