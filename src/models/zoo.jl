@@ -8,9 +8,9 @@ end
 
 # -------- Multilayer Perceptron --------------------------------------------- #
 
-function MLP(G :: Type{<: AbstractGame}, hidden; f = Knet.relu, kwargs...)
+function MLP(G :: Type{<: AbstractGame}, hidden, f = "relu"; kwargs...)
   widths = [ prod(size(G)), hidden...]
-  layers = [ Dense(widths[j], widths[j+1]; f) for j in 1:length(widths) - 1 ]
+  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
 
   NeuralModel(G, Chain(layers...); kwargs...)
 end
@@ -19,28 +19,28 @@ end
 # -------- Shallow Convolutional Network ------------------------------------ #
 
 function ShallowConv( G :: Type{<: AbstractGame}
-                    ; f = Knet.relu
-                    , filters = 64
+                    , f = "relu"
+                    ; filters = 64
                     , kwargs... )
 
-  NeuralModel(G, Conv(size(G)[3], filters; f); kwargs...)
+  NeuralModel(G, Conv(size(G)[3], filters, f); kwargs...)
 end
 
 
 # -------- Architecture used for Alpha Zero ---------------------------------- #
 
 function zero_res_block(G :: Type{<: AbstractGame}, filters :: Int)
-  Model.@residual (size(G)[1:2]..., filters) f = relu begin
-    Conv(filters, f = relu, window = 3, padding = 1, stride = 1)
+  Model.@residual (size(G)[1:2]..., filters) f = "relu" begin
+    Conv(filters, "relu", window = 3, padding = 1, stride = 1)
     Batchnorm()
-    Conv(filters, f = relu, window = 3, padding = 1, stride = 1)
+    Conv(filters, "relu", window = 3, padding = 1, stride = 1)
     Batchnorm()
   end
 end
 
 function zero_conv_block(G :: Type{<: AbstractGame}, ci :: Int, co :: Int)
   Model.@chain (size(G)[1:2]..., ci) begin
-    Conv(co, f = relu, window = 3, padding = 1, stride = 1)
+    Conv(co, "relu", window = 3, padding = 1, stride = 1)
     Batchnorm()
   end
 end
@@ -48,19 +48,19 @@ end
 function zero_vhead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
-    Conv(32, f = relu, window = 1, padding = 0, stride = 1)
+    Conv(32, "relu", window = 1, padding = 0, stride = 1)
     Batchnorm()
-    Dense(256, f = relu)
-    Dense(1, f = relu)
+    Dense(256, "relu")
+    Dense(1, "relu")
   end
 end
 
 function zero_phead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
-    Conv(32, f = relu, window = 1, padding = 0, stride = 1)
+    Conv(32, "relu", window = 1, padding = 0, stride = 1)
     Batchnorm()
-    Dense(Game.policy_length(G), f = relu)
+    Dense(Game.policy_length(G), "relu")
   end
 end
 

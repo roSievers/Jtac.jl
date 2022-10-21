@@ -32,10 +32,6 @@ export identity,
        tanh,
        sigm
 
-# -------- MsgPack Configuration --------------------------------------------- #
-
-import MsgPack
-include("msgpack.jl")
 
 # -------- Utilities --------------------------------------------------------- #
 
@@ -58,6 +54,19 @@ module Util
 
 end # module Util
 
+# -------- Serialization ----------------------------------------------------- #
+
+module Pack
+
+  import MsgPack
+
+  using ..Jtac
+  import ..Util
+
+  include("pack.jl")
+
+end
+
 # -------- Games ------------------------------------------------------------- #
 
 module Game
@@ -67,6 +76,7 @@ module Game
 
   using ..Jtac
   using ..Util
+  import ..Pack
 
   include("game.jl")
 
@@ -120,6 +130,7 @@ module Model
   using ..Jtac
   using ..Util
   using ..Game
+  import ..Pack
 
   include("feature.jl")
   include("element.jl")
@@ -203,13 +214,6 @@ module Model
 
   end # module Zoo
 
-  # -------- Saving and loading models --------------------------------------- #
-
-  include("modelio.jl")
-
-  export save,
-         load
-
 end # module Model
 
 
@@ -225,6 +229,7 @@ module Player
   using ..Util
   using ..Game
   using ..Model
+  import ..Pack
 
   include("mc.jl")
   include("player.jl")
@@ -261,6 +266,7 @@ module Data
   using ..Game
   using ..Model
   using ..Player
+  import ..Pack
 
   include("dataset.jl")
   include("pool.jl")
@@ -292,7 +298,7 @@ module Training
   include("loss.jl")
   include("learning.jl")
 
-  export Dataset, Loss
+  export Loss
 
   export loss,
          caption,
@@ -312,6 +318,7 @@ module Bench
 end
 
 export Util,
+       Pack,
        Bench,
        Game,
        Model,

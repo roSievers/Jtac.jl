@@ -9,14 +9,12 @@ convenient creation of composite layers.
 """
 abstract type Layer{GPU} <: Element{GPU} end
 
+Pack.@mappack Model.Layer
+Pack.freeze(l :: Model.Layer) = to_cpu(l)
+
 valid_insize(:: Layer, _) = error("Not implemented")
 outsize(:: Layer, _) = error("Not implemented")
 
-# -------- Register new layers ----------------------------------------------- # 
-
-const LAYERS = Dict{String, DataType}()
-
-register_layer!(L :: Type{<:Layer}) = (LAYERS[Util.nameof(L)] = L{false})
 
 # -------- Primitive / Composite --------------------------------------------- # 
 
@@ -55,7 +53,7 @@ atype(gpu :: Bool) = gpu ? Knet.KnetArray{Float32} : Array{Float32}
  
 is_param(p) = isa(p, Knet.Param)
 
-# Function to copy (and convert) objects of type Param
+# Function to copy (and convert) objects of type Knet.Param
 # For convenience, we allow this function to be applied to other objects as well
 
 function copy_param(p :: Knet.Param; at = nothing)
@@ -87,35 +85,73 @@ expand_to_pair(t :: Int) = (t, t)
 
 # -------- Layer Weights ----------------------------------------------------- #
 
-const Weight = Union{ Array{Float32}
-                    , Knet.Param{Array{Float32, N}} where N
-                    , Knet.KnetArray{Float32}
-                    , Knet.Param{Knet.KnetArray{Float32, N}} where N}
+const WeightData = Union{ Array{Float32}
+                        , Knet.Param{Array{Float32, N}} where N
+                        , Knet.KnetArray{Float32}
+                        , Knet.Param{Knet.KnetArray{Float32, N}} where N }
+
+struct Weight
+  data :: WeightData
+end
+
+Pack.register(Weight)
+Pack.@mappack Model.Weight
+
+function Pack.destruct(w :: Weight)
+  if w.data isa Knet.Param
+    data = w.data.value
+    bytes = reinterpret(UInt8, reshape(data, :))
+    Dict("param" => true, "dims" => size(data), "data" => Pack.Bytes(bytes))
+  else
+    data = w.data
+    bytes = reinterpret(UInt8, reshape(data, :))
+    Dict("param" => false, "dims" => size(data), "data" => Pack.Bytes(bytes))
+   end
+end
+
+function Pack.construct(:: Type{Weight}, d :: Dict)
+  dims = Int.(d["dims"])
+  data = reinterpret(Float32, d["data"])
+  data = collect(reshape(data, dims...))
+  if d["param"]
+    Weight(Knet.Param(data))
+  else
+    Weight(data)
+  end
+end
+
+Base.convert(:: Type{Weight}, data :: WeightData) = Weight(data)
+
 
 # -------- Layer Activation -------------------------------------------------- #
 
-const ACTIVATIONS = Dict{String, Function}()
+const FUNCTIONS = Dict{String, Function}()
 
-struct Activation
+struct NamedFunction
   name :: String
   f :: Function
 end
 
-Activation(name :: String) = Activation(name, ACTIVATIONS[name])
-Activation(sym :: Symbol) = Activation(String(sym), ACTIVATIONS[String(sym)])
+Pack.register(NamedFunction)
+Pack.@mappack NamedFunction [:name]
 
-Base.convert(:: Type{Activation}, name :: String) = Activation(name)
-Base.convert(:: Type{Activation}, name :: Symbol) = Activation(name)
+NamedFunction(name :: String) = NamedFunction(name, FUNCTIONS[name])
+NamedFunction(sym :: Symbol) = NamedFunction(String(sym), FUNCTIONS[String(sym)])
 
-register_activation!(name :: String, f) = (ACTIVATIONS[name] = f)
+Base.convert(:: Type{NamedFunction}, name :: String) = NamedFunction(name)
+Base.convert(:: Type{NamedFunction}, name :: Symbol) = NamedFunction(name)
 
-register_activation!("id", Knet.identity)
-register_activation!("elu", Knet.elu)
-register_activation!("relu", Knet.relu)
-register_activation!("selu", Knet.selu)
-register_activation!("sigm", Knet.sigm)
-register_activation!("tanh", Knet.tanh)
+name_function!(name :: String, f) = (FUNCTIONS[name] = f)
 
+## 
+
+name_function!("id", Knet.identity)
+name_function!("elu", Knet.elu)
+name_function!("relu", Knet.relu)
+name_function!("selu", Knet.selu)
+name_function!("sigm", Knet.sigm)
+name_function!("tanh", Knet.tanh)
+name_function!("softmax", Knet.softmax)
 
 # -------- Pointwise --------------------------------------------------------- # 
 
@@ -123,12 +159,12 @@ register_activation!("tanh", Knet.tanh)
 Neural network layer that applies a function pointwisely.
 """
 struct Pointwise{GPU} <: PrimitiveLayer{GPU}
-  a :: Activation
+  a :: NamedFunction
 end
 
-register_layer!(Pointwise)
+Pack.register(Pointwise)
 
-Pointwise(; f = "id", gpu = false) = Pointwise{gpu}(f)
+Pointwise(f = "id"; gpu = false) = Pointwise{gpu}(f)
 
 (p :: Pointwise)(x) = p.a.f.(x)
 
@@ -156,48 +192,48 @@ Dense neural network layer.
 struct Dense{GPU} <: PrimitiveLayer{GPU}
   w :: Weight     # Weight matrix 
   b :: Weight     # Bias vector
-  a :: Activation # Activation function
+  a :: NamedFunction # Activation function
 end
 
-register_layer!(Dense)
+Pack.register(Dense)
 
-function Dense( i :: Int, o :: Int; f = "id", bias = true, gpu = false )
+function Dense( i :: Int, o :: Int, f = "id"; bias = true, gpu = false )
   at = atype(gpu)
   w = Knet.param(o, i, atype = at)
   b = bias ? Knet.param0(o, atype = at) : convert(at, zeros(Float32, o))
   Dense{gpu}(w, b, f)
 end
 
-(d :: Dense)(x) = d.a.f.(d.w * Knet.mat(x) .+ d.b)
+(d :: Dense)(x) = d.a.f.(d.w.data * Knet.mat(x) .+ d.b.data)
 
 function swap(d :: Dense{GPU}) where {GPU}
   at = atype(!GPU)
-  w = copy_param(d.w, at = at)
-  b = copy_param(d.b, at = at)
+  w = copy_param(d.w.data; at)
+  b = copy_param(d.b.data; at)
   Dense{!GPU}(w, b, d.a)
 end
 
 function Base.copy(d :: Dense{GPU}) where {GPU}
-  Dense{GPU}(copy_param(d.w), copy_param(d.b), d.a)
+  Dense{GPU}(copy_param(d.w.data), copy_param(d.b.data), d.a)
 end
 
 # Check if some input of a given size s can be processed by the layer
 # Note that the batchsize is not part of s, so s will usually have
 # Dimension 1 (after dense layers) or 3 (before/after convolution layers)
-valid_insize(d :: Dense, s) = (prod(s) == size(d.w, 2))
+valid_insize(d :: Dense, s) = (prod(s) == size(d.w.data, 2))
 
 # Get the correct output size for a respective input size
 function outsize(d :: Dense, s)
   @assert valid_insize(d, s) "Dense layer cannot be applied to input of size $s"
-  size(d.w, 1)
+  size(d.w.data, 1)
 end
 
 function Base.show(io :: IO, d :: Dense)
-  print(io, "Dense($(size(d.w, 1)), $(d.a.name))")
+  print(io, "Dense($(size(d.w.data, 1)), $(d.a.name))")
 end
 
 function Base.show(io :: IO, ::MIME"text/plain", d :: Dense{GPU}) where {GPU}
-  n = size(d.w, 1)
+  n = size(d.w.data, 1)
   at = GPU ? "GPU" : "CPU"
   ac = d.a.name
   print(io, "Dense{$at} layer with $n neurons and $ac activation")
@@ -212,15 +248,15 @@ Convolutional neural network layer.
 struct Conv{GPU} <: PrimitiveLayer{GPU}
   w :: Weight     # Convolutional kernel
   b :: Weight     # Bias vector
-  a :: Activation # Activation function
+  a :: NamedFunction # Activation function
 
   p :: Tuple{Int, Int} # Padding for the convolution
   s :: Tuple{Int, Int} # Stride for the convolution
 end
 
-register_layer!(Conv)
+Pack.register(Conv)
 
-function Conv( ci :: Int, co :: Int; f = "id",
+function Conv( ci :: Int, co :: Int, f = "id";
                window = 3, padding = 0, 
                stride = 1, bias = true, gpu = false )
 
@@ -241,46 +277,46 @@ function Conv( ci :: Int, co :: Int; f = "id",
 
 end
 
-(c :: Conv)(x) = c.a.f.(Knet.conv4(c.w, x, padding = c.p, stride = c.s) .+ c.b)
+(c :: Conv)(x) =
+  c.a.f.(Knet.conv4(c.w.data, x, padding = c.p, stride = c.s) .+ c.b.data)
 
 function swap(c :: Conv{GPU}) where {GPU}
   at = atype(!GPU)
-  w = copy_param(c.w, at = at)
-  b = copy_param(c.b, at = at)
+  w = copy_param(c.w.data, at = at)
+  b = copy_param(c.b.data, at = at)
   Conv{!GPU}(w, b, c.a, c.p, c.s)
 end
 
 function Base.copy(c :: Conv{GPU}) where {GPU}
-  Conv{GPU}(copy_param(c.w), copy_param(c.b), c.a, c.p, c.s)
+  Conv{GPU}(copy_param(c.w.data), copy_param(c.b.data), c.a, c.p, c.s)
 end
 
 function valid_insize(c :: Conv, s)
   all(( length(s) == 3,
-        s[1] >= size(c.w, 1) - c.p[1],
-        s[2] >= size(c.w, 2) - c.p[2],
-        s[3] == size(c.w, 3) ))
+        s[1] >= size(c.w.data, 1) - c.p[1],
+        s[2] >= size(c.w.data, 2) - c.p[2],
+        s[3] == size(c.w.data, 3) ))
 end
 
 function outsize(c :: Conv, s)
   @assert valid_insize(c, s) "Conv layer cannot be applied to input of size $s"
-  ( 1 + (div(s[1] + 2c.p[1] - size(c.w, 1), c.s[1]) |> floor),
-    1 + (div(s[2] + 2c.p[2] - size(c.w, 2), c.s[2]) |> floor),
-    size(c.w, 4)
+  ( 1 + (div(s[1] + 2c.p[1] - size(c.w.data, 1), c.s[1]) |> floor),
+    1 + (div(s[2] + 2c.p[2] - size(c.w.data, 2), c.s[2]) |> floor),
+    size(c.w.data, 4)
   )
 end
 
 function Base.show(io :: IO, c :: Conv)
-  window = size(c.w)[1:2]
-  channels = size(c.w, 4)
+  window = size(c.w.data)[1:2]
+  channels = size(c.w.data, 4)
   print(io, "Conv($channels, $window, $(c.a.name))")
 end
 
 function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{GPU}) where {GPU}
-  shape = size(c.w)[[1,2,4]]
   at = GPU ? "GPU" : "CPU"
   ac = c.a.name
-  println(io, "Conv{$at} layer with $(size(c.w)[4]) out-channels and $ac activation:")
-  println(io, " window:  $(size(c.w)[1:2])")
+  println(io, "Conv{$at} layer with $(size(c.w.data)[4]) out-channels and $ac activation:")
+  println(io, " window:  $(size(c.w.data)[1:2])")
   println(io, " padding: $(c.p)")
   print(io, " stride:  $(c.s)")
 end
@@ -294,15 +330,15 @@ De-convolutional neural network layer.
 struct Deconv{GPU} <: PrimitiveLayer{GPU}
   w :: Weight     # Deconvolutional kernel
   b :: Weight     # Bias vector
-  a :: Activation # Activation function
+  a :: NamedFunction # Activation function
 
   p :: Tuple{Int, Int} # Padding for the convolution
   s :: Tuple{Int, Int} # Stride for the convolution
 end
 
-register_layer!(Deconv)
+Pack.register(Deconv)
 
-function Deconv( ci :: Int, co :: Int; f = "id",
+function Deconv( ci :: Int, co :: Int, f = "id";
                  window = 3, padding = 0, 
                  stride = 1, bias = true, gpu = false )
 
@@ -323,39 +359,40 @@ function Deconv( ci :: Int, co :: Int; f = "id",
 
 end
 
-(d :: Deconv)(x) = d.a.f.(Knet.deconv4(d.w, x, padding = d.p, stride = d.s) .+ d.b)
+(d :: Deconv)(x) =
+  d.a.f.(Knet.deconv4(d.w.data, x, padding = d.p, stride = d.s) .+ d.b.data)
 
 function swap(d :: Deconv{GPU}) where {GPU}
   at = atype(!GPU)
-  w = copy_param(d.w, at = at)
-  b = copy_param(d.b, at = at)
+  w = copy_param(d.w.data, at = at)
+  b = copy_param(d.b.data, at = at)
   Deconv{!GPU}(w, b, d.a, d.p, d.s)
 end
 
 function Base.copy(d :: Deconv{GPU}) where {GPU}
-  Deconv{GPU}(copy_param(d.w), copy_param(d.b), d.a, d.p, d.s)
+  Deconv{GPU}(copy_param(d.w.data), copy_param(d.b.data), d.a, d.p, d.s)
 end
 
 valid_insize(d :: Deconv, s) = (length(s) == 3)
 
 function outsize(d :: Deconv, s)
   @assert valid_insize(d, s) "Deconv layer cannot be applied to input of size $s"
-  ( size(d.w, 1) + d.s[1] * (s[1] - 1) - 2d.p[1],
-    size(d.w, 2) + d.s[2] * (s[1] - 1) - 2d.p[2],
-    size(d.w, 3) )
+  ( size(d.w.data, 1) + d.s[1] * (s[1] - 1) - 2d.p[1],
+    size(d.w.data, 2) + d.s[2] * (s[1] - 1) - 2d.p[2],
+    size(d.w.data, 3) )
 end
 
 function Base.show(io :: IO, d :: Deconv)
-  window = size(d.w)[1:2]
-  channels = size(d.w, 3)
+  window = size(d.w.data)[1:2]
+  channels = size(d.w.data, 3)
   print(io, "Deconv($channels, $window, $(d.a.name))")
 end
 
 function Base.show(io :: IO, ::MIME"text/plain", d :: Deconv{GPU}) where {GPU}
   at = GPU ? "GPU" : "CPU"
   ac = d.a.name
-  println(io, "Deconv{$at} layer with $(size(d.w)[3]) out-channels and $ac activation:")
-  println(io, " window:  $(size(d.w)[1:2])")
+  println(io, "Deconv{$at} layer with $(size(d.w.data)[3]) out-channels and $ac activation:")
+  println(io, " window:  $(size(d.w.data)[1:2])")
   println(io, " padding: $(d.p)")
   print(io, " stride:  $(d.s)")
 end
@@ -370,12 +407,12 @@ struct Pool{GPU} <: PrimitiveLayer{GPU}
   w :: Tuple{Int, Int} # Window size for the pooling operation
   p :: Tuple{Int, Int} # Padding
   s :: Tuple{Int, Int} # Stride
-  a :: Activation      # Activation function
+  a :: NamedFunction      # Activation function
 end
 
-register_layer!(Pool)
+Pack.register(Pool)
 
-function Pool(; f = "id", window = 2, padding = 0, stride = window, gpu = false)
+function Pool(f = "id"; window = 2, padding = 0, stride = window, gpu = false)
   w, p, s = expand_to_pair.((window, padding, stride))
   Pool{gpu}(w, p, s, f)
 end
@@ -426,12 +463,12 @@ Dropout layer. This must not be the first layer of the network.
 """
 struct Dropout{GPU} <: PrimitiveLayer{GPU}
   prob :: Float32
-  a :: Activation
+  a :: NamedFunction
 end
 
-register_layer!(Dropout)
+Pack.register(Dropout)
 
-Dropout(prob; f = "id", gpu = false) = Dropout{gpu}(prob, f)
+Dropout(prob, f = "id"; gpu = false) = Dropout{gpu}(prob, f)
 
 function (d :: Dropout)(x)
   if isa(x, AutoGrad.Value)
@@ -459,39 +496,56 @@ end
 
 # -------- Batch Normalization ----------------------------------------------- #
 
+Pack.register(Knet.Ops20.BNMoments)
+Pack.@mappack Knet.Ops20.BNMoments
+
+Pack.destruct(bn :: Knet.Ops20.BNMoments) = Dict{String, Any}(
+    "momentum" => bn.momentum
+  , "mean" => isnothing(bn.mean) ? nothing : Model.Weight(bn.mean)
+  , "var" => isnothing(bn.var) ? nothing : Model.Weight(bn.var)
+)
+
+function Pack.construct(:: Type{Knet.Ops20.BNMoments}, d) 
+  mean = isnothing(d["mean"]) ? nothing : Pack.construct(Model.Weight, d["mean"]).data
+  var = isnothing(d["var"]) ? nothing : Pack.construct(Model.Weight, d["var"]).data
+  momentum = Float32(d["momentum"])
+  Knet.bnmoments(; mean, var, momentum)
+end
+
+
 """
 Batch normalization layer.
 """
 struct Batchnorm{GPU} <: PrimitiveLayer{GPU}
   moments :: Knet.Ops20.BNMoments
   params :: Weight
-  a :: Activation
+  a :: NamedFunction
 end
 
-register_layer!(Batchnorm)
+Pack.register(Batchnorm)
 
-function Batchnorm(channels; f = "id", gpu = false)
+function Batchnorm(channels, f = "id"; gpu = false)
   b = Batchnorm{false}( Knet.bnmoments()
                       , Knet.bnparams(Float32, channels)
                       , f )
   gpu ? swap(b) : b
 end
 
-(b :: Batchnorm)(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params))
+(b :: Batchnorm)(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params.data))
 
 function swap(b :: Batchnorm{GPU}) where {GPU}
   at = atype(!GPU)
   mean = (b.moments.mean != nothing) ? convert(at, b.moments.mean) : nothing
   var  = (b.moments.var != nothing) ? convert(at, b.moments.var) : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{!GPU}(moments, copy_param(b.params, at = at), b.a)
+  Batchnorm{!GPU}(moments, copy_param(b.params.data, at = at), b.a)
 end
 
 function Base.copy(b :: Batchnorm{GPU}) where {GPU}
   mean = (b.moments.mean != nothing) ? copy(b.moments.mean) : nothing
   var  = (b.moments.var  != nothing) ? copy(b.moments.var)  : nothing
   moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{GPU}(moments, copy_param(b.params), b.a)
+  Batchnorm{GPU}(moments, copy_param(b.params.data), b.a)
 end
 
 valid_insize(:: Batchnorm, s) = true
@@ -516,7 +570,7 @@ struct Chain{GPU} <: CompositeLayer{GPU}
   layers :: Vector{Layer{GPU}}
 end
 
-register_layer!(Chain)
+Pack.register(Chain)
 
 function Chain(layers :: Layer{GPU}...; gpu = nothing) where {GPU} 
   c = Chain{GPU}(Layer{GPU}[l for l in layers])
@@ -611,7 +665,7 @@ struct Stack{GPU} <: CompositeLayer{GPU}
   stack_input :: Bool
 end
 
-register_layer!(Stack)
+Pack.register(Stack)
 
 function Stack(layers :: Layer{GPU}...; 
                gpu = nothing, stack_input :: Bool = false) where {GPU}
@@ -693,14 +747,14 @@ shape-conserving.
 """
 struct Residual{GPU} <: CompositeLayer{GPU}
   chain :: Chain{GPU}
-  a :: Activation
+  a :: NamedFunction
 end
 
-register_layer!(Residual)
+Pack.register(Residual)
 
 function Residual(layers :: Layer{GPU}...; f = "id", gpu = GPU) where {GPU}
   ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
-  Residual(Chain(ls...), a)
+  Residual(Chain(ls...), NamedFunction(f))
 end
 
 (r :: Residual)(x) = r.a.f.(r.chain(x) .+ x)
@@ -868,8 +922,8 @@ given.
 # The following two calls will create the same networks
 # Both of them are compatible with the game TicTacToe
 
-Model.Chain([ Model.Conv(1, 32, relu), Model.Dense(32, 50) ])
-Model.@chain Game.TicTacToe Conv(32, relu) Dense(50)
+Model.Chain([ Model.Conv(1, 32, "relu"), Model.Dense(32, 50) ])
+Model.@chain Game.TicTacToe Conv(32, "relu") Dense(50)
 ```
 """
 macro chain(ex, layers...)

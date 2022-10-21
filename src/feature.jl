@@ -1,5 +1,7 @@
 
 # TODO: features should get own module
+# TODO: policy and value should be features, not hardcoded
+# TODO: features should have fields for conv function and loss function
 
 # -------- Feature ----------------------------------------------------------- #
 
@@ -23,6 +25,8 @@ must be implemented.
 
 """
 abstract type Feature end
+
+Pack.@mappack Feature
 
 # Default choices: squared error loss and identity conversion
 feature_loss(:: Feature, a, b) = sum(abs2, a .- b)
@@ -50,8 +54,6 @@ end
 
 feature_name(f :: Feature) = "<unknown>"
 
-MsgPack.msgpack_type(::Type{G}) where G <: Feature = MsgPack.StructType()
-
 # -------- Feature Compability ----------------------------------------------- #
 
 function feature_compatibility(l, model)
@@ -73,34 +75,6 @@ function feature_compatibility(l, model, dataset)
   false
 end
 
-# -------- Register new features --------------------------------------------- #
-
-"""
-Constant variable that maps registered feature names to a function that maps
-template arguments to a fearute type.
-"""
-const FEATURES = Dict{String, Function}()
-
-"""
-    register_feature!(F)
-    register_feature!(f, F)
-
-Register a new jtac feature type `F`. If `F` takes template arguments, the function
-`f` must be provided. Applying `f` to the template arguments must yield the
-concrete feature type. For example, to register a feature with type `Feat{A, B}`, you
-can use the code
-```
-register!(Feat) do a, b
-  eval(Expr(:curly, :Feat, a, b))
-end
-"""
-function register_feature!(f :: Function, F :: Type{<:Feature})
-  key = Util.nameof(F)
-  FEATURES[key] = f
-end
-
-register_feature!(F :: Type{<:Feature}) = register_feature!(() -> F, F)
-
 
 # -------- Constant Dummy Feature -------------------------------------------- #
 
@@ -115,7 +89,7 @@ struct ConstantFeature <: Feature
   data :: Vector{Float32}
 end
 
-register_feature!(ConstantFeature)
+Pack.register(ConstantFeature)
 
 function ConstantFeature(data; name = "const")
   ConstantFeature(name, data)

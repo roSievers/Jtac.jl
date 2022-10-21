@@ -26,6 +26,8 @@ improved policy for its decision).
 """
 abstract type AbstractModel{G <: AbstractGame, GPU} <: Element{GPU} end
 
+Pack.@mappack AbstractModel
+
 to_cpu(a) = convert(atype(false), a)
 to_gpu(a) = convert(atype(true), a)
 
@@ -125,4 +127,19 @@ function tune(model; gpu, async, cache)
 end
 
 tune(; kwargs...) = model -> tune(model; kwargs...)
+
+"""
+    save(fname, model)
+
+Save `model` to the file `fname`. The typical file extension
+is `.jtm`.
+"""
+save(fname, model) = open(io -> Pack.pack(io, model), fname, "w")
+
+"""
+    load(fname)
+
+Load a Jtac model from `fname`. The typical file extension is `.jtm`.
+"""
+load(fname) = open(io -> Pack.unpack(io, AbstractModel), fname)
 

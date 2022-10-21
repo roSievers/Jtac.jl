@@ -10,7 +10,7 @@ mutable struct MetaTac <: AbstractGame
   region_status_cache :: Vector{Status}
 end
 
-register!(MetaTac)
+Pack.register(MetaTac)
 
 function MetaTac()
   MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
@@ -25,6 +25,14 @@ function Base.copy(s :: MetaTac) :: MetaTac
     s.status_cache,
     copy(s.region_status_cache)
   )
+end
+
+function Base.:(==)(a::MetaTac, b::MetaTac)
+  all([ all(a.board .== b.board)
+      , a.current_player == b.current_player
+      , a.focus == b.focus
+      , a.status_cache == b.status_cache
+      , all(a.region_status_cache .== b.region_status_cache) ])
 end
 
 current_player(game :: MetaTac) :: Int = game.current_player

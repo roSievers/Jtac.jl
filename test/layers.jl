@@ -12,12 +12,12 @@
   chain = Model.@chain (11, 10, 5) Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
   stack1 = Model.@stack (11, 10, 5) Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
   stack2 = Model.@stack (11, 10, 5) stack_input=true Conv(10) Pool() Dropout(0.5) Dense(15) Batchnorm()
-  resnet = Model.@residual (9, 9, 5) Conv(5, f = relu, padding = 1) Conv(5, f = relu, padding = 1)
+  resnet = Model.@residual (9, 9, 5) Conv(5, "relu", padding = 1) Conv(5, "relu", padding = 1)
   @test size(chain(ones(Float32, 11, 10, 5, 2))) == (15, 2)
   @test size(stack1(ones(Float32, 11, 10, 5, 2))) == (1070, 2)
   @test size(stack2(ones(Float32, 11, 10, 5, 2))) == (1620, 2)
   @test size(resnet(ones(Float32, 9, 9, 5, 3))) == (9, 9, 5, 3)
-  @test_throws ErrorException Model.@residual (9, 9, 5) Dense(10, f = relu)
+  @test_throws ErrorException Model.@residual (9, 9, 5) Dense(10, "relu")
 end
 
 @testset "Models" begin

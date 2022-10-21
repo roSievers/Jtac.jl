@@ -12,8 +12,6 @@ arguments stands for a game status that is still undecided. Calling it with
 argument `val`, which can be 1, -1, or 0, indicates a game won by the first or
 second player, or a draw.
 """
-function Status end
-
 Status(value :: Int) = value
 Status() = 42
 
@@ -33,6 +31,8 @@ Concrete subtypes of `Game` must implement a number of functions that allow
 to find out the current player, the game status, or the legal actions.
 """
 abstract type AbstractGame end
+
+Pack.register(AbstractGame)
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
  
@@ -252,93 +252,40 @@ instance(gen) = gen()
 """
 hash(game :: AbstractGame) = error("hashing for game $(typeof(game)) not implemented")
 
-"""
-    freeze(game)
-
-Returns a frozen version of `game`. This function is used before `game` is
-transported to another process or saved to disk. May return `game` itself.
-The returned game state may be unusable for the `AbstractGame` interface, but it
-is guaranteed that `unfreeze` will recover the original game state.
-
-One use case are game implementations that rely on pointers, which become
-invalid on another process.
-"""
-freeze(game :: AbstractGame) = game
-freeze(gen) = gen
-
-"""
-    unfreeze(game)
-
-Unfreeze a previously frozen game. This function is always called after `game` has
-been transported to another process or was loaded from disk.
-"""
-unfreeze(game :: AbstractGame) = game
-unfreeze(gen) = gen
-
-"""
-    is_frozen(game)
-
-Indicates whether `game` is in its frozen state.
-"""
-is_frozen(game :: AbstractGame) = false
 
 # -------- Serialization via MsgPack ----------------------------------------- #
 
-MsgPack.msgpack_type(::Type{G}) where G <: AbstractGame = MsgPack.StructType()
+Pack.@structpack AbstractGame
 
-"""
-    serialize([io], game)
+#MsgPack.msgpack_type(::Type{G}) where G <: AbstractGame = MsgPack.StructType()
 
-Serialize `game` to binary data (`Vector{UInt8}`) or write it to `io`.
-"""
-serialize(game :: AbstractGame) = MsgPack.pack(freeze(game))
-serialize(io, game :: AbstractGame) = MsgPack.pack(io, freeze(game))
+#"""
+#    serialize([io], game)
+#
+#Serialize `game` to binary data (`Vector{UInt8}`) or write it to `io`.
+#"""
+#serialize(game :: AbstractGame) = MsgPack.pack(freeze(game))
+#serialize(io, game :: AbstractGame) = MsgPack.pack(io, freeze(game))
+#
+#function serialize(games :: Vector{G}) where {G <: AbstractGame}
+#  MsgPack.pack(freeze.(games))
+#
+#
+#function serialize(io, games :: Vector{G}) where {G <: AbstractGame}
+#  MsgPack.pack(io, freeze.(games))
+#end
+#
+#"""
+#    deserialize(io, G)
+#
+#Read a serialized game of type `G <: AbstractGame` from `io`.
+#"""
+#function deserialize(io, :: Type{G}) where G <: AbstractGame
+#  MsgPack.unpack(io, G; strict=(G,)) |> unfreeze
+#end
+#
+#function deserialize(io, :: Type{Vector{G}}) where G <: AbstractGame
+#  MsgPack.unpack(io, Vector{G}; strict=(G,)) .|> unfreeze
+#end
 
-function serialize(games :: Vector{G}) where {G <: AbstractGame}
-  MsgPack.pack(freeze.(games))
-end
-
-function serialize(io, games :: Vector{G}) where {G <: AbstractGame}
-  MsgPack.pack(io, freeze.(games))
-end
-
-"""
-    deserialize(io, G)
-
-Read a serialized game of type `G <: AbstractGame` from `io`.
-"""
-function deserialize(io, :: Type{G}) where G <: AbstractGame
-  MsgPack.unpack(io, G; strict=(G,)) |> unfreeze
-end
-
-function deserialize(io, :: Type{Vector{G}}) where G <: AbstractGame
-  MsgPack.unpack(io, Vector{G}; strict=(G,)) .|> unfreeze
-end
-
-# -------- Register new games ------------------------------------------------ #
-
-"""
-Constant variable that maps registered game names to a function that maps
-template arguments to a game type.
-"""
-const GAMES = Dict{String, Function}()
-
-"""
-    register!(G)
-    register!(f, G)
-
-Register a new jtac game type `G`. If `G` takes template arguments, the function
-`f` must be provided. Applying `f` to the template arguments must yield the
-concrete game type. For example, to register a game with type `Game{A, B}`, you
-can use the code
-```
-register!(Game) do a, b
-  eval(Expr(:curly, :Game, a, b))
-end
-"""
-function register!(f :: Function, G :: Type{<:AbstractGame})
-  GAMES[Util.nameof(G)] = f
-end
-
-register!(G :: Type{<:AbstractGame}) = register!(() -> G, G)
 

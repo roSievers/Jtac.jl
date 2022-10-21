@@ -20,6 +20,37 @@ mutable struct Dataset{G <: AbstractGame}
 
 end
 
+Pack.register(Dataset)
+Pack.@mappack Dataset
+
+function Pack.destruct(ds :: Data.Dataset)
+  label = vcat(ds.label...)
+  flabel = vcat(ds.flabel...)
+  bytes = reinterpret(UInt8, label)
+  fbytes = reinterpret(UInt8, flabel)
+  Dict{String, Any}(
+      "games" => Pack.Bytes(Pack.pack(ds.games))
+    , "label" => Pack.Bytes(bytes)
+    , "flabel" => Pack.Bytes(fbytes)
+    , "features" => ds.features
+  )
+end
+
+function Pack.construct(:: Type{Data.Dataset{G}}, d :: Dict) where {G}
+  games = Pack.unpack(d["games"], Vector{G})
+
+  data = reinterpret(Float32, d["label"])
+  data = reshape(data, :, length(games))
+  label = [ col[:] for col in eachcol(data) ]
+
+  fdata = reinterpret(Float32, d["flabel"])
+  fdata = reshape(fdata, :, length(games))
+  flabel = [ col[:] for col in eachcol(fdata) ]
+
+  features = Pack.from_msgpack(Vector{Model.Feature}, d["features"])
+  Data.Dataset(games, label, flabel, features)
+end
+
 """
       Dataset{G}([; features])
 
@@ -46,72 +77,23 @@ Base.lastindex(d :: Dataset) = length(d)
 
 # -------- Serialization and IO of Datasets ---------------------------------- #
 
-# This creates problems because of the abstract Feature vector in Dataset
-# Therefore, we go the manual route below
-#function MsgPack.msgpack_type(::Type{Dataset{G}}) where G <: AbstractGame
-#  MsgPack.StructType()
-#end
-
-function serialize(io, dataset :: Dataset{G}) where G <: AbstractGame
-  stream = CodecZstd.ZstdCompressorStream(io)
-  gameinfo = Dict(
-      "name" => String(nameof(G))
-    , "params" => Tuple(G.parameters)
-  )
-  MsgPack.pack(stream, gameinfo)
-  MsgPack.pack(stream, Game.freeze.(dataset.games))
-  MsgPack.pack(stream, dataset.label)
-  MsgPack.pack(stream, dataset.flabel)
-  MsgPack.pack(stream, length(dataset.features))
-  for feat in dataset.features
-    F = typeof(feat)
-    featinfo = Dict(
-        "name" => String(nameof(F))
-      , "params" => Tuple(F.parameters)
-    )
-    MsgPack.pack(stream, featinfo)
-    MsgPack.pack(stream, feat)
-  end
-  write(stream, TranscodingStreams.TOKEN_END)
-  flush(stream)
-end
-
-function deserialize(io)
-  stream = CodecZstd.ZstdDecompressorStream(io)
-  gameinfo = MsgPack.unpack(stream)
-  G = Game.GAMES[gameinfo["name"]](gameinfo["params"]...)
-  games = MsgPack.unpack(stream, Vector{G})
-  label = MsgPack.unpack(stream, Vector{Vector{Float32}})
-  flabel = MsgPack.unpack(stream, Vector{Vector{Float32}})
-  nfeats = MsgPack.unpack(stream, Int)
-  features = Feature[]
-  for _ in 1:nfeats
-    featinfo = MsgPack.unpack(stream)
-    F = Model.FEATURES[featinfo["name"]](featinfo["params"]...)
-    feat = MsgPack.unpack(stream, F)
-    push!(features, feat)
-  end
-  Dataset(games, label, flabel, features)
-end
 
 """
-    save(name, dataset; ext = ".jtd")
+    save(name, dataset)
 
-Save `dataset` under filename `name` with automatically appended extension
-`ext`. Dataset caches are not saved.
+Save `dataset` under filename `name`. Dataset caches are not saved.
 """
-function save(fname :: String, d :: Dataset; ext = ".jtd")
-  open(io -> serialize(io, d), fname * ext, "w")
+function save(fname :: String, d :: Dataset)
+  open(io -> Pack.pack_compressed(io, d), fname, "w")
 end
 
 """
     load(name)
 
-Load a dataset for games from file `name`, where the extension `ext` is
-automatically appended.
+Load a dataset for games from file `name`.
 """
-function load(fname :: String; ext = ".jtd") where G <: AbstractGame
-  open(io -> deserialize(io), fname * ext)
+function load(fname :: String) where G <: AbstractGame
+  open(io -> Pack.unpack_compressed(io, Dataset), fname)
 end
 
 # -------- Dataset Operations ------------------------------------------------ #
@@ -195,16 +177,16 @@ function Game.augment(d :: Dataset{G}) :: Vector{Dataset{G}} where G <: Abstract
   end
 end
 
-function Game.freeze(d :: Dataset)
-  Dataset(Game.freeze.(d.games), d.label, d.flabel, d.features)
+function Pack.freeze(d :: Dataset)
+  Dataset(Pack.freeze.(d.games), d.label, d.flabel, d.features)
 end
 
-function Game.freeze(ds :: Vector{D}) where D <: Dataset
-  Game.freeze.(ds)
-end
+#function Pack.freeze(ds :: Vector{D}) where D <: Dataset
+#  Pack.freeze.(ds)
+#end
 
-function Game.unfreeze(d :: Dataset)
-  Dataset(Game.unfreeze.(d.games), d.label, d.flabel, d.features)
+function Pack.unfreeze(d :: Dataset)
+  Dataset(Pack.unfreeze.(d.games), d.label, d.flabel, d.features)
 end
 
 function Base.show(io :: IO, d :: Dataset{G}) where G <: AbstractGame
@@ -256,6 +238,7 @@ function Datacache( ds :: Dataset{G}
 end
 
 Base.length(c :: Datacache) = size(c.data)[end]
+
 
 # -------- Iterating Datasets: Batches --------------------------------------- #
 

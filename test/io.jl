@@ -29,7 +29,7 @@
     @test model(game) == model2(game)
 
     player = Player.MCTSPlayer(model, power = 10)
-    dataset = Data.record_self(player, 1, augment = true)
+    dataset = Data.record(player, 1, augment = true)
 
     name = tempname()
     Data.save(name, dataset)

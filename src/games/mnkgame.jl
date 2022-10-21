@@ -11,15 +11,14 @@ mutable struct MNKGame{M, N, K} <: AbstractGame
   move_count :: Int
 end
 
-register!(MNKGame) do m, n, k
-  eval(Expr(:curly, nameof(MNKGame), Int(m), Int(n), Int(k)))
+Pack.register(MNKGame) do m, n, k
+  eval(Expr(:curly, :MNKGame, Int(m), Int(n), Int(k)))
 end
 
 const TicTacToe = MNKGame{3, 3, 3}
 
-function MNKGame{M, N, K}() where {M, N, K}
+MNKGame{M, N, K}() where {M, N, K} =
   MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
-end
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
@@ -28,6 +27,13 @@ function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
     s.status,
     s.move_count,
   )
+end
+
+function Base.:(==)(a::MNKGame{M, N, K}, b::MNKGame{M, N, K}) where {M, N, K}
+  all([ all(a.board .== b.board)
+      , a.current_player == b.current_player
+      , a.status == b.status
+      , a.move_count == b.move_count])
 end
 
 current_player(game :: MNKGame) :: Int = game.current_player
@@ -183,9 +189,7 @@ function augment( game :: MNKGame{M, N, K}
 
 end
 
-function hash(game :: MNKGame)
-  Base.hash(game.board)
-end
+hash(game :: MNKGame) = Base.hash(game.board)
 
 
 function draw(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}

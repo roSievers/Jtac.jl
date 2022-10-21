@@ -7,6 +7,8 @@ function to yield policies.
 """
 abstract type AbstractPlayer{G <: AbstractGame} end
 
+Pack.@mappack AbstractPlayer
+
 """
     think(player, game)
 
@@ -126,6 +128,8 @@ struct IntuitionPlayer{G} <: AbstractPlayer{G}
   name :: String
 end
 
+Pack.register(IntuitionPlayer)
+
 """
     IntuitionPlayer(model [; temperature, name])
     IntuitionPlayer(player [; temperature, name])
@@ -235,6 +239,9 @@ struct MCTSPlayer{G} <: AbstractPlayer{G}
   name :: String
 
 end
+
+Pack.register(MCTSPlayer)
+
 
 """
     MCTSPlayer([model; power, temperature, exploration, name])

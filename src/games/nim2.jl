@@ -13,12 +13,13 @@
 
 
 mutable struct Nim2 <: AbstractGame
-    remaining :: Int
-    current_player :: Int
-    actions_left :: Int
-    status :: Status
-  end
+  remaining :: Int
+  current_player :: Int
+  actions_left :: Int
+  status :: Status
+end
 
+Pack.register(Nim2)
 
 Nim2() = Nim2(15, 1, 3, Status())
 
@@ -29,8 +30,15 @@ function Base.copy(s :: Nim2) :: Nim2
       s.actions_left,
       s.status,
     )
-  end
+end
 
+
+function Base.:(==)(a::Nim2, b::Nim2)
+  all([ a.remaining .== b.remaining
+      , a.current_player == b.current_player
+      , a.status == b.status
+      , a.actions_left == b.actions_left ])
+end
 
 current_player(game :: Nim2) :: Int = game.current_player
 
@@ -120,6 +128,7 @@ function represent_actions_left2(actions_left :: Int) :: Vector{Float32}
   end
 end
 
+hash(game :: Nim2) = Base.hash((game.remaining, game.current_player, game.actions_left))
 
 function draw(game :: Nim2) :: Nothing
   println(" Nim: $(game.remaining) remaining, $(game.actions_left) actions left, $(game.current_player) to play.")

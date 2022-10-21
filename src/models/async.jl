@@ -15,6 +15,10 @@ mutable struct Async{G} <: AbstractModel{G, false}
   buffersize     :: Int     # Must not be smaller than max_batchsize!
 end
 
+Pack.register(Async)
+Pack.@mappack Async [:model, :max_batchsize, :buffersize]
+Pack.freeze(m :: Async) = switch_model(m, Pack.freeze(m.model))
+
 """
     Async(model; max_batchsize, buffersize)
 
@@ -22,7 +26,7 @@ Wraps `model` to become an asynchronous model with maximal batchsize
 `max_batchsize` for evaluation in parallel and a buffer of size `buffersize` for
 queuing.
 """
-function Async( model :: AbstractModel{G}; 
+function Async( model :: AbstractModel{G};
                 max_batchsize = 50, 
                 buffersize = 10max_batchsize ) where {G <: AbstractGame}
 
@@ -50,6 +54,14 @@ function Async( model :: AbstractModel{G};
   amodel
 
 end
+
+# This constructor is used for unpacking
+function Async{G}( model :: AbstractModel{G},
+                   max_batchsize :: Int,
+                   buffersize :: Int ) where {G <: AbstractGame}
+  Async(model; max_batchsize, buffersize)
+end
+
 
 
 function (m :: Async{G})( game :: G

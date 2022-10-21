@@ -18,6 +18,8 @@ mutable struct Nim <: AbstractGame
   status :: Status
 end
 
+Pack.register(Nim)
+
 Nim() = Nim(ones(Int, 15), 1, 3, Status())
 
 function Base.copy(s :: Nim) :: Nim
@@ -29,7 +31,17 @@ function Base.copy(s :: Nim) :: Nim
   )
 end
 
+
+function Base.:(==)(a::Nim, b::Nim)
+  all([ all(a.board .== b.board)
+      , a.current_player == b.current_player
+      , a.status == b.status
+      , a.actions_left == b.actions_left ])
+end
+
+
 current_player(game :: Nim) :: Int = game.current_player
+
 
 # Returns a list of the Indices of all legal actions
 function legal_actions(game :: Nim) :: Vector{ActionIndex}
@@ -110,7 +122,9 @@ function represent_actions_left(actions_left :: Int) :: Vector{Float32}
   end
 end
 
-# TODO: Define a probabilistic augument method.
+# TODO: Define a probabilistic augment method.
+
+hash(game :: Nim) = Base.hash(game.board)
 
 function draw(game :: Nim) :: Nothing
   tokenSymbols = Dict(1 => "T", 0 => "_")

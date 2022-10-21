@@ -19,10 +19,6 @@ function prepare_head(head, s, l, gpu)
 
 end
 
-# -------- Policy activation Function ---------------------------------------- #
-
-register_activation!("softmax", Knet.softmax)
-
 # -------- Neural Model ------------------------------------------------------ #
 
 """
@@ -36,20 +32,23 @@ struct NeuralModel{G, GPU} <: AbstractModel{G, GPU}
   trunk :: Layer{GPU}           # Takes input and returns layer before logits
   features :: Vector{Feature}   # Features that the network must predict
 
-  vhead :: Layer{GPU}                 # value head
-  phead :: Layer{GPU}                 # policy head
-  fhead :: Union{Nothing, Layer{GPU}} # feature head
+  vhead :: Layer{GPU}          # value head
+  phead :: Layer{GPU}          # policy head
+  fheads :: Vector{Layer{GPU}} # feature heads
 
-  vconv :: Activation    # Converts value-logit to value
-  pconv :: Activation    # Converts policy-logits to policy
+  vconv :: NamedFunction    # Converts value-logit to value
+  pconv :: NamedFunction    # Converts policy-logits to policy
 
 end
 
+Pack.register(NeuralModel)
+Pack.freeze(m :: NeuralModel) = to_cpu(m)
+
 """
-    NeuralModel(G, trunk [, features; vhead, phead, fhead, vconv, pconv])
+    NeuralModel(G, trunk [, features; vhead, phead, fheads, vconv, pconv])
 
 Construct a model for gametype `G` based on the neural network `trunk`,
-optionally with `features` enabled. The heads `vhead`, `phead`, and `fhead` are
+optionally with `features` enabled. The heads `vhead`, `phead`, and `fheads` are
 optional neural network layers that produce "logits" for the value, policy and
 feature prediction. The functions `vconv` and `pconv` are used to map the
 "logits" to values and policies. The respective feature converters are contained
@@ -60,7 +59,7 @@ function NeuralModel( :: Type{G}
                     , features = Feature[]
                     ; vhead :: Union{Nothing, Layer{GPU}} = nothing
                     , phead :: Union{Nothing, Layer{GPU}} = nothing
-                    , fhead :: Union{Nothing, Layer{GPU}} = nothing
+                    , fheads :: Vector = [nothing for _ in features]
                     , vconv = "tanh"
                     , pconv = "softmax"
                     ) where {G, GPU}
@@ -76,9 +75,10 @@ function NeuralModel( :: Type{G}
   # Check the provided heads and create linear heads if not specified
   vhead = prepare_head(vhead, os, 1, GPU)
   phead = prepare_head(phead, os, pl, GPU)
-  fhead = fl > 0 ? prepare_head(fhead, os, fl, GPU) : nothing
+  fheads = Layer{GPU}[ prepare_head(fh, os, feature_length(f, G), GPU) for (fh, f) in zip(fheads, features) ]
 
-  NeuralModel{G, GPU}(trunk, features, vhead, phead, fhead, vconv, pconv) 
+  NeuralModel{G, GPU}(trunk, features, vhead, phead, fheads, vconv, pconv) 
+
 end
 
 
@@ -97,7 +97,7 @@ function (m :: NeuralModel{G})(data, use_features = false) where {G <: AbstractG
   p = m.pconv.f(reshape(m.phead(out), pl, bs), dims=1)
 
   # Apply the feature head if features are to be calculated
-  if use_features && !isnothing(m.fhead)
+  if use_features && !isempty(m.fheads) #TODO: DOES NOT WORK RIGHT NOW
 
     f = reshape(m.fhead(out), fl, bs)
 
@@ -146,7 +146,7 @@ function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
                       , m.features
                       , swap(m.vhead)
                       , swap(m.phead)
-                      , isnothing(m.fhead) ? nothing : swap(m.fhead)
+                      , swap.(m.fheads)
                       , m.vconv
                       , m.pconv )
 
@@ -158,7 +158,7 @@ function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
                      , m.features
                      , copy(m.vhead)
                      , copy(m.phead)
-                     , isnothing(m.fhead) ? nothing : copy(m.fhead)
+                     , copy.(m.fheads)
                      , m.vconv
                      , m.pconv )
 
@@ -181,7 +181,7 @@ function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) 
   print(io, "  trunk: "); show(io, model.trunk); println(io)
   print(io, "  vhead: "); show(io, model.vhead); println(io)
   print(io, "  phead: "); show(io, model.phead); println(io)
-  print(io, "  fhead: "); show(io, model.fhead)
+  print(io, "  fheads: "); show(io, model.fheads)
 end
 
 function tune( m :: NeuralModel{G, GPU}

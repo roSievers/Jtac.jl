@@ -36,6 +36,7 @@ end
 This model returns value 0 and a uniform policy vector for each game state.
 """
 struct DummyModel <: AbstractModel{AbstractGame, false} end
+Pack.register(DummyModel)
 
 function (m :: DummyModel)(g :: AbstractGame, args...)
   0f0, uniform_policy(policy_length(g)), Float32[]
@@ -56,6 +57,7 @@ This model returns value 0 and a randomly drawn policy vector distribution for
 each game state.
 """
 struct RandomModel <: AbstractModel{AbstractGame, false} end
+Pack.register(RandomModel)
 
 function (m :: RandomModel)(g :: AbstractGame, args...)
   0f0, random_policy(policy_length(g)), Float32[]
@@ -78,6 +80,7 @@ Therefore, the classical rollout step of MCTS is implemented when this model
 is used for the tree search.
 """
 struct RolloutModel <: AbstractModel{AbstractGame, false} end
+Pack.register(RolloutModel)
 
 function (m :: RolloutModel)(g :: AbstractGame, args...)
 

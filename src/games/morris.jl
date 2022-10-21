@@ -22,6 +22,8 @@ mutable struct Morris <: AbstractGame
   actions_left :: Int # A move counter after which the game ends in a draw
 end
 
+Pack.register(Morris)
+
 Morris() where {M, N, K} = Morris(zeros(Int, 9), 1, 0, Status(), 6, 100)
 
 function Base.copy(s :: Morris) :: Morris
@@ -34,6 +36,16 @@ function Base.copy(s :: Morris) :: Morris
     s.actions_left,
   )
 end
+
+function Base.:(==)(a::Morris, b::Morris)
+  all([ all(a.board .== b.board)
+      , a.current_player == b.current_player
+      , a.lifted == b.lifted
+      , a.status == b.status
+      , a.placements_left == b.placements_left
+      , a.actions_left == b.actions_left ])
+end
+
 
 current_player(game :: Morris) :: Int = game.current_player
 
@@ -238,6 +250,7 @@ end
 #   end
 # end
 
+hash(game :: Morris) = Base.hash(game.board)
 
 function draw(game :: Morris) :: Nothing
   board = game.board
