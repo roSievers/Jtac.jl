@@ -1,25 +1,4 @@
 
-# -------- Miscellaneous ----------------------------------------------------- #
-
-function choose_index(probs :: Vector{Float32}) :: Int
-
-  @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
-
-  r = rand(Float32)
-  index = findfirst(x -> r <= x, cumsum(probs))
-
-  isnothing(index) ? length(probs) : index
-
-end
-
-function one_hot(n, k)
-  r = zeros(Float32, n)
-  r[k] = 1f0
-  r
-end
-
-nameof(T) = Base.nameof(T) |> String |> lowercase
-
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])

@@ -181,6 +181,12 @@ end
 
 # -------- MCTS Value and Policy --------------------------------------------- #
 
+function one_hot(n, k)
+  r = zeros(Float32, n)
+  r[k] = 1f0
+  r
+end
+
 # Auxiliary function to sharpen / smoothen a probability distribution
 function apply_temperature(values :: Vector{Float32}, temp :: Float32)
   if temp == 0f0

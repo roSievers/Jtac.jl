@@ -42,15 +42,29 @@ module Util
 
   using ..Jtac
 
-  include("util.jl")
+  include("util/util.jl")
 
-  export one_hot,
-         choose_index,
-         apply_dihedral_group,
+
+  export apply_dihedral_group,
          apply_klein_four_group,
          prepare,
          branch,
          stepper
+
+
+  module Bench
+
+    using Distributed
+    using Statistics
+    using Printf
+
+    using ..Jtac
+
+    include("util/bench.jl")
+
+  end # module Bench
+
+  export Bench
 
 end # module Util
 
@@ -78,7 +92,7 @@ module Game
   using ..Util
   import ..Pack
 
-  include("game.jl")
+  include("game/game.jl")
 
   export AbstractGame, 
          Status,
@@ -103,11 +117,11 @@ module Game
 
   # -------- Game implementations ---------------------------------------------- #
 
-  include("games/mnkgame.jl")
-  include("games/metatac.jl")
-  include("games/nim.jl")
-  include("games/nim2.jl")
-  include("games/morris.jl")
+  include("game/mnkgame.jl")
+  include("game/metatac.jl")
+  include("game/nim.jl")
+  include("game/nim2.jl")
+  include("game/morris.jl")
 
   export TicTacToe,
          MNKGame,
@@ -132,10 +146,10 @@ module Model
   using ..Game
   import ..Pack
 
-  include("feature.jl")
-  include("element.jl")
-  include("layer.jl")
-  include("model.jl")
+  include("model/feature.jl")
+  include("model/element.jl")
+  include("model/layer.jl")
+  include("model/model.jl")
 
   export Feature,
          ConstantFeature
@@ -183,10 +197,10 @@ module Model
 
   # -------- Fundamental model implementations ------------------------------- #
 
-  include("models/basic.jl")
-  include("models/neural.jl")
-  include("models/async.jl")
-  include("models/caching.jl")
+  include("model/basic.jl")
+  include("model/neural.jl")
+  include("model/async.jl")
+  include("model/caching.jl")
 
   export AbstractModel,
          DummyModel,
@@ -204,7 +218,7 @@ module Model
     using ...Game
     using ..Model
 
-    include("models/zoo.jl")
+    include("model/zoo.jl")
 
     export Shallow,
            MLP,
@@ -215,6 +229,32 @@ module Model
   end # module Zoo
 
 end # module Model
+
+# -------- Datasets ---------------------------------------------------------- #
+
+module Data
+
+  using Random, Statistics, LinearAlgebra, Distributed
+  import MsgPack, TranscodingStreams, CodecZstd
+
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Model
+  import ..Pack
+
+  include("data/dataset.jl")
+  include("data/datacache.jl")
+  include("data/batches.jl")
+  include("data/pool.jl")
+
+  export DataSet, DataCache, Batches, Pool
+
+  export save,
+         load,
+         augment
+
+end # Data
 
 
 # -------- MCTS, Player, and ML ELO rankings -------------------------------- #
@@ -229,12 +269,15 @@ module Player
   using ..Util
   using ..Game
   using ..Model
+  using ..Data
   import ..Pack
 
-  include("mc.jl")
-  include("player.jl")
-  include("rank.jl")
-  include("distributed.jl")
+  include("player/mc.jl")
+  include("player/player.jl")
+  include("player/elo.jl")    # outsource to Util or rank.jl?
+  include("player/rank.jl")
+  include("player/distributed.jl")
+  include("player/record.jl")
 
   export AbstractPlayer,
          RandomPlayer,
@@ -248,38 +291,15 @@ module Player
          decide,
          turn!,
          compete,
-         switch_model
+         switch_model,
+         record,
+         record_against,
+         record_model
 
   export Ranking
 
 end # module Player
 
-# -------- Datasets ---------------------------------------------------------- #
-
-module Data
-
-  using Random, Statistics, LinearAlgebra, Distributed
-  import MsgPack, TranscodingStreams, CodecZstd
-
-  using ..Jtac
-  using ..Util
-  using ..Game
-  using ..Model
-  using ..Player
-  import ..Pack
-
-  include("dataset.jl")
-  include("pool.jl")
-
-  export Dataset, Datacache, Batches, Pool
-
-  export save,
-         load,
-         augment,
-         record,
-         record_against
-
-end # Data
 
 # -------- Training ---------------------------------------------------------- #
 
@@ -311,11 +331,6 @@ module Training
 
 end # module Training
 
-module Bench
-
-  include("bench.jl")
-
-end
 
 export Util,
        Pack,

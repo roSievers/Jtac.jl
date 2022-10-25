@@ -80,7 +80,7 @@ end
 
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
-             , cache :: Datacache{G, GPU}
+             , cache :: DataCache{G, GPU}
              ) where {G, GPU}
 
   n = length(cache)
@@ -128,7 +128,7 @@ model with at most `maxbatch` game states at once.
 """
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
-             , dataset :: Dataset{G}
+             , dataset :: DataSet{G}
              ; maxbatch = 1024
              ) where {G, GPU}
 
@@ -152,7 +152,7 @@ Calculate the loss determined by `l` between `label` and `model(game)`
 """
 function loss(l :: Loss, model :: AbstractModel, game, label)
 
-  loss(l, model, Dataset([game], [label], [zeros(Float32, 0)]))
+  loss(l, model, DataSet([game], [label], [zeros(Float32, 0)]))
 
 end
 

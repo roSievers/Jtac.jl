@@ -82,7 +82,7 @@
     end
   end
 
-  function pack_unpack(ds :: Data.Dataset{G}) where {G}
+  function pack_unpack(ds :: Data.DataSet{G}) where {G}
     name = tempname()
     Data.save(name, ds)
     up = Data.load(name)
@@ -92,10 +92,10 @@
     same && all(up.features .== ds.features)
   end
 
-  ds = Data.record(Player.MCTSPlayer(power = 20), 100, game = Game.TicTacToe())
+  ds = Player.record(Player.MCTSPlayer(power = 20), 100, game = Game.TicTacToe())
   @test pack_unpack(ds)
 
-  ds = Data.record(Player.MCTSPlayer(power = 5), 100, game = Game.MetaTac())
+  ds = Player.record(Player.MCTSPlayer(power = 5), 100, game = Game.MetaTac())
   @test pack_unpack(ds)
 
   function pack_unpack(p :: Player.IntuitionPlayer{G}) where {G}

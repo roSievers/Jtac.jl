@@ -1,4 +1,8 @@
 
+using ..Jtac
+using Distributed
+using Statistics
+using Printf
 
 function record(player, n; augment = false, kwargs...)
 

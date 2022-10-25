@@ -5,7 +5,7 @@ with metadata, like an age or a usage index. Provides functionality to select
 and discard training data based on user defined quality criteria.
 """
 mutable struct Pool{G <: Game.AbstractGame, M <: NamedTuple}
-  data :: Dataset{G}
+  data :: DataSet{G}
   meta :: Vector{M}
   capacity :: Int
 end
@@ -18,7 +18,7 @@ function Pool( :: Type{G}
 
   @assert all(x -> x isa DataType, meta)
   M = NamedTuple{keys(meta), Tuple{values(meta)...}}
-  data = Dataset{G}(; features = features)
+  data = DataSet{G}(; features = features)
   Pool{G, M}(data, M[], capacity)
 end
 
@@ -46,7 +46,7 @@ function Base.append!( pool :: Pool{G, M}
 end
 
 function Base.append!( pool :: Pool{G, M}
-                     , data :: Dataset{G}
+                     , data :: DataSet{G}
                      , meta :: M
                      ) where {G <: Game.AbstractGame, M <: NamedTuple}
 
@@ -57,7 +57,7 @@ function Base.append!( pool :: Pool{G, M}
 end
 
 function Base.append!( pool :: Pool{G, M}
-                     , data :: Dataset{G}
+                     , data :: DataSet{G}
                      ; kwargs...
                      ) where {G <: Game.AbstractGame, M <: NamedTuple}
 

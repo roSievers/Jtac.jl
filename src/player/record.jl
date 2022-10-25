@@ -1,306 +1,4 @@
 
-# -------- Datasets ---------------------------------------------------------- #
-
-"""
-Structure that holds a list of games and labels, i.e., targets for learning.
-
-Dataset are usually created through playing games from start to finish by an
-MCTSPlayer. The value label corresponds to the results of the game, and the
-policy label to the improved policy in the single MCTS steps. Furthermore,
-features can be enabled for a dataset and are stored as part of the label, as
-well.
-"""
-mutable struct Dataset{G <: AbstractGame}
-
-  games  :: Vector{G}                 # games saved in the dataset
-  label  :: Vector{Vector{Float32}}   # target value/policy labels
-  flabel :: Vector{Vector{Float32}}   # target feature values
-
-  features :: Vector{Feature}         # with which features was the ds created
-
-end
-
-Pack.register(Dataset)
-Pack.@mappack Dataset
-
-function Pack.destruct(ds :: Data.Dataset)
-  label = vcat(ds.label...)
-  flabel = vcat(ds.flabel...)
-  bytes = reinterpret(UInt8, label)
-  fbytes = reinterpret(UInt8, flabel)
-  Dict{String, Any}(
-      "games" => Pack.Bytes(Pack.pack(ds.games))
-    , "label" => Pack.Bytes(bytes)
-    , "flabel" => Pack.Bytes(fbytes)
-    , "features" => ds.features
-  )
-end
-
-function Pack.construct(:: Type{Data.Dataset{G}}, d :: Dict) where {G}
-  games = Pack.unpack(d["games"], Vector{G})
-
-  data = reinterpret(Float32, d["label"])
-  data = reshape(data, :, length(games))
-  label = [ col[:] for col in eachcol(data) ]
-
-  fdata = reinterpret(Float32, d["flabel"])
-  fdata = reshape(fdata, :, length(games))
-  flabel = [ col[:] for col in eachcol(fdata) ]
-
-  features = Pack.from_msgpack(Vector{Model.Feature}, d["features"])
-  Data.Dataset(games, label, flabel, features)
-end
-
-"""
-      Dataset{G}([; features])
-
-Initialize an empty dataset for concrete game type `G` and `features` enabled.
-"""
-function Dataset{G}(; features = Feature[]) where {G <: AbstractGame}
-
-  Dataset( Vector{G}()
-         , Vector{Vector{Float32}}()
-         , Vector{Vector{Float32}}()
-         , features )
-
-end
-
-function Dataset(games, label, flabel; features = Feature[])
-
-  Dataset(games, label, flabel, features)
-
-end
-
-Model.features(ds :: Dataset) = ds.features
-Base.length(d :: Dataset) = length(d.games)
-Base.lastindex(d :: Dataset) = length(d)
-
-# -------- Serialization and IO of Datasets ---------------------------------- #
-
-
-"""
-    save(name, dataset)
-
-Save `dataset` under filename `name`. Dataset caches are not saved.
-"""
-function save(fname :: String, d :: Dataset)
-  open(io -> Pack.pack_compressed(io, d), fname, "w")
-end
-
-"""
-    load(name)
-
-Load a dataset for games from file `name`.
-"""
-function load(fname :: String) where G <: AbstractGame
-  open(io -> Pack.unpack_compressed(io, Dataset), fname)
-end
-
-# -------- Dataset Operations ------------------------------------------------ #
-
-function Base.getindex(d :: Dataset{G}, I) where {G <: AbstractGame}
-  Dataset{G}(d.games[I], d.label[I], d.flabel[I], d.features)
-end
-
-function Base.append!(d :: Dataset{G}, dd :: Dataset{G}) where {G <: AbstractGame}
-
-  if d.features != dd.features
-
-    error("Appending dataset with incompatible features")
-
-  end
-
-  append!(d.games, dd.games)
-  append!(d.label, dd.label)
-  append!(d.flabel, dd.flabel)
-
-end
-
-function Base.merge(d :: Dataset{G}, ds...) where {G <: AbstractGame}
-
-  # Make sure that all datasets have compatible features
-  features = d.features
-
-  if !all(x -> x.features == features, ds) 
-
-    error("Merging datasets with incompatible features")
-
-  end
-
-  # Create and return the merged dataset
-  dataset = Dataset{G}()
-  dataset.features = features
-
-  dataset.games  = vcat([d.games,  (x.games  for x in ds)...]...)
-  dataset.label  = vcat([d.label,  (x.label  for x in ds)...]...)
-  dataset.flabel = vcat([d.flabel, (x.flabel for x in ds)...]...)
-
-  dataset
-
-end
-
-function Base.split(d :: Dataset{G}, size :: Int; shuffle = true) where {G}
-
-  n = length(d)
-  @assert size <= n "Cannot split dataset of length $n at position $size."
-
-  idx = shuffle ? randperm(n) : 1:n
-  idx1, idx2 = idx[1:size], idx[size+1:end]
-
-  d1 = Dataset( d.games[idx1], d.label[idx1]
-              , d.flabel[idx1], features = d.features)
-  d2 = Dataset( d.games[idx2], d.label[idx2]
-              , d.flabel[idx2], features = d.features)
-
-  d1, d2
-
-end
-
-function Game.augment(d :: Dataset{G}) :: Vector{Dataset{G}} where G <: AbstractGame
-
-  # NOTE: Augmentation will render flabel information useless.
-  # Therefore, one must recalculate them after applying this function!
-
-  # Problem: we must augment d in such a way that playthroughs are still
-  # discernible after augmentation. I.e., for each symmetry transformation, one
-  # Dataset will be returned.
-
-  aug = [augment(g, l) for (g, l) in zip(d.games, d.label)]
-  gs, ls = map(x -> x[1], aug), map(x -> x[2], aug)
-
-  map(1:length(gs[1])) do j
-
-    games = map(x -> x[j], gs)
-    label = map(x -> x[j], ls)
-
-    Dataset(games, label, copy(d.flabel), features = d.features)
-  end
-end
-
-function Pack.freeze(d :: Dataset)
-  Dataset(Pack.freeze.(d.games), d.label, d.flabel, d.features)
-end
-
-#function Pack.freeze(ds :: Vector{D}) where D <: Dataset
-#  Pack.freeze.(ds)
-#end
-
-function Pack.unfreeze(d :: Dataset)
-  Dataset(Pack.unfreeze.(d.games), d.label, d.flabel, d.features)
-end
-
-function Base.show(io :: IO, d :: Dataset{G}) where G <: AbstractGame
-  n = length(d.features)
-  features = n == 1 ? "1 feature" : "$n features"
-  print(io, "Dataset{$(Game.name(G))}($(length(d)) elements, $features)")
-end
-
-function Base.show(io :: IO, :: MIME"text/plain", d :: Dataset{G}) where G <: AbstractGame
-  n = length(d.features)
-  features = n == 1 ? "1 feature" : "$n features"
-  print(io, "Dataset{$(Game.name(G))} with $(length(d)) elements and $features")
-end
-
-function Random.rand(rng, d :: Dataset, n :: Int)
-  indices = Random.rand(rng, 1:length(d), n)
-  d[indices]
-end
-
-# -------- Raw Dataset Representation: Caches -------------------------------- #
-
-struct Datacache{G <: AbstractGame, GPU}
-
-  data        # game representation data
-
-  vlabel      # value labels
-  plabel      # policy labels
-  flabel      # feature labels
-
-end
-
-function Datacache( ds :: Dataset{G}
-                  ; gpu = false
-                  , use_features = false
-                  ) where {G <: AbstractGame}
-
-  # Preparation
-  at = Model.atype(gpu)
-  vplabel = hcat(ds.label...)
-
-  # Convert to at
-  data = convert(at, Game.array(ds.games))
-  vlabel = convert(at, vplabel[1, :])
-  plabel = convert(at, vplabel[2:end, :])
-  flabel = use_features ? convert(at, hcat(ds.flabel...)) : nothing
-
-  Datacache{G, gpu}(data, vlabel, plabel, flabel)
-
-end
-
-Base.length(c :: Datacache) = size(c.data)[end]
-
-
-# -------- Iterating Datasets: Batches --------------------------------------- #
-
-struct Batches{G <: AbstractGame, GPU}
-
-  cache :: Datacache{G, GPU}
-
-  batchsize :: Int
-  shuffle :: Bool
-  partial :: Bool
-
-  indices :: Vector{Int}
-
-end
-
-function Batches( d :: Dataset{G}
-                , batchsize
-                ; shuffle = false
-                , partial = true
-                , gpu = false
-                , use_features = false
-                ) where {G <: AbstractGame}
-
-  indices = collect(1:length(d))
-  cache = Datacache(d, gpu = gpu, use_features = use_features)
-  Batches{G, gpu}(cache, batchsize, shuffle, partial, indices)
-end
-
-function Base.length(b :: Batches)
-  n = length(b.cache) / b.batchsize
-  b.partial ? ceil(Int, n) : floor(Int, n)
-end
-
-function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame, GPU}
-
-  # Preparations
-  l = length(b.cache)
-  b.shuffle && start == 1 && (b.indices .= randperm(l))
-
-  # start:stop is the range in b.indices that selected
-  stop = min(start + b.batchsize - 1, l)
-
-  # Check for end of iteration
-  if start > l || !b.partial && stop - start < b.batchsize - 1
-    return nothing
-  end
-
-  # Build the data cache
-  idx = b.indices[start:stop]
-
-  data = b.cache.data[:, :, :, idx]
-  vlabel = b.cache.vlabel[idx]
-  plabel = b.cache.plabel[:, idx]
-  flabel = isnothing(b.cache.flabel) ? nothing : b.cache.flabel[:, idx]
-
-  cache = Datacache{G, GPU}(data, vlabel, plabel, flabel)
-
-  # Return the (cache, new_start) state tuple
-  cache, stop + 1
-end
-
-# -------- Generating Datasets ----------------------------------------------- #
 
 function _record( play :: Function # maps game to dataset
                 , root
@@ -364,7 +62,7 @@ function _record( play :: Function # maps game to dataset
 
 end
 
-function _record_move!( dataset :: Dataset{G}
+function _record_move!( dataset :: DataSet{G}
                       , game
                       , player
                       ) where {G <: AbstractGame}
@@ -388,9 +86,12 @@ function _record_move!( dataset :: Dataset{G}
 
 end
 
-function _record_final!( dataset :: Dataset{G}
-                      , game ) where {G <: AbstractGame}
+# This functions adds the game state of the finished game with a dummy label
+# This is done so that the features have the final game state available
+function _record_final!( dataset :: DataSet{G}
+                       , game ) where {G <: AbstractGame}
 
+  # TODO: should put value here (while policy does not make sense)!
   pl = policy_length(G)
   push!(dataset.games, copy(game))
   push!(dataset.label, zeros(Float32, 1 + pl))
@@ -398,7 +99,7 @@ function _record_final!( dataset :: Dataset{G}
 end
 
 
-function _record_value!(dataset :: Dataset{G}) where {G <: AbstractGame}
+function _record_value!(dataset :: DataSet{G}) where {G <: AbstractGame}
 
   result = status(dataset.games[end])
 
@@ -411,7 +112,7 @@ function _record_value!(dataset :: Dataset{G}) where {G <: AbstractGame}
 end
 
 # Add feature label to an extended dataset (that contains the final game state)
-function _record_features!( dataset :: Dataset{G}
+function _record_features!( dataset :: DataSet{G}
                           , features
                           ) where {G <: AbstractGame}
 
@@ -489,9 +190,9 @@ dataset = Data.record(player, 20, game = G, branch = Util.branch(prob = 0.25))
 # Record 10 self-playings of MCTS player with shallow predictor network and
 # power 50
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
+model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 player = Player.MCTSPlayer(model, power = 50)
-dataset = Data.record(player, 10, augment = false)
+dataset = Player.record(player, 10, augment = false)
 ```
 """
 function record( p :: AbstractPlayer
@@ -523,7 +224,7 @@ function record( p :: AbstractPlayer
   # Function that plays a single game of player against itself
   play = game -> begin
 
-    dataset = Dataset{typeof(game)}()
+    dataset = DataSet{typeof(game)}()
 
     while !is_over(game)
 
@@ -612,7 +313,7 @@ function record_against( p :: AbstractPlayer
 
   play = game -> begin
 
-    dataset = Dataset{typeof(game)}()
+    dataset = DataSet{typeof(game)}()
 
     # Roll the dice to see who starts. Our player (i = 1) or the enemy (i = -1)?
     s = start()
@@ -667,7 +368,7 @@ function record_model( model :: AbstractModel{G}
 
   features = use_features ? Model.features(model) : Feature[]
 
-  Dataset(games, vplabel, flabel; features)
+  DataSet(games, vplabel, flabel; features)
 
 end
 
@@ -690,7 +391,7 @@ function record_distributed( p :: AbstractPlayer
     Game.freeze(ds)
   end
 
-  # Use the with_workers function defined in src/distributed.jl
+  # Use the with_workers function defined in src/player/distributed.jl
   game = Game.freeze(game)
   ds = Player.with_workers(f, [p], n; workers, game, kwargs...)
   ds = vcat(ds...)
@@ -732,5 +433,4 @@ function record_against_distributed( p :: AbstractPlayer
 
   merge ? Base.merge(ds) : ds
 end
-
 

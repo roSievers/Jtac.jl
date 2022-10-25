@@ -1,4 +1,5 @@
 
+
 # -------- Players ----------------------------------------------------------- #
 
 """
@@ -23,6 +24,18 @@ Let `player` evaluate `game` and return a named `(value, policy)` tuple.
 Only implemented for `IntuitionPlayer` and `MCTSPlayer`.
 """
 evaluate(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
+
+"""
+    choose_index(probs)
+
+Auxiliary function that chooses an index from a probability vector `probs`.
+"""
+function choose_index(probs :: Vector{Float32}) :: Int
+  @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
+  r = rand(Float32)
+  index = findfirst(x -> r <= x, cumsum(probs))
+  isnothing(index) ? length(probs) : index
+end
 
 """
     decide(player, game)

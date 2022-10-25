@@ -1,8 +1,4 @@
 
-# -------- ELO Estimation ---------------------------------------------------- #
-
-include("mlelo.jl")
-
 # -------- Competing --------------------------------------------------------- #
 
 function plan_matches(n, l, a) # matches, players total, players active
@@ -118,6 +114,8 @@ struct Ranking
   sadvstd :: Float64
   drawstd :: Float64
 end
+
+Pack.@structpack Ranking
 
 """
     Ranking(players, results; steps = 100)

@@ -25,7 +25,7 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
 end
 
 # A single training step, the loss is returned
-function train_step!(l :: Loss, model, cache :: Datacache)
+function train_step!(l :: Loss, model, cache :: DataCache)
 
   tape = Knet.@diff sum(loss(l, model, cache))
 
@@ -97,13 +97,13 @@ Train `model`, or the training model of `player`, on `dataset`.
 ```julia
 G = Game.TicTacToe
 dataset = Data.record(Player.MCTSPlayer(), 10, game = G) 
-model = Model.NeuralModel(G, Model.@chain G Dense(50, f = relu))
+model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 loss = Training.Loss(value = 1., policy = 0.15, reg = 1e-4)
 Training.train!(model, dataset, loss = loss, epochs = 15)
 ```
 """
 function train!( player  :: Union{AbstractPlayer, AbstractModel}
-               , trainset :: Dataset
+               , trainset :: DataSet
                ; loss = Loss()
                , epochs = 10
                , batchsize = 50
@@ -217,7 +217,7 @@ function _train!( player :: AbstractPlayer{G}
     if testfrac > 0
       testset = merge(datasets[train_playings+1:playings]...)
     else
-      testset = Dataset{G}() 
+      testset = DataSet{G}() 
     end
 
     # Clear the progress bar (if it was printed)
@@ -291,7 +291,7 @@ training models can be trained currently.
 ```julia
 # Train a neural network model to learn TicTacToe by playing against itself
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Conv(64, f = relu) Dense(32, f = relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Dense(32, "relu"))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 Training.train!(player, epochs = 5, playings = 100)
 ```
@@ -364,7 +364,7 @@ with NeuralModel-based training models can be trained.
 ```julia
 # Train a neural network model by playing against an MCTS player
 G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Conv(64, f = relu) Dense(32, f = relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Dense(32, "relu"))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 enemy = Player.MCTSPlayer(power = 250)
 Training.train_against!(player, enemy, epochs = 5, playings = 100)
@@ -518,7 +518,7 @@ G = Game.TicTacToe
 loss = Training.Loss(policy = 0.25)
 opponents = [Player.MCTSPlayer(power = 50), Player.MCTSPlayer(power = 500)]
 
-model = Model.NeuralModel(G, Model.@chain G Conv(100, f = relu) Dense(32, f = relu))
+model = Model.NeuralModel(G, Model.@chain G Conv(100, "relu") Dense(32, "relu"))
 player = Player.MCTSPlayer(model, power = 25)
 
 Training.with_contest( Training.train!
