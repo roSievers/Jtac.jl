@@ -7,9 +7,9 @@ to policy, value, and feature labels.
 """
 struct Loss
 
-  value          :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
-  policy         :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
-  reg            :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  value  :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  policy :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
+  reg    :: NamedTuple{(:loss, :weight), Tuple{Function, Float32}}
 
   features :: Vector{Feature}
   fweights :: Vector{Float32}
@@ -56,13 +56,25 @@ function Loss(
 
 end
 
-function caption(l :: Loss)
-  base = [:value, :policy, :reg]
+function loss_names(l :: Loss)
+  base = ["value", "policy", "reg"]
   features = feature_name.(l.features)
   vcat(base, features)
 end
 
-features(l :: Loss) = l.features
+Model.features(l :: Loss) = l.features
+
+function Base.show(io :: IO, l :: Loss)
+  v = l.value.weight
+  p = l.policy.weight
+  r = l.reg.weight
+  print(io, "Loss($v value, $p policy, $r reg")
+  for (i, (f, w)) in enumerate(zip(l.features, l.fweights))
+    print(io, ", $w $(Model.feature_name(f))")
+  end
+  print(io, ")")
+end
+
 
 # -------- Loss Calculation -------------------------------------------------- #
 
@@ -121,7 +133,7 @@ function loss( l :: Loss
              ) where {G, GPU}
 
   # Check if features can be used
-  use_features = check_features(l, model, dataset)
+  use_features = feature_compatibility(l, model, dataset)
 
   # Cut the dataset in batches if it is too large
   batches = Batches(dataset, maxbatch, gpu = GPU, use_features = use_features)
@@ -138,7 +150,7 @@ end
 
 Calculate the loss determined by `l` between `label` and `model(game)` 
 """
-function loss(l :: Loss, model :: Model, game, label)
+function loss(l :: Loss, model :: AbstractModel, game, label)
 
   loss(l, model, DataSet([game], [label], [zeros(Float32, 0)]))
 
