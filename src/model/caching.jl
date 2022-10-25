@@ -40,30 +40,33 @@ Caching{G}(model :: AbstractModel, max_cachesize) where {G} =
   Caching(model; max_cachesize)
 
 function (m :: Caching{G})(game :: G, use_features = false) where {G <: AbstractGame}
-  @assert !use_features "Features cannot be used in Caching models"
-  m.calls_cached += 1
-  r = get(m.cache, Game.hash(game)) do
-    m.calls_cached -= 1
-    m.calls_uncached += 1
-    res = m.model(game)[1:2]
-    if length(m.cache) < m.max_cachesize
-      m.cache[Game.hash(game)] = res
-    end
-    res
-  end
-  (r..., Float32[])
+
+  error("Cannot apply `Caching` model directly. Use `apply(model, game)`")
+
 end
 
 function (m :: Caching{G})( games :: Vector{G}
                           , use_features = false
                           ) where {G <: AbstractGame}
 
-  @assert !use_features "Features cannot be used in Caching models. "
-  @warn "Calling Caching models in batched mode is not recommended." maxlog=1
+  error("Cannot apply `Caching` model directly. Use `apply(model, game)`")
 
-  outputs = map(x -> m(x, use_features), games)
-  cat_outputs(outputs)
 end
+
+function apply(m :: Caching{G}, game :: G) where {G <: AbstractGame}
+  m.calls_cached += 1
+  (v, p) = get(m.cache, Game.hash(game)) do
+    m.calls_cached -= 1
+    m.calls_uncached += 1
+    (v, p) = apply(m.model, game)
+    if length(m.cache) < m.max_cachesize
+      m.cache[Game.hash(game)] = (v, p)
+    end
+    (v, p)
+  end
+  (value = v, policy = p)
+end
+
 
 function clear_cache!(m :: Caching{G}) where {G <: AbstractGame}
   m.cache = Dict{UInt64, Tuple{Float32, Vector{Float32}}}()

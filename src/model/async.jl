@@ -62,17 +62,11 @@ function Async{G}( model :: AbstractModel{G},
   Async(model; max_batchsize, buffersize)
 end
 
-
-
 function (m :: Async{G})( game :: G
                         , use_features = false
                         ) where {G <: AbstractGame}
 
-  @assert !use_features "Features cannot be used in Async."
-
-  out_channel = Channel(1)
-  put!(m.channel, (copy(game), out_channel))
-  take!(out_channel)
+  error("Cannot apply `Async` model directly. Use `apply(model, game)`")
 
 end
 
@@ -80,13 +74,16 @@ function (m :: Async{G})( games :: Vector{G}
                         , use_features = false
                         ) where {G <: AbstractGame}
 
-  @assert !use_features "Features cannot be used in Async."
-  @warn "Calling Async model in batched mode is not recommended." maxlog=1
-
-  outputs = asyncmap(x -> m(x, use_features), games, ntasks = m.buffersize)
-  cat_outputs(outputs)
+  error("Cannot apply `Async` model directly. Use `apply(model, game)`")
 
 end
+
+function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
+  out_channel = Channel(1)
+  put!(m.channel, (copy(game), out_channel))
+  take!(out_channel)
+end
+
 
 function switch_model(m :: Async{G}, model :: AbstractModel{G}) where {G <: AbstractGame}
   Async( model
@@ -138,17 +135,18 @@ function worker_thread(channel, model, max_batchsize)
     while !closed_and_empty(channel)
 
       inputs = Vector()
-
       # If we arrive here, there is at least one thing to be done.
       while isready(channel) && length(inputs) < max_batchsize
         push!(inputs, take!(channel))
         yield()
       end
 
-      v, p, f = model(first.(inputs)) .|> to_cpu
+      v, p, _ = model(first.(inputs))
+      v = to_cpu(v)
+      p = to_cpu(p)
 
       for i = 1:length(inputs)
-        put!(inputs[i][2], (v[i], p[:,i], f[:,i]))
+        put!(inputs[i][2], (value = v[i], policy = p[:,i]))
       end
 
     end

@@ -1,9 +1,4 @@
 
-using ..Jtac
-using Distributed
-using Statistics
-using Printf
-
 function record(player, n; augment = false, kwargs...)
 
   start_time = time()
@@ -132,4 +127,35 @@ function record_threaded(player, n; augment = false, kwargs...)
   dss
 end
 
+function benchmark_cpu()
+  println("\nTicTacToe:")
+  model = Model.Zoo.ZeroConv(Game.TicTacToe, blocks = 4, filters = 128)
+  player = Player.MCTSPlayer(model, power = 250)
+  record(player, 50)
 
+  println("\nTicTacToe (async):")
+  model = Model.Zoo.ZeroConv(Game.TicTacToe, blocks = 4, filters = 128)
+  player = Player.MCTSPlayer(Model.tune(model, async = true), power = 250)
+  record(player, 50)
+
+  println("\nTicTacToe (async, cache):")
+  model = Model.Zoo.ZeroConv(Game.TicTacToe, blocks = 4, filters = 128)
+  player = Player.MCTSPlayer(Model.tune(model, async = true, cache = true), power = 250)
+  record(player, 50)
+
+  nothing
+end
+
+function benchmark_gpu()
+  println("\nMetaTac (async):")
+  model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 8, filters = 256)
+  player = Player.MCTSPlayer(Model.tune(model, gpu = true, async = true), power = 250)
+  record(player, 50)
+
+  println("\nMetaTac (async, cache):")
+  model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 8, filters = 256)
+  player = Player.MCTSPlayer(Model.tune(model, gpu = true, async = true, cache = true), power = 250)
+  record(player, 50)
+
+  nothing
+end

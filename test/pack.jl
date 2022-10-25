@@ -37,7 +37,7 @@
   end
 
   @test pack_unpack(Model.Weight(rand(Float32, 5, 5)))
-  @test pack_unpack(Model.Weight(Knet.param(rand(Float32, 5, 5))))
+  @test pack_unpack(Model.Weight(Knet.Param(rand(Float32, 5, 5))))
 
 
   function pack_unpack(l :: Model.Layer, data)

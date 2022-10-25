@@ -29,6 +29,8 @@ abstract type AbstractModel{G <: AbstractGame, GPU} <: Element{GPU} end
 Pack.@mappack AbstractModel
 
 to_cpu(a) = convert(atype(false), a)
+to_cpu(a :: Float32) = a
+
 to_gpu(a) = convert(atype(true), a)
 
 """
