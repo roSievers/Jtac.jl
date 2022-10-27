@@ -59,7 +59,13 @@
     Model.save(fname, l)
     unpacked = Model.load(fname)
     games = [Game.random_turns!(G(), 1:10) for _ in 1:100]
-    same = all(l(games) .== unpacked(games))
+    same = true
+    for game in games
+      v1, p1 = Model.apply(l, game)
+      v2, p2 = Model.apply(unpacked, game)
+      same &= v1 == v2
+      same &= all(p1 .== p2)
+    end
     same && typeof(l) == typeof(unpacked)
   end
 
@@ -102,7 +108,13 @@
     packed = Pack.pack(p)
     up = Pack.unpack(packed, Player.AbstractPlayer)
     games = [Game.random_turns!(G(), 1:10) for _ in 1:100]
-    same = all(p.model(games) .== up.model(games))
+    same = true
+    for game in games
+      v1, p1 = Model.apply(p.model, game)
+      v2, p2 = Model.apply(up.model, game)
+      same &= v1 == v2
+      same &= all(p1 .== p2)
+    end
     same &= p.temperature == up.temperature
     same && p.name == up.name
   end
@@ -111,7 +123,13 @@
     packed = Pack.pack(p)
     up = Pack.unpack(packed, Player.AbstractPlayer)
     games = [Game.random_turns!(G(), 1:10) for _ in 1:100]
-    same = all(p.model(games) .== up.model(games))
+    same = true
+    for game in games
+      v1, p1 = Model.apply(p.model, game)
+      v2, p2 = Model.apply(up.model, game)
+      same &= v1 == v2
+      same &= all(p1 .== p2)
+    end
     same &= p.temperature == up.temperature
     same &= p.exploration == up.exploration
     same &= p.power == up.power
@@ -121,9 +139,6 @@
 
   G = Game.MetaTac
   model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Batchnorm() Pool() Dense(32, "relu"))
-
-  #player = Player.MCTSPlayer(power = 10, temperature = 0.75)
-  #@show pack_unpack(player)
 
   player = Player.IntuitionPlayer(model, temperature = 0.75)
   @test pack_unpack(player)
