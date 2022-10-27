@@ -85,13 +85,13 @@ expand_to_pair(t :: Int) = (t, t)
 
 # -------- Layer Weights ----------------------------------------------------- #
 
-const WeightData = Union{ Array{Float32}
-                        , Knet.Param{Array{Float32, N}} where N
-                        , Knet.KnetArray{Float32}
-                        , Knet.Param{Knet.KnetArray{Float32, N}} where N }
+#const WeightData = Union{ Array{Float32}
+#                        , Knet.Param{Array{Float32, N, D}} where {N, D}
+#                        , CUDA.CuArray{Float32}
+#                        , Knet.Param{CUDA.CuArray{Float32, N, D}} where {N, D} }
 
 struct Weight
-  data :: WeightData
+  data #:: WeightData
 end
 
 Pack.register(Weight)
@@ -120,7 +120,7 @@ function Pack.construct(:: Type{Weight}, d :: Dict)
   end
 end
 
-Base.convert(:: Type{Weight}, data :: WeightData) = Weight(data)
+Base.convert(:: Type{Weight}, data) = Weight(data)
 
 
 # -------- Layer Activation -------------------------------------------------- #
@@ -277,8 +277,17 @@ function Conv( ci :: Int, co :: Int, f = "id";
 
 end
 
-(c :: Conv)(x) =
+(c :: Conv{false})(x) =
   c.a.f.(Knet.conv4(c.w.data, x, padding = c.p, stride = c.s) .+ c.b.data)
+
+function (c :: Conv{true})(x)
+  tmp = Knet.conv4(c.w.data, x, padding = c.p, stride = c.s)
+  res = c.a.f.(tmp .+ c.b.data)
+  if !(tmp isa AutoGrad.Result)
+    Knet.KnetArrays.freeKnetPtr(tmp.ptr)
+  end
+  res
+end
 
 function swap(c :: Conv{GPU}) where {GPU}
   at = atype(!GPU)
@@ -533,6 +542,15 @@ end
 
 (b :: Batchnorm)(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params.data))
 
+(b :: Batchnorm{false})(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params.data))
+
+function (b :: Batchnorm{true})(x)
+  tmp = Knet.batchnorm(x, b.moments, b.params.data)
+  res = b.a.f.(tmp)
+#  Knet.KnetArrays.freeKnetPtr(tmp.ptr)
+  res
+end
+
 function swap(b :: Batchnorm{GPU}) where {GPU}
   at = atype(!GPU)
   mean = (b.moments.mean != nothing) ? convert(at, b.moments.mean) : nothing
@@ -581,11 +599,23 @@ function Chain(layers :: Layer{GPU}...; gpu = nothing) where {GPU}
   end
 end
 
-function (c :: Chain)(x)
+function (c :: Chain{false})(x)
   for l in c.layers
     x = l(x)
   end
   x
+end
+
+function (c :: Chain{true})(x)
+  xold = c.layers[1](x)
+  for l in c.layers[2:end]
+    x = l(xold)
+    if !(xold isa AutoGrad.Result)
+      Knet.KnetArrays.freeKnetPtr(xold.ptr)
+    end
+    xold = x
+  end
+  xold
 end
 
 swap(c :: Chain{GPU}) where {GPU} = Chain(swap.(c.layers)...)
@@ -601,7 +631,6 @@ function outsize(c :: Chain, s)
 end
 
 layers(c :: Chain) = c.layers
-
 
 function show_composite(name, io :: IO, layers)
   n = length(layers)
@@ -757,7 +786,17 @@ function Residual(layers :: Layer{GPU}...; f = "id", gpu = GPU) where {GPU}
   Residual(Chain(ls...), NamedFunction(f))
 end
 
-(r :: Residual)(x) = r.a.f.(r.chain(x) .+ x)
+(r :: Residual{false})(x) = r.a.f.(r.chain(x) .+ x)
+
+function (r :: Residual{true})(x)
+  tmp = r.chain(x)
+  res = r.a.f.(tmp .+ x)
+  if !(tmp isa AutoGrad.Result)
+    Knet.KnetArrays.freeKnetPtr(tmp.ptr)
+  end
+  res
+end
+
 
 swap(r :: Residual{GPU}) where {GPU} = Residual{!GPU}(swap(r.chain), r.a)
 Base.copy(r :: Residual{GPU}) where {GPU} = Residual{GPU}(copy(r.chain), r.a)

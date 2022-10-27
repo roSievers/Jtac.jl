@@ -2,7 +2,7 @@
 # -------- Auxiliary Functions ----------------------------------------------- #
 
 # Set an optimizer for all parameters of a model
-function set_optimizer!(model, opt = Knet.Adam; kwargs...)
+function set_optimizer!(model, opt = Knet.SGD; kwargs...)
 
   for param in Knet.params(model)
 
@@ -15,10 +15,11 @@ function set_optimizer!(model, opt = Knet.Adam; kwargs...)
 
         param.opt = opt(; kwargs...)
 
-      # If opt is not given, overwrite only non-existing param.opt with Adam
+      # If opt is not given, overwrite only non-existing param.opt with SGD
       elseif isnothing(opt) && isnothing(param.opt)
 
-        param.opt = Knet.Adam(; kwargs...)
+        param.opt = Knet.SGD(; kwargs...)
+
       end
     end
   end
@@ -171,7 +172,7 @@ function _train!( player :: AbstractPlayer{G}
                 , iterations = 10
                 , batchsize = 50
                 , testfrac = 0.1
-                , optimizer = Knet.Adam
+                , optimizer = Knet.SGD
                 , replays = 0
                 , quiet = false
                 , callback_epoch = (_) -> nothing
@@ -284,7 +285,7 @@ training models can be trained currently.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
 - `tickets = nothing`: Number of tickets if distributed.
-- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
@@ -357,7 +358,7 @@ with NeuralModel-based training models can be trained.
 - `callback_iter`: Function called after every iteration.
 - `distributed = false`: Shall workers be used for self-playings?
 - `tickets = nothing`: Number of tickets if distributed.
-- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
@@ -427,7 +428,7 @@ currently.
 - `quiet = false`: Whether to suppress logging of training progress.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
-- `optimizer = Adam`: Optimizer for each weight in the training model.
+- `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
 - `kwargs...`: Keyword arguments for `optimizer`
 """
 function train_from_model!( pupil :: AbstractPlayer{G}

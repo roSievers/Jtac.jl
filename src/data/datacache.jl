@@ -9,6 +9,15 @@ struct DataCache{G <: AbstractGame, GPU}
 
 end
 
+function DataCache{G}( data, vlabel, plabel, flabel; gpu ) where {G}
+  at = Model.atype(gpu)
+  data = convert(at, data)
+  vlabel = convert(at, vlabel)
+  plabel = convert(at, plabel)
+  flabel = isnothing(flabel) ? nothing : convert(at, hcat(ds.flabel...))
+  DataCache{G, gpu}(data, vlabel, plabel, flabel)
+end
+
 function DataCache( ds :: DataSet{G}
                   ; gpu = false
                   , use_features = false

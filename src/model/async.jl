@@ -14,7 +14,7 @@ mutable struct Async{G} <: AbstractModel{G, false}
   max_batchsize  :: Int
   buffersize     :: Int     # Must not be smaller than max_batchsize!
 
-  history        :: Vector{Int}
+  profile
 end
 
 Pack.register(Async)
@@ -43,14 +43,17 @@ function Async( model :: AbstractModel{G};
   # Open the channel in which the inputs are dumped
   channel = Channel(buffersize)
 
-  # For debugging and profiling, record the input sizes
-  history = Int[]
+  # For debugging and profiling, record some information
+  batchsize = Int[]
+  delay = Float64[]
+  latency = Float64[]
+  profile = (batchsize = batchsize, delay = delay, latency = latency)
 
   # Start the worker thread in the background
-  thread = @async worker_thread(channel, model, max_batchsize, history)
+  thread = @async worker_thread(channel, model, max_batchsize, profile)
 
   # Create the instance
-  amodel = Async{G}(model, channel, thread, max_batchsize, buffersize, history)
+  amodel = Async{G}(model, channel, thread, max_batchsize, buffersize, profile)
 
   # Register finalizer
   finalizer(m -> close(m.channel), amodel)
@@ -131,33 +134,44 @@ end
 
 # -------- Async Worker ------------------------------------------------------ #
 
-closed_and_empty(channel) = try fetch(channel); false catch _ true end
+function closed_and_empty(channel, profile)
+  try
+    push!(profile.delay, @elapsed fetch(channel))
+    false
+  catch _
+    true
+  end
+end
 
-function worker_thread(channel, model, max_batchsize, history)
+function worker_thread(channel, model, max_batchsize, profile)
 
   @debug "Async worker started"
 
   try
 
-    while !closed_and_empty(channel)
+    while !closed_and_empty(channel, profile)
 
-      inputs = Vector()
-      # If we arrive here, there is at least one thing to be done.
-      while isready(channel) && length(inputs) < max_batchsize
-        push!(inputs, take!(channel))
-        yield()
+      dt = @elapsed begin
+        inputs = Vector()
+        # If we arrive here, there is at least one thing to be done.
+        while isready(channel) && length(inputs) < max_batchsize
+          push!(inputs, take!(channel))
+          yield()
+        end
+
+        push!(profile.batchsize, length(inputs))
+
+        v, p, _ = model(first.(inputs))
+        v = to_cpu(v)
+        p = to_cpu(p)
+
+
+        for i = 1:length(inputs)
+          put!(inputs[i][2], (value = v[i], policy = p[:,i]))
+        end
       end
 
-      push!(history, length(inputs))
-
-      v, p, _ = model(first.(inputs))
-      v = to_cpu(v)
-      p = to_cpu(p)
-
-
-      for i = 1:length(inputs)
-        put!(inputs[i][2], (value = v[i], policy = p[:,i]))
-      end
+      push!(profile.latency, dt)
 
     end
 
