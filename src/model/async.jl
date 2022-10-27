@@ -13,6 +13,8 @@ mutable struct Async{G} <: AbstractModel{G, false}
 
   max_batchsize  :: Int
   buffersize     :: Int     # Must not be smaller than max_batchsize!
+
+  history        :: Vector{Int}
 end
 
 Pack.register(Async)
@@ -41,11 +43,14 @@ function Async( model :: AbstractModel{G};
   # Open the channel in which the inputs are dumped
   channel = Channel(buffersize)
 
+  # For debugging and profiling, record the input sizes
+  history = Int[]
+
   # Start the worker thread in the background
-  thread = @async worker_thread(channel, model, max_batchsize)
+  thread = @async worker_thread(channel, model, max_batchsize, history)
 
   # Create the instance
-  amodel = Async{G}(model, channel, thread, max_batchsize, buffersize)
+  amodel = Async{G}(model, channel, thread, max_batchsize, buffersize, history)
 
   # Register finalizer
   finalizer(m -> close(m.channel), amodel)
@@ -128,7 +133,9 @@ end
 
 closed_and_empty(channel) = try fetch(channel); false catch _ true end
 
-function worker_thread(channel, model, max_batchsize)
+function worker_thread(channel, model, max_batchsize, history)
+
+  @debug "Async worker started"
 
   try
 
@@ -141,9 +148,12 @@ function worker_thread(channel, model, max_batchsize)
         yield()
       end
 
+      push!(history, length(inputs))
+
       v, p, _ = model(first.(inputs))
       v = to_cpu(v)
       p = to_cpu(p)
+
 
       for i = 1:length(inputs)
         put!(inputs[i][2], (value = v[i], policy = p[:,i]))
@@ -157,6 +167,8 @@ function worker_thread(channel, model, max_batchsize)
     throw(err)
 
   end
+
+  @debug "Async worker shutted down"
 
 end
 

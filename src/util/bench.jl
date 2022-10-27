@@ -1,4 +1,5 @@
 
+
 function record(player, n; augment = false, kwargs...)
 
   start_time = time()
@@ -126,6 +127,7 @@ function record_threaded(player, n; augment = false, kwargs...)
   @printf "%.2f ± %.2f states per game (min: %d, max: %d)\n" avg std min max
   dss
 end
+
 
 function benchmark_cpu()
   println("\nTicTacToe:")
