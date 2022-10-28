@@ -2,159 +2,149 @@
 """
 Data structure for a finite capacity pool of training data that can be tagged
 with metadata, like an age or a usage index. Provides functionality to select
-and discard training data based on user defined quality criteria.
+and discard training data based on a user defined quality criterion. A quality
+value smaller or equal to 0 flags the corresponding game state for removal
 """
-mutable struct Pool{G <: Game.AbstractGame, M <: NamedTuple}
+mutable struct Pool{G <: AbstractGame, M <: NamedTuple}
   data :: DataSet{G}
   meta :: Vector{M}
+
   capacity :: Int
+
+  criterion :: Function # meta :: M -> quality :: Float64
 end
 
 function Pool( :: Type{G}
-             , capacity :: Int
-             ; meta :: NamedTuple = (;)
+             , meta :: NamedTuple
+             , criterion :: Function
+             ; capacity :: Int = 100000
              , features = Model.Feature[]
-             ) where {N, G <: Game.AbstractGame}
+             ) where {N, G <: AbstractGame}
 
   @assert all(x -> x isa DataType, meta)
   M = NamedTuple{keys(meta), Tuple{values(meta)...}}
   data = DataSet{G}(; features = features)
-  Pool{G, M}(data, M[], capacity)
+  Pool{G, M}(data, M[], capacity, criterion)
 end
 
 Base.length(dp :: Pool) = length(dp.data)
 
-function Base.getindex(dp :: Pool{G, M}, I) where {G <: Game.AbstractGame, M}
-  Pool{G, M}(dp.data[I], dp.meta[I], dp.capacity)
+function Base.getindex(dp :: Pool{G, M}, I) where {G <: AbstractGame, M}
+  Pool{G, M}(dp.data[I], dp.meta[I], dp.capacity, dp.criterion)
 end
 
 """
-    Base.append!(pool, pool)
+    Base.append!(pool, pool2)
     Base.append!(pool, dataset, meta)
-    Base.append!(pool, dataset; meta...)
 
 Add `dataset` with metadata `meta` to `pool`. This action does not respect
-the pool's capacity. To trim the pool, `see Jtac.Data.trim!`.
+the pool's capacity. To trim the pool, see `Jtac.Data.trim!`.
 """
-function Base.append!( pool :: Pool{G, M}
-                     , pool2 :: Pool{G, M}
-                     ) where {G <: Game.AbstractGame, M <: NamedTuple}
-  append!(pool.data, pool2.data)
-  append!(pool.meta, pool2.meta)
+function Base.append!( dp :: Pool{G, M}
+                     , dp2 :: Pool{G, M}
+                     ) where {G <: AbstractGame, M <: NamedTuple}
+
+  append!(dp.data, dp2.data)
+  append!(dp.meta, dp2.meta)
 
   nothing
 end
 
-function Base.append!( pool :: Pool{G, M}
-                     , data :: DataSet{G}
+function Base.append!( dp :: Pool{G, M}
+                     , ds :: DataSet{G}
+                     , meta :: Vector{M}
+                     ) where {G <: AbstractGame, M <: NamedTuple}
+
+  @assert length(ds) == length(meta)
+
+  append!(dp.data, ds)
+  append!(dp.meta, meta)
+
+  nothing
+end
+
+function Base.append!( dp :: Pool{G, M}
+                     , ds :: DataSet{G}
                      , meta :: M
                      ) where {G <: Game.AbstractGame, M <: NamedTuple}
 
-  append!(pool.data, data)
-  append!(pool.meta, meta)
-
-  nothing
+  meta = repeat([meta], length(ds))
+  Base.append!(dp, ds, meta)
 end
 
-function Base.append!( pool :: Pool{G, M}
-                     , data :: DataSet{G}
-                     ; kwargs...
-                     ) where {G <: Game.AbstractGame, M <: NamedTuple}
 
-  kwargs = collect(kwargs)
-  getvals = map(kwargs) do (key, val)
-    @assert key in fieldnames(M)
-    T = fieldtype(M, key)
-    if typeof(val) == T
-      (key, idx -> val)
-    elseif typeof(val) == Vector{T}
-      (key, idx -> val[idx])
-    else
-      F = typeof(val) 
-      msg = "Metadata with key $key has type $F (expected was $T)"
-      throw(ArgumentError(msg))
-    end
-  end
+"""
+    criterion!(crit, pool)
 
-  meta = map(1:length(data)) do idx
-    (; map(x -> (x[1] => x[2](idx)), getvals)...) :: M
-  end
+Canges the quality criterion of `pool` to `crit`.
+"""
+criterion!(f :: Function, dp :: Pool) = (dp.criterion = f)
 
-  append!(pool.data, data)
-  append!(pool.meta, meta)
-
-  nothing
-end
 
 """
     capacity(pool)
 
 Returns the capacity of `pool`
 """
-capacity(pool :: Pool) = pool.capacity
+capacity(dp :: Pool) = dp.capacity
+
+"""
+    capacity!(pool, capacity)
+
+Set the capacity of `pool`
+"""
+capacity!(dp :: Pool, capacity) = (dp.capacity = capacity)
 
 """
     occupation(pool)
 
 Returns the fraction of occupied states of `pool`
 """
-occupation(pool :: Pool) = length(pool) / pool.capacity
+occupation(dp :: Pool) = length(dp) / dp.capacity
 
 
 """
-    dataquality(pool; criterion)
-    dataquality(pool, sel; criterion)
+    quality(pool)
+    quality(pool, sel)
 
-Calculate the quality vector of `pool` based on a `criterion` function.
-This function takes metadata and returns a quality value. If the argument `sel`
-is provided, only the qualities in the respective selection are calculated.
+Calculate the quality vector of `pool` based on the pool's `criterion` function.
+If the argument `sel` is provided, only the qualities in the respective
+selection are calculated.
 """
-dataquality(pool :: Pool; criterion) = map(criterion, pool.meta)
-dataquality(pool :: Pool, sel; criterion) = map(idx -> criterion(pool.meta[idx]), sel)
+quality(dp :: Pool) = dp.criterion.(dp.meta)
+quality(dp :: Pool, sel) = dp.criterion(dp.meta[sel])
 
 """
-    sample(pool, n; criterion)
+    sample(pool, n) -> (sample, selection)
 
-Weighted sampling of `n` elements from `pool` without replacement. The
-weights are calculated by `criterion`.
+Quality-weighted sampling of `n` elements from `pool` without replacement.
 """
-function sample(pool :: Pool, n; criterion)
+function sample(dp :: Pool, n)
   # The algorithm is based on the exponential sort trick documented here:
   #   https://timvieira.github.io/blog/post/2019/09/16/algorithms-for-sampling-without-replacement/
-  @assert n < length(pool.data)
-  w = dataquality(pool; criterion)
-  k = length(pool.data)
-  r = rand(length(pool.data))
-  partialsortperm(-log.(r) ./ w, 1:n)
+  @assert n < length(dp.data)
+  w = quality(dp)
+  k = length(dp.data)
+  r = rand(length(dp.data))
+  sel = partialsortperm(-log.(r) ./ w, 1:n)
+  (dp.data[sel], sel)
 end
 
-function update!(f, pool :: Pool)
-  pool.meta .= f.(pool.meta)
+"""
+    update!(f, pool [, sel])
+
+Update `pool` via the function `f`. This function must map
+meta-information to new meta-information.
+"""
+function update!(f, dp :: Pool)
+  dp.meta .= f.(dp.meta)
   nothing
 end
 
-function update!(f, pool :: Pool, sel)
-  h(idx) = f(pool.meta[idx])
-  pool.meta[sel] .= h.(sel)
+function update!(f, dp :: Pool, sel)
+  dp.meta[sel] .= f.(dp.meta[sel])
   nothing
 end
-
-# TODO: these update functions cause a recompilation of f every time they run...
-function update!(pool :: Pool{G, M}, sel; kwargs...) where {G, M}
-  mapper = map(fieldnames(M)) do key
-    (key, key in keys(kwargs) ? kwargs[key] : identity)
-  end
-  ntmapper = (; mapper...)
-  f(x) = map((g, v) -> g(v), ntmapper, x)
-  update!(f, pool, sel)
-  nothing
-end
-
-function update!(pool :: Pool; kwargs...)
-  update!(pool, 1:length(pool.data); kwargs...)
-  nothing
-end
-
 
 """
     trim!(pool; criterion)
@@ -163,10 +153,12 @@ Remove data entries from `pool`. Entries with `criterion <= 0` are always
 removed. If the capacity of the pool is still exceeded, entries with `criterion
 > 0` are removed as well.
 """
-function trim!(pool :: Pool; criterion)
-  q = dataquality(pool; criterion)
+function trim!(dp :: Pool)
+  q = dp.criterion.(dp.meta)
   indices = findall(x -> x > 0, q)
-  l = length(indices)
+  total = length(dp)
+#  flagged = length(indices)
+
 
   while length(indices) > dp.capacity
     # Get the lowest quality value in the pool that is not yet flagged for
@@ -180,14 +172,15 @@ function trim!(pool :: Pool; criterion)
     # selection of data with quality = minq
     if length(indices) < dp.capacity
       l = dp.capacity - length(indices)
-      idx = findall(isequal(minq), q)
-      Random.shuffle!(idx)
-      append!(indices, idx[1:l])
+      sel = findall(isequal(minq), q)
+      Random.shuffle!(sel)
+      append!(indices, sel[1:l])
     end
   end
 
   dp.data = dp.data[indices]
   dp.meta = dp.meta[indices]
 
-  nothing #length(indices), l - length(indices)
+  total - length(indices)
 end
+

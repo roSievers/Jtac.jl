@@ -80,7 +80,7 @@ end
 
 function loss( l :: Loss
              , model :: NeuralModel{G, GPU}
-             , cache :: DataCache{G, GPU}
+             , cache :: Cache{G, GPU}
              ) where {G, GPU}
 
   n = length(cache)

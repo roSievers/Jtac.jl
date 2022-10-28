@@ -244,11 +244,11 @@ module Data
   import ..Pack
 
   include("data/dataset.jl")
-  include("data/datacache.jl")
-  include("data/batches.jl")
+  include("data/cache.jl")
+  include("data/batch.jl")
   include("data/pool.jl")
 
-  export DataSet, DataCache, Batches, Pool
+  export DataSet, Cache, Batches, Pool
 
   export save,
          load,

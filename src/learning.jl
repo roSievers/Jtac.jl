@@ -26,7 +26,7 @@ function set_optimizer!(model, opt = Knet.SGD; kwargs...)
 end
 
 # A single training step, the loss is returned
-function train_step!(l :: Loss, model, cache :: DataCache)
+function train_step!(l :: Loss, model, cache :: Cache)
 
   tape = Knet.@diff sum(loss(l, model, cache))
 

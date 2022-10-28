@@ -121,6 +121,7 @@ function Pack.construct(:: Type{Weight}, d :: Dict)
 end
 
 Base.convert(:: Type{Weight}, data) = Weight(data)
+Base.convert(:: Type{Weight}, w :: Weight) = w
 
 
 # -------- Layer Activation -------------------------------------------------- #

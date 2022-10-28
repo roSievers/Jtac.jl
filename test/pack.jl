@@ -146,14 +146,8 @@
   player = Player.MCTSPlayer(model, power = 5, temperature = 0.75, exploration = 2.)
   @test pack_unpack(player)
 
-  Training.train!(player, epochs = 1, playings = 10)
+  Training.train!(player, epochs = 1, playings = 10, quiet = true)
   @test pack_unpack(player)
 
 end
-
-# New feature handling... Think about this!
-# Don't like current situation with loss functions
-# Remove Training module -> make this part of Player:
-#   -> Player.train!
-# Maybe same for Rank module? Player.compete(...) ?
 
