@@ -283,9 +283,12 @@ training models can be trained currently.
 - `prepare`: Preparation function. See `Data.record`.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
-- `distributed = false`: Shall workers be used for self-playings?
-- `tickets = nothing`: Number of tickets if distributed.
 - `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
+- `threads = :auto`: Whether to conduct the matches on background threads.
+   If `true` or `:copy`, all available background threads are used.
+   The option `:copy` lets each thread receive a copy of the player. If this
+   is combined with GPU-based models, each thread receives its own device.
+   If `:auto`, background threads are used if this is possible.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
@@ -302,8 +305,7 @@ function train!( player :: MCTSPlayer
                , prepare = prepare(steps = 0)
                , branch = branch(prob = 0.)
                , augment = true
-               , distributed = false
-               , tickets = nothing
+               , threads = :auto
                , kwargs... )
 
   # Only use player-enabled features for recording if they are compatible with
@@ -313,89 +315,14 @@ function train!( player :: MCTSPlayer
   # Function to generate datasets through selfplays
   gen_data = (cb, n) -> record( player
                               , n
-                              , prepare = prepare
-                              , branch = branch
-                              , augment = augment
-                              , features = features
+                              ; prepare 
+                              , branch
+                              , augment
+                              , features
+                              , threads
                               , merge = false
-                              , callback = cb 
-                              , distributed = distributed
-                              , tickets = tickets )
+                              , callback = cb )
 
-
-  _train!(player, gen_data; loss = loss, kwargs...)
-
-end
-
-
-"""
-    train_against!(player, enemy; <keyword arguments>)
-
-Train an MCTS `player` under `loss` through playing against `enemy`.
-
-The training model of `player` learns to predict the MCTS policy, the value of
-game states, and possible features (if `player` supports the same features as
-the keyword argument `loss`) when playing against `enemy`. If the enemy is too
-good, this may turn out to be a bad learning mode: a player that loses all the
-time will produce very pessimistic value predictions for each single game state,
-which will harm the MCTS algorithm for improved policies. Note that only players
-with NeuralModel-based training models can be trained.
-
-# Arguments
-- `loss = Loss()`: Loss used for training.
-- `start`: Function that (randomly) yields -1 or 1 to fix the starting player.
-- `epochs = 10`: Number of epochs.
-- `playings = 20`: Games played per `epoch` for training-set generation.
-- `iterations = 10`: Number of training epochs per training-set.
-- `batchsize = 50`: Batchsize during training from the training-set.
-- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
-- `augment = true`: Whether to use augmentation on the created data sets.
-- `replays = 0`: Add datasets from last `replay` epochs to the trainset.
-- `quiet = false`: Whether to suppress logging of training progress.
-- `branch`: Random branching function. See `Data.record_against`.
-- `prepare`: Preparation function. See `Data.record_against`.
-- `callback_epoch`: Function called after every epoch.
-- `callback_iter`: Function called after every iteration.
-- `distributed = false`: Shall workers be used for self-playings?
-- `tickets = nothing`: Number of tickets if distributed.
-- `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
-- `kwargs...`: Keyword arguments for `optimizer`
-
-# Examples
-```julia
-# Train a neural network model by playing against an MCTS player
-G = Game.TicTacToe
-model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Dense(32, "relu"))
-player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-enemy = Player.MCTSPlayer(power = 250)
-Training.train_against!(player, enemy, epochs = 5, playings = 100)
-```
-"""
-function train_against!( player :: MCTSPlayer
-                       , enemy
-                       ; loss = Loss()
-                       , start :: Function = () -> rand([-1, 1])
-                       , branch = branch(prob = 0.)
-                       , prepare = prepare(steps = 0)
-                       , augment = true
-                       , distributed = false
-                       , tickets = nothing
-                       , kwargs... )
-
-  features = feature_compatibility(loss, player) ? features(player) : Feature[]
-
-  gen_data = (cb, n) -> record_against( player
-                                      , enemy
-                                      , n
-                                      , start = start
-                                      , augment = augment
-                                      , branch = branch
-                                      , prepare = prepare
-                                      , features = features
-                                      , merge = false
-                                      , callback = cb
-                                      , distributed = distributed
-                                      , tickets = tickets )
 
   _train!(player, gen_data; loss = loss, kwargs...)
 
@@ -543,8 +470,8 @@ function with_contest( trainf!     # the training function
                      , cache :: Int = 0
                      , interval :: Int = 10
                      , temperature = player.temperature
-                     , distributed = false
                      , epochs = 10
+                     , threads = :auto
                      , kwargs... )
 
   # One can set length == 0 to access trainf! without contests
@@ -553,9 +480,9 @@ function with_contest( trainf!     # the training function
     @info "Contests are disabled."
     return trainf!( player
                   , args...
-                  ; loss = loss
-                  , epochs = epochs
-                  , distributed = distributed
+                  ; loss
+                  , epochs
+                  , threads
                   , kwargs... )
 
   end
@@ -605,7 +532,7 @@ function with_contest( trainf!     # the training function
     cache_results = zeros(Int, n, n, 3)
     cache_results[1:np,1:np,:] = compete( passive
                                         , cache
-                                        , distributed = distributed
+                                        ; threads
                                         , callback = step )
 
     # Remove the progress bar
@@ -630,7 +557,7 @@ function with_contest( trainf!     # the training function
       step, finish = stepper("# Contest...", len)
 
       results = compete( players, len, aidx
-                       , distributed = distributed , callback = step )
+                       ; threads, callback = step )
       finish()
 
       # special printing, since we want to prepend '# ' to each line
@@ -648,10 +575,10 @@ function with_contest( trainf!     # the training function
   # Train with a contest every interval epochs
   trainf!( player
          , args...
-         ; loss = loss
+         ; loss
+         , epochs
+         , threads
          , callback_epoch = cb
-         , epochs = epochs
-         , distributed = distributed
          , kwargs... )
 
   # Run contest after training, if it was not run in trainf! already

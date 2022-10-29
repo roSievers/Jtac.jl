@@ -69,6 +69,12 @@ The number of tasks that should be applied if the model is called with `asyncmap
 ntasks(:: AbstractModel) = 1
 
 """
+    is_async(model)
+
+Whether `model` is based on an Async model.
+"""
+is_async(model) = false
+"""
     base_model(model)
 
 Extract the model on which `model` or `player` is based. Except for explicit
@@ -123,8 +129,8 @@ The argument `gpu` is boolean, while `async` and `cache` can be both boolean or
 positive integers (setting the parameters `max_batchsize` for `Async` and
 `max_cachesize` for `Caching`, respectively).
 """
-function tune(model; gpu, async, cache)
-  @warn "trying to tune model of type $(typeof(model)) failed" maxlog = 1
+function tune(model; gpu = nothing, async = nothing, cache = nothing)
+  @warn "trying to tune model of type $(typeof(model)) failed"
   model
 end
 

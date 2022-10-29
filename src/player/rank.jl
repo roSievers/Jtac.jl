@@ -27,72 +27,74 @@ The playings start with `game`, which is infered automatically from
 
 The return value is a result array of dimensions `(l, l, 3)`, where `l
 = length(players)`. The entry at indices `[i,j,k]` stands for the number of
-outcomes `k` (`0`: loss, `1`: draw, `2`: win) when player `i` played against
+outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
 `j`. When both `i` and `j` are inactive, no games are played. The entries at
 `[i, j, :]` are `0` in this case.
 
 # Arguments
 - `game`: Initial game state. Inferred automatically if possible.
 - `callback`: Function called after each of the `n` matches.
-- `distributed = false`: Whether to conduct the self-playings on several
-   processes in parallel. If `true`, all available workers are used. Alternatively,
-   a list of worker ids can be passed.
-- `tickets`: Number of chunks in which the workload is distributed if
-   `distributed != false`. By default, it is set to the number of workers.
+- `threads = :auto`: Whether to conduct the matches on background threads.
+   If `true` or `:copy`, all available background threads are used.
+   The option `:copy` lets each thread receive a copy of the player. If this
+   is combined with GPU-based models, each thread receives its own device.
+   If `:auto`, background threads are used if this is possible.
 """
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
                 ; game = derive_gametype(players...)
                 , callback = () -> nothing
-                , distributed = false
-                , tickets = nothing )
+                , threads = :auto )
 
-  # If the competitions takes place in parallel, get the list of workers
-  # and cede to the corresponding function in distributed.jl
-  if distributed
+  # Using only a single BLAS thread was beneficial for performance in all tests
+  t = BLAS.get_num_threads()
+  BLAS.set_num_threads(1)
 
-    workers = distributed == true ? Distributed.workers() : distributed
-    tickets = isnothing(tickets) ? length(workers) : tickets
+  bgthreads = Threads.nthreads()
+  use_threads =
+    threads == true || threads == :copy ||
+    threads == :auto && bgthreads > 0
 
-    return compete_distributed( players, n, active
-                              ; game = game
-                              , callback = callback
-                              , workers = workers
-                              , tickets = tickets )
-  end
+  if use_threads
 
-  matches = plan_matches(n, length(players), length(active))
-  results = zeros(Int, length(players), length(players), 3)
-  players = enumerate(players)
-
-  l = 1
-
-  for (i, p1) in players, (j, p2) in players
-
-    if i != j && (i in active || j in active)
-
-      asyncmap(1:matches[l]) do _
-        k = pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
-        results[i, j, k] += 1
-        callback()
-      end
-
-      l += 1
+    tickets = ticket_sizes(n, bgthreads)
+    data = _threaded(players; threads) do idx, ps
+      compete(ps, tickets[idx], active; threads = false, game, callback)
     end
+    results = sum(data)
+
+  else
+
+    matches = plan_matches(n, length(players), length(active))
+    results = zeros(Int, length(players), length(players), 3)
+    players = enumerate(players)
+
+    l = 1
+
+    for (i, p1) in players, (j, p2) in players
+
+      if i != j && (i in active || j in active)
+
+        asyncmap(1:matches[l]) do _
+          k = pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+          results[i, j, k] += 1
+          callback()
+        end
+
+        l += 1
+      end
+    end
+
+    results
+
   end
+
+  BLAS.set_num_threads(t)
 
   results
 end
 
-function compete_distributed(args...; game, kwargs...) 
-  compete_unfreeze = (args...; game, kwargs...) -> begin
-    compete(args...; game = Game.unfreeze(game), kwargs...)
-  end
-  game = Game.freeze(game)
-  data = with_workers(compete_unfreeze, args...; game = game, kwargs...)
-  sum(data)
-end
 
 # -------- Rankings ---------------------------------------------------------- #
 

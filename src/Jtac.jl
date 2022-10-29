@@ -167,6 +167,7 @@ module Model
          swap,
          on_gpu,
          tune,
+         is_async,
          base_model,
          playing_model,
          training_model,
@@ -264,6 +265,7 @@ module Player
   using Random, Statistics, LinearAlgebra
   using Printf, Distributed
   import CUDA
+  import ThreadPools # employ background threads
 
   using ..Jtac
   using ..Util
@@ -276,7 +278,6 @@ module Player
   include("player/player.jl")
   include("player/elo.jl")    # outsource to Util or rank.jl?
   include("player/rank.jl")
-  include("player/distributed.jl")
   include("player/record.jl")
 
   export AbstractPlayer,

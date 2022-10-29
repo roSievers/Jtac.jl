@@ -543,3 +543,6 @@ function Model.tune(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
   switch_model(player, tune(player.model; kwargs...))
 end
 
+function Model.is_async(player :: Union{MCTSPlayer, IntuitionPlayer})
+  is_async(Model.playing_model(player))
+end
