@@ -263,6 +263,75 @@ end
 
 
 """
+Exception that is thrown as stop signal for the `record(player, channel)`
+method.
+"""
+struct StopRecording <: Exception end
+
+"""
+    record(player, channel; ntasks, kwargs...)
+
+Stream the games recorded by `player` to `channel`. The value
+of `ntasks` determines the number of matches played asynchronously
+per thread if `player` is based on an `Async` model.
+
+The function returns when `channel` is closed.
+"""
+function record( p :: AbstractPlayer{H}
+               , ch :: AbstractChannel{DataSet{G}}
+               ; callback_move = () -> nothing
+               , ntasks = is_async(p) ? 50 : 1
+               , merge = true
+               , threads = :auto
+               , kwargs... ) where {H <: AbstractGame, G <: H}
+
+  cb() = begin
+    callback_move()
+    isopen(ch) || throw(StopRecording())
+  end
+
+  run_loops(player) = begin
+    asyncmap(1:ntasks; ntasks) do _
+      while isopen(ch)
+        ds = nothing
+        try ds = record(player, 1; threads = false, merge = true, callback_move = cb, kwargs...)
+        catch err
+          err isa StopRecording && break
+          throw(err)
+        end
+        try put!(ch, ds)
+        catch err
+          err isa InvalidStateException && break
+          throw(err)
+        end
+      end
+    end
+    nothing
+  end
+
+  t = BLAS.get_num_threads()
+  BLAS.set_num_threads(1)
+
+  bgthreads = Threads.nthreads() - 1
+  use_threads =
+    threads == true || threads == :copy ||
+    threads == :auto && bgthreads > 0 && is_async(p)
+
+  if use_threads
+    _threaded([p]; threads) do idx, ps
+      run_loops(ps[1])
+    end
+  else
+    run_loops(p)
+  end
+
+  nothing
+end
+
+
+
+
+"""
     record_model(model, games [; use_features, augment])
 
 Record a dataset by applying `model` to `games`. The features enabled for
@@ -338,70 +407,6 @@ function _threaded(handle :: Function, ps :: Vector; threads)
     handle(idx, ps)
   end
 
-end
-
-
-
-struct StopRecording <: Exception end
-
-"""
-    record(player, channel; ntasks, kwargs...)
-
-Stream the games recorded by `player` to `channel`. The value
-of `ntasks` determines the number of matches played asynchronously
-per thread if `player` is based on an `Async` model.
-
-The function returns when `channel` is closed.
-"""
-function record( p :: AbstractPlayer{H}
-               , ch :: AbstractChannel{DataSet{G}}
-               ; callback_move = () -> nothing
-               , ntasks = is_async(p) ? 50 : 1
-               , merge = true
-               , threads = :auto
-               , kwargs... ) where {H <: AbstractGame, G <: H}
-
-
-  cb() = begin
-    callback_move()
-    isopen(ch) || throw(StopRecording)
-  end
-
-  run_loops(player) = begin
-    asyncmap(1:ntasks; ntasks) do
-      while isopen(ch)
-        try ds = record(player, 1; threads = false, callback_move = cb, kwargs...)
-        catch err
-          err isa StopRecording && break
-          throw(err)
-        end
-        try put!(ch, ds)
-        catch
-          err isa InvalidStateException && break
-          throw(err)
-        end
-      end
-    end
-    nothing
-  end
-
-  t = BLAS.get_num_threads()
-  BLAS.set_num_threads(1)
-
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(p)
-
-  if use_threads
-    _threaded(p; threads) do (idx, player)
-      run_loops(player)
-    end
-  else
-    run_loops(p)
-  end
-
-  nothing
 end
 
 
