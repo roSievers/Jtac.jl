@@ -22,7 +22,7 @@ Create game results for a number of `n` games between players at positions `i`
 and `j` in the collection `players` if at least one of `i` or `j` is in
 `active`. 
 
-The playings start with `game`, which is infered automatically from
+The matches start with `game`, which is infered automatically from
 `players` if possible. `callback()` is called after each of the `n` matches.
 
 The return value is a result array of dimensions `(l, l, 3)`, where `l

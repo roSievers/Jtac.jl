@@ -168,7 +168,7 @@ function _train!( player :: AbstractPlayer{G}
                 , gen_data :: Function
                 ; loss = Loss()
                 , epochs = 10
-                , playings = 20
+                , matches = 20
                 , iterations = 10
                 , batchsize = 50
                 , testfrac = 0.1
@@ -180,13 +180,13 @@ function _train!( player :: AbstractPlayer{G}
                 , kwargs...
                 ) where {G <: AbstractGame}
 
-  @assert playings > 0 "Number of playings for training must be positive"
+  @assert matches > 0 "Number of matches for training must be positive"
 
   # If we do not print results, it is not necessary to test
   quiet || testfrac < 0 && (testfrac = 0.)
 
-  # Get number of playings used for training
-  train_playings = ceil(Int, playings * (1-testfrac))
+  # Get number of matches used for training
+  train_matches = ceil(Int, matches * (1-testfrac))
 
   # Print the loss header if not quiet
   !quiet && print_loss_header(loss, feature_compatibility(loss, player))
@@ -200,15 +200,15 @@ function _train!( player :: AbstractPlayer{G}
   for i in 1:epochs
 
     # Generate callback functions for the progress meter
-    step, finish = stepper("# Playing...", playings)
+    step, finish = stepper("# Playing...", matches)
     cb = quiet ? () -> nothing : step
 
     # Generate new datasets for this generation
-    datasets = gen_data(cb, playings)
+    datasets = gen_data(cb, matches)
 
-    # Create the training set by merging with the last `playing` generations of
+    # Create the training set by merging with the last `matches` generations of
     # datasets that are stored in the replay_buffer
-    trainset = merge(datasets[1:train_playings]...)
+    trainset = merge(datasets[1:train_matches]...)
     for set in replay_buffer
       trainset = merge(trainset, set...)
     end
@@ -216,7 +216,7 @@ function _train!( player :: AbstractPlayer{G}
     # Create the testing set by collecting the remaining datasets generated
     # in this epoche
     if testfrac > 0
-      testset = merge(datasets[train_playings+1:playings]...)
+      testset = merge(datasets[train_matches+1:matches]...)
     else
       testset = DataSet{G}() 
     end
@@ -272,10 +272,10 @@ training models can be trained currently.
 # Arguments
 - `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of epochs.
-- `playings = 20`: Games played per `epoch` for training-set generation.
+- `matches = 20`: Games played per `epoch` for training-set generation.
 - `iterations = 10`: Number of training epochs per training-set.
 - `batchsize = 50`: Batchsize during training from the training-set.
-- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
+- `testfrac = 0.1`: Fraction of `matches` used to create test-sets.
 - `augment = true`: Whether to use augmentation on the created data sets.
 - `replays = 0`: Add datasets from last `replay` epochs to the trainset.
 - `quiet = false`: Whether to suppress logging of training progress.
@@ -297,7 +297,7 @@ training models can be trained currently.
 G = Game.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Dense(32, "relu"))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
-Training.train!(player, epochs = 5, playings = 100)
+Training.train!(player, epochs = 5, matches = 100)
 ```
 """
 function train!( player :: MCTSPlayer
@@ -344,10 +344,10 @@ currently.
 # Arguments
 - `loss = Loss()`: Loss used for training.
 - `epochs = 10`: Number of epochs.
-- `playings = 20`: Games played per `epoch` for training-set generation.
+- `matches = 20`: Games played per `epoch` for training-set generation.
 - `iterations = 10`: Number of training epochs per training-set.
 - `batchsize = 50`: Batchsize during training from the training-set.
-- `testfrac = 0.1`: Fraction of `playings` used to create test-sets.
+- `testfrac = 0.1`: Fraction of `matches` used to create test-sets.
 - `branch`: Random branching function.
 - `prepare`: Preparation function.
 - `augment = true`: Whether to use augmentation on the created data sets.
@@ -457,7 +457,7 @@ Training.with_contest( Training.train!
                      , opponents = opponents
                      , interval = 5
                      , epochs = 20
-                     , playings = 150 )
+                     , matches = 150 )
 ```
 
 """
