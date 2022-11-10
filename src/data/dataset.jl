@@ -1,82 +1,94 @@
 
 # -------- Datasets ---------------------------------------------------------- #
 
+const LabelData = Vector{Vector{Float32}}
+
 """
-Structure that holds a list of games and labels, i.e., targets for learning.
+Structure that holds a list of games and labels, i.e., prediction targets for
+learning.
 
 Dataset are usually created through playing games from start to finish by an
 MCTSPlayer. The value label corresponds to the results of the game, and the
-policy label to the improved policy in the single MCTS steps. Furthermore,
-features can be enabled for a dataset and are stored as part of the label, as
-well.
+policy label to the improved policy in the single MCTS steps.
+Enabled prediction targets are stored as well.
 """
 mutable struct DataSet{G <: AbstractGame}
-
-  games  :: Vector{G}                 # games saved in the dataset
-  label  :: Vector{Vector{Float32}}   # target value/policy labels
-  flabel :: Vector{Vector{Float32}}   # target feature values
-
-  features :: Vector{Feature}         # with which features was the ds created
-
+  games  :: Vector{G}
+  labels :: Vector{LabelData}
+  targets :: Vector{PredictionTarget{G}}
 end
 
 Pack.register(DataSet)
 Pack.@mappack DataSet
 
-function Pack.destruct(ds :: Data.DataSet)
-  label = vcat(ds.label...)
-  flabel = vcat(ds.flabel...)
+function Pack.destruct(ds :: DataSet)
+  label = reduce(vcat, reduce.(vcat, ds.labels))
   bytes = reinterpret(UInt8, label)
-  fbytes = reinterpret(UInt8, flabel)
   Dict{String, Any}(
       "games" => Pack.Bytes(Pack.pack(ds.games))
-    , "label" => Pack.Bytes(bytes)
-    , "flabel" => Pack.Bytes(fbytes)
-    , "features" => ds.features
+    , "labels" => Pack.Bytes(bytes)
+    , "targets" => Pack.Bytes(Pack.pack(ds.targets))
   )
 end
 
-function Pack.construct(:: Type{Data.DataSet{G}}, d :: Dict) where {G}
+function split_array(x, lengths)
+  res = LabelData()
+  start = firstindex(x)
+  for len in lengths
+    push!(res, x[start:(start+len-1)])
+    start += len
+  end
+  res
+end
+
+function Pack.construct(:: Type{DataSet{G}}, d :: Dict) where {G}
   games = Pack.unpack(d["games"], Vector{G})
+  targets = Pack.unpack(d["targets"], Vector{PredictionTarget{G}})
 
-  data = reinterpret(Float32, d["label"])
-  data = reshape(data, :, length(games))
-  label = [ col[:] for col in eachcol(data) ]
+  data = reinterpret(Float32, d["labels"])
+  lengths = length.(targets) .* length(games)
 
-  fdata = reinterpret(Float32, d["flabel"])
-  fdata = reshape(fdata, :, length(games))
-  flabel = [ col[:] for col in eachcol(fdata) ]
+  @assert length(data) == sum(lengths)
 
-  features = Pack.from_msgpack(Vector{Model.Feature}, d["features"])
-  Data.DataSet(games, label, flabel, features)
+  labels = map(split_array(data, lengths)) do arr
+    arr = reshape(arr, :, length(games))
+    collect.(eachcol(arr))
+  end
+
+  Data.DataSet(games, labels, targets)
 end
 
-"""
-      DataSet{G}([; features])
+function Pack.freeze(d :: DataSet{G}) where {G}
+  DataSet{G}(Pack.freeze.(d.games), d.labels, d.targets)
+end
 
-Initialize an empty dataset for concrete game type `G` and `features` enabled.
-"""
-function DataSet{G}(; features = Feature[]) where {G <: AbstractGame}
+function Pack.unfreeze(d :: DataSet{G}) where {G}
+  DataSet{G}(Pack.unfreeze.(d.games), d.labels, d.targets)
+end
 
+
+"""
+      DataSet(G, targets)
+      DataSet(model)
+
+Initialize an empty dataset for concrete game type `G` and `targets` enabled.
+The second method constructs a DataSet that is compatible to `model`.
+"""
+DataSet(G :: Type{<: AbstractGame}, targets = []) =
   DataSet( Vector{G}()
-         , Vector{Vector{Float32}}()
-         , Vector{Vector{Float32}}()
-         , features )
+         , [LabelData() for _ in 1:length(targets)]
+         , convert(Vector{PredictionTarget{G}}, targets) )
 
+function DataSet(m :: AbstractModel{G}) where {G}
+  targets = Target.targets(training_model(m))
+  DataSet(G, targets)
 end
 
-function DataSet(games, label, flabel; features = Feature[])
-
-  DataSet(games, label, flabel, features)
-
-end
-
-Model.features(ds :: DataSet) = ds.features
 Base.length(d :: DataSet) = length(d.games)
 Base.lastindex(d :: DataSet) = length(d)
 
-# -------- Serialization and IO of Datasets ---------------------------------- #
 
+# -------- Serialization and IO of Datasets ---------------------------------- #
 
 """
     save(name, dataset)
@@ -98,42 +110,45 @@ end
 
 # -------- DataSet Operations ------------------------------------------------ #
 
-function Base.getindex(d :: DataSet{G}, I) where {G <: AbstractGame}
-  DataSet{G}(d.games[I], d.label[I], d.flabel[I], d.features)
-end
+Base.getindex(d :: DataSet{G}, I) where {G <: AbstractGame} =
+  DataSet{G}(d.games[I], [l[I] for l in d.labels], d.targets)
 
 function Base.append!(d :: DataSet{G}, dd :: DataSet{G}) where {G <: AbstractGame}
 
-  if d.features != dd.features
+  td = Target.targets(d)
+  tdd = Target.targets(dd)
+  compatible =
+    length(td) == length(tdd) && all(map(Target.compatible, td, tdd))
 
-    error("Appending dataset with incompatible features")
-
-  end
+  @assert compatible "Cannot append dataset with incompatible targets"
 
   append!(d.games, dd.games)
-  append!(d.label, dd.label)
-  append!(d.flabel, dd.flabel)
+  foreach(d.labels, dd.labels) do l, ll
+    append!(l, ll)
+  end
+
+  @assert check_consistency(d)
 
 end
 
 function Base.merge(d :: DataSet{G}, ds...) where {G <: AbstractGame}
 
-  # Make sure that all datasets have compatible features
-  features = d.features
+  ts = [Target.targets(d), Target.targets.(ds)...]
 
-  if !all(x -> x.features == features, ds) 
-
-    error("Merging datasets with incompatible features")
-
-  end
+  compatible =
+    all(length(ts[1]) .== length.(ts)) && all(map(Target.compatible, ts...))
 
   # Create and return the merged dataset
-  dataset = DataSet{G}()
-  dataset.features = features
+  dataset = DataSet(G)
+  dataset.targets = Target.targets(d)
 
   dataset.games  = vcat([d.games,  (x.games  for x in ds)...]...)
-  dataset.label  = vcat([d.label,  (x.label  for x in ds)...]...)
-  dataset.flabel = vcat([d.flabel, (x.flabel for x in ds)...]...)
+  for i in 1:length(dataset.targets)
+    label = vcat((d.labels[i],  (x.labels[i] for x in ds)...)...)
+    push!(dataset.labels, label)
+  end
+
+  @assert check_consistency(dataset)
 
   dataset
 
@@ -147,10 +162,8 @@ function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
   idx = shuffle ? randperm(n) : 1:n
   idx1, idx2 = idx[1:size], idx[size+1:end]
 
-  d1 = DataSet( d.games[idx1], d.label[idx1]
-              , d.flabel[idx1], features = d.features)
-  d2 = DataSet( d.games[idx2], d.label[idx2]
-              , d.flabel[idx2], features = d.features)
+  d1 = DataSet{G}(d.games[idx1], d.labels[idx1], d.targets)
+  d2 = DataSet{G}(d.games[idx2], d.labels[idx2], d.targets)
 
   d1, d2
 
@@ -158,53 +171,64 @@ end
 
 function Game.augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: AbstractGame
 
-  # NOTE: Augmentation will render flabel information useless.
-  # Therefore, one must recalculate them after applying this function!
 
-  # Problem: we must augment d in such a way that playthroughs are still
-  # discernible after augmentation. I.e., for each symmetry transformation, one
-  # DataSet will be returned.
+  # This function will usually be called on not yet fully constructed datasets:
+  # *after* value and policy targets have been recorded but *before* all
+  # optional targets are recorded. Therfore, we only care about value and policy
+  # targets and *reset* the rest of the label data
+  @assert d.targets[1] isa ValueTarget "Cannot augment dataset with optional targets"
+  @assert d.targets[2] isa PolicyTarget "Cannot augment dataset with optional targets"
 
-  aug = [augment(g, l) for (g, l) in zip(d.games, d.label)]
-  gs, ls = map(x -> x[1], aug), map(x -> x[2], aug)
+  # We must augment d in such a way that playthroughs are still discernible
+  # after augmentation. For each symmetry transformation, one DataSet will be
+  # returned.
+
+  values = d.labels[1]
+  policies = d.labels[2]
+  gps = [augment(g, p) for (g, p) in zip(d.games, policies)]
+  gs, ps = first.(gps), last.(gps)
 
   map(1:length(gs[1])) do j
 
     games = map(x -> x[j], gs)
-    label = map(x -> x[j], ls)
+    policies = map(x -> x[j], ps)
+    values = copy(values)
 
-    DataSet(games, label, copy(d.flabel), features = d.features)
+    labels = [values, policies, (LabelData() for _ in 1:length(d.labels)-2)...]
+
+    DataSet(games, labels, d.targets)
   end
 end
 
-function Pack.freeze(d :: DataSet)
-  DataSet(Pack.freeze.(d.games), d.label, d.flabel, d.features)
+function check_consistency(d :: DataSet)
+  length(d.targets) == length(d.labels) &&
+  all(map(length, d.labels) .== length(d.games)) &&
+  all(1:length(d.targets)) do i
+    all(length(d.targets[i]) .== length.(d.labels[i]))
+  end
 end
 
-#function Pack.freeze(ds :: Vector{D}) where D <: DataSet
-#  Pack.freeze.(ds)
-#end
+Target.targets(ds :: DataSet) = ds.targets
 
-function Pack.unfreeze(d :: DataSet)
-  DataSet(Pack.unfreeze.(d.games), d.label, d.flabel, d.features)
+function Target.adapt(d :: DataSet, targets)
+  idx = Target.adapt(d.targets, targets)
+  DataSet(d.games, d.labels[idx], d.targets[idx])
 end
+
 
 function Base.show(io :: IO, d :: DataSet{G}) where G <: AbstractGame
-  n = length(d.features)
-  features = n == 1 ? "1 feature" : "$n features"
-  print(io, "DataSet{$(Game.name(G))}($(length(d)) elements, $features)")
+  if isempty(d.targets)
+    targets = "[]"
+  else
+    targets = Target.name.(d.targets) |> string
+  end
+  print(io, "DataSet{$(Game.name(G))}($(length(d)), targets = $targets)")
 end
 
-function Base.show(io :: IO, :: MIME"text/plain", d :: DataSet{G}) where G <: AbstractGame
-  n = length(d.features)
-  features = n == 1 ? "1 feature" : "$n features"
-  print(io, "DataSet{$(Game.name(G))} with $(length(d)) elements and $features")
-end
+Base.show(io :: IO, :: MIME"text/plain", d :: DataSet) = show(io, d)
 
 function Random.rand(rng, d :: DataSet, n :: Int)
   indices = Random.rand(rng, 1:length(d), n)
   d[indices]
 end
-
-
 

@@ -43,7 +43,7 @@ outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
-                ; game = derive_gametype(players...)
+                ; instance = derive_gametype(players...)
                 , callback = () -> nothing
                 , threads = :auto )
 
@@ -51,7 +51,7 @@ function compete( players
   t = BLAS.get_num_threads()
   BLAS.set_num_threads(1)
 
-  bgthreads = Threads.nthreads()
+  bgthreads = Threads.nthreads() - 1
   use_threads =
     threads == true || threads == :copy ||
     threads == :auto && bgthreads > 0
@@ -60,7 +60,7 @@ function compete( players
 
     tickets = ticket_sizes(n, bgthreads)
     data = _threaded(players; threads) do idx, ps
-      compete(ps, tickets[idx], active; threads = false, game, callback)
+      compete(ps, tickets[idx], active; threads = false, instance, callback)
     end
     results = sum(data)
 
@@ -77,7 +77,7 @@ function compete( players
       if i != j && (i in active || j in active)
 
         asyncmap(1:matches[l]) do _
-          k = pvp(p1, p2, game = game) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+          k = pvp(p1, p2, instance = instance) + 2 # convert -1, 0, 1 to indices 1, 2, 3
           results[i, j, k] += 1
           callback()
         end

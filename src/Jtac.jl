@@ -133,6 +133,35 @@ module Game
 
 end #module Game
 
+# -------- Training targets -------------------------------------------------- #
+
+module Target
+
+  using Random, Statistics, LinearAlgebra
+  using CUDA
+
+  using ..Jtac
+  using ..Util
+  using ..Game
+  import ..Pack
+
+  include("target.jl")
+
+  export AbstractTarget,
+         PredictionTarget,
+         RegularizationTarget
+
+  export ValueTarget,
+         PolicyTarget,
+         DummyTarget,
+         L1Reg,
+         L2Reg
+
+  export targets,
+         adapt
+
+end # module Target
+
 # -------- CPU/GPU Elements and NN Models ------------------------------------ #
 
 module Model
@@ -144,24 +173,18 @@ module Model
   using ..Jtac
   using ..Util
   using ..Game
+  using ..Target
   import ..Pack
 
-  include("model/feature.jl")
   include("model/element.jl")
   include("model/layer.jl")
   include("model/model.jl")
 
-  export Feature,
-         ConstantFeature
-
   export AbstractModel
 
-  export features,
-         feature_length,
-         feature_name,
-         feature_compatibility,
+  export targets,
+         opt_targets,
          apply,
-         apply_features,
          to_gpu,
          to_cpu,
          swap,
@@ -242,6 +265,7 @@ module Data
   using ..Util
   using ..Game
   using ..Model
+  using ..Target
   import ..Pack
 
   include("data/dataset.jl")
@@ -270,6 +294,7 @@ module Player
   using ..Jtac
   using ..Util
   using ..Game
+  using ..Target
   using ..Model
   using ..Data
   import ..Pack
@@ -315,31 +340,26 @@ module Training
   using ..Model
   using ..Player
   using ..Data
+  using ..Target
 
-  include("loss.jl")
-  include("learning.jl")
-
-  export Loss
+  include("training.jl")
 
   export loss,
-         caption,
          set_optimizer!,
          train_step!,
          train!,
-         train_against!,
-         train_from_model!,
-         with_contest
+         train_contest!
 
 end # module Training
 
 
 export Util,
        Pack,
-       Bench,
        Game,
        Model,
        Player,
        Data,
+       Target,
        Training
 
 end # module Jtac

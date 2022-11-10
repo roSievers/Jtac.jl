@@ -49,7 +49,7 @@ end
   @test Game.legal_actions(game) == []
   @test Game.is_over(game) == Game.is_over(Game.status(game))
 
-  games, policies = Game.augment(game, rand(Float32, 10))
+  games, policies = Game.augment(game, rand(Float32, 9))
   @test length(games) == length(policies) == 8
 
 end

@@ -32,6 +32,7 @@ to find out the current player, the game status, or the legal actions.
 """
 abstract type AbstractGame end
 
+Pack.@structpack AbstractGame
 Pack.register(AbstractGame)
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
@@ -244,6 +245,26 @@ generator and is called.
 instance(game :: AbstractGame) = game
 instance(gen) = gen()
 
+function instance(G :: Type{<: AbstractGame})
+  @assert isconcretetype(G) "Cannot instantiate abstract game $G"
+  G()
+end
+
+"""
+    branch(game; prob, steps = 1)
+    branch(; prob, steps = 1)
+
+Randomly branch `game` with probability `prob` by applying `steps` random
+actions. If the game is not branched `nothing` is returned. Otherwise,
+the branched game is returned.
+
+The second method returns a branching function `game -> branch(game, ...)`.
+"""
+branch(game; prob, steps = 1) =
+  rand() < prob ? random_turns!(copy(game), steps) : nothing
+
+branch(; prob, steps = 1) = game -> branch(game; prob, steps)
+
 """
     hash(game)
 
@@ -251,41 +272,5 @@ instance(gen) = gen()
 (see `Game.array`) with the same current player should have same hash value.
 """
 hash(game :: AbstractGame) = error("hashing for game $(typeof(game)) not implemented")
-
-
-# -------- Serialization via MsgPack ----------------------------------------- #
-
-Pack.@structpack AbstractGame
-
-#MsgPack.msgpack_type(::Type{G}) where G <: AbstractGame = MsgPack.StructType()
-
-#"""
-#    serialize([io], game)
-#
-#Serialize `game` to binary data (`Vector{UInt8}`) or write it to `io`.
-#"""
-#serialize(game :: AbstractGame) = MsgPack.pack(freeze(game))
-#serialize(io, game :: AbstractGame) = MsgPack.pack(io, freeze(game))
-#
-#function serialize(games :: Vector{G}) where {G <: AbstractGame}
-#  MsgPack.pack(freeze.(games))
-#
-#
-#function serialize(io, games :: Vector{G}) where {G <: AbstractGame}
-#  MsgPack.pack(io, freeze.(games))
-#end
-#
-#"""
-#    deserialize(io, G)
-#
-#Read a serialized game of type `G <: AbstractGame` from `io`.
-#"""
-#function deserialize(io, :: Type{G}) where G <: AbstractGame
-#  MsgPack.unpack(io, G; strict=(G,)) |> unfreeze
-#end
-#
-#function deserialize(io, :: Type{Vector{G}}) where G <: AbstractGame
-#  MsgPack.unpack(io, Vector{G}; strict=(G,)) .|> unfreeze
-#end
 
 

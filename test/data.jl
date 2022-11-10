@@ -7,7 +7,7 @@ import .Player: MCTSPlayer, record
   meta = (uses = Int, age = Int)
   criterion = x -> (2 - x.uses) * (3 - x.age)
   dp = Data.Pool(G, meta, criterion, capacity = 100)
-  ds = record(MCTSPlayer(power = 5), 100, game = G)
+  ds = record(MCTSPlayer(power = 5), 100, instance = G)
   append!(dp, ds, (uses = 0, age = 1))
   @test Data.occupation(dp) > 1
   @test length(dp) == length(ds)

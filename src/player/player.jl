@@ -102,9 +102,7 @@ Model.base_model(p :: AbstractPlayer)   = nothing
 Model.playing_model(:: AbstractPlayer)  = nothing
 Model.training_model(:: AbstractPlayer) = nothing
 
-# Features that are supported by the player. Used for automatic feature
-# detection during the generation of datasets in selfplays
-Model.features(:: AbstractPlayer) = Feature[]
+Target.targets(:: AbstractPlayer{G}) where {G} = Target.defaults(G)
 
 
 # Player ids to get more unique default names
@@ -208,9 +206,9 @@ Model.base_model(p :: IntuitionPlayer) = base_model(p.model)
 Model.playing_model(p :: IntuitionPlayer) = p.model
 Model.training_model(p :: IntuitionPlayer) = training_model(p.model)
 
-function Model.features(p :: IntuitionPlayer) 
+function Target.targets(p :: IntuitionPlayer{G}) where {G}
   tm = training_model(p)
-  isnothing(tm) ? Feature[] : features(tm)
+  isnothing(tm) ? Target.defaults(G) : Target.targets(tm)
 end
 
 function switch_model( p :: IntuitionPlayer{G}
@@ -373,9 +371,9 @@ Model.playing_model(p :: MCTSPlayer) = p.model
 Model.base_model(p :: MCTSPlayer) = base_model(p.model)
 Model.training_model(p :: MCTSPlayer) = training_model(p.model)
 
-function Model.features(p :: MCTSPlayer)
+function Target.targets(p :: MCTSPlayer{G}) where {G}
   tm = training_model(p)
-  isnothing(tm) ? Feature[] : features(tm)
+  isnothing(tm) ? Target.defaults(G) : Target.targets(tm)
 end
 
 function switch_model( p :: MCTSPlayer{G}
@@ -484,10 +482,10 @@ perspective of `player1` (-1, 0, 1) is returned.
 """
 function pvp( p1 :: AbstractPlayer
             , p2 :: AbstractPlayer
-            ; game = derive_gametype(p1, p2)
+            ; instance = derive_gametype(p1, p2)
             , callback = (_) -> nothing )
 
-  game = copy(Game.instance(game))
+  game = copy(instance())
 
   while !is_over(game)
     if current_player(game) == 1
@@ -512,10 +510,10 @@ states is returned.
 """
 function pvp_games( p1 :: AbstractPlayer
                   , p2 :: AbstractPlayer
-                  ; game :: AbstractGame = derive_gametype(p1, p2)
+                  ; instance = derive_gametype(p1, p2)
                   , callback = (_) -> nothing )
 
-  game  = copy(Game.instance(game))
+  game  = copy(instance())
   games = [copy(game)]
 
   while !is_over(game)

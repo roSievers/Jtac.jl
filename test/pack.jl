@@ -66,7 +66,8 @@
       same &= v1 == v2
       same &= all(p1 .== p2)
     end
-    same && typeof(l) == typeof(unpacked)
+    same &= typeof(l) == typeof(unpacked)
+    same &= all(Target.targets(l) .== Target.targets(unpacked))
   end
 
   function pack_unpack(l :: Union{Model.DummyModel, Model.RandomModel, Model.Model.RolloutModel})
@@ -93,15 +94,16 @@
     Data.save(name, ds)
     up = Data.load(name)
     same = all(up.games .== ds.games)
-    same &= all(all(x .== y) for (x, y) in zip(up.label, ds.label))
-    same &= all(all(x .== y) for (x, y) in zip(up.flabel, ds.flabel))
-    same && all(up.features .== ds.features)
+    for (l1, l2) in zip(up.labels, ds.labels)
+      same &= all(all(x .== y) for (x, y) in zip(l1, l2))
+    end
+    same && all(up.targets .== ds.targets)
   end
 
-  ds = Player.record(Player.MCTSPlayer(power = 20), 100, game = Game.TicTacToe())
+  ds = Player.record(Player.MCTSPlayer(power = 20), 100, instance = Game.TicTacToe)
   @test pack_unpack(ds)
 
-  ds = Player.record(Player.MCTSPlayer(power = 5), 100, game = Game.MetaTac())
+  ds = Player.record(Player.MCTSPlayer(power = 5), 100, instance = Game.MetaTac)
   @test pack_unpack(ds)
 
   function pack_unpack(p :: Player.IntuitionPlayer{G}) where {G}
@@ -146,7 +148,7 @@
   player = Player.MCTSPlayer(model, power = 5, temperature = 0.75, exploration = 2.)
   @test pack_unpack(player)
 
-  Training.train!(player, epochs = 1, playings = 10, quiet = true)
+  Training.train!(player, epochs = 1, matches = 10, quiet = true)
   @test pack_unpack(player)
 
 end

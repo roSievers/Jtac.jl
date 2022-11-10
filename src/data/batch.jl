@@ -17,11 +17,10 @@ function Batches( d :: DataSet{G}
                 , partial = true
                 , gpu = false
                 , store_on_gpu = gpu
-                , use_features = false
                 ) where {G <: AbstractGame}
 
   indices = collect(1:length(d))
-  cache = Cache(d, gpu = store_on_gpu, use_features = use_features)
+  cache = Cache(d, gpu = store_on_gpu)
   Batches{G, gpu}(cache, batchsize, shuffle, partial, indices)
 end
 
@@ -48,11 +47,11 @@ function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame,
   idx = b.indices[start:stop]
 
   data = b.cache.data[:, :, :, idx]
-  vlabel = b.cache.vlabel[idx]
-  plabel = b.cache.plabel[:, idx]
-  flabel = isnothing(b.cache.flabel) ? nothing : b.cache.flabel[:, idx]
+  labels = map(b.cache.labels) do label
+    label[:, idx]
+  end
 
-  cache = Cache{G}(data, vlabel, plabel, flabel, gpu = GPU)
+  cache = Cache{G}(data, labels, gpu = GPU)
 
   # Return the (cache, new_start) state tuple
   cache, stop + 1

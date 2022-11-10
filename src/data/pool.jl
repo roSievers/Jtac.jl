@@ -18,14 +18,17 @@ function Pool( :: Type{G}
              , meta :: NamedTuple
              , criterion :: Function
              ; capacity :: Int = 100000
-             , features = Model.Feature[]
+             , targets = Target.defaults(G)
              ) where {N, G <: AbstractGame}
 
   @assert all(x -> x isa DataType, meta)
   M = NamedTuple{keys(meta), Tuple{values(meta)...}}
-  data = DataSet{G}(; features = features)
+  data = DataSet(G, targets)
   Pool{G, M}(data, M[], capacity, criterion)
 end
+
+Pool(m :: AbstractModel{G}, args...; capacity) where {G} =
+  Pool(G, args...; targets = Model.targets(m), capacity)
 
 Base.length(dp :: Pool) = length(dp.data)
 

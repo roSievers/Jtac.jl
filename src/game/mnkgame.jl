@@ -169,24 +169,23 @@ end
 
 # Augment game/label pairs
 function augment( game :: MNKGame{M, N, K}
-                , label :: Vector{Float32}
+                , policy :: Vector{Float32}
                 ) where {M, N, K}
   if M == N
 
-    matpol = reshape(label[2:end], (M, N))
+    matpol = reshape(policy, (M, N))
     matpols = apply_dihedral_group(matpol)
-    labels = [ vcat(label[1], reshape(mp, (M * N,))) for mp in matpols ]
-  
+    policies = [ vcat(reshape(mp, (M * N,))) for mp in matpols ]
+
   else
 
-    matpol = reshape(label[2:end], (M, N))
+    matpol = reshape(policy, (M, N))
     matpols = apply_klein_four_group(matpol)
-    labels = [ vcat(label[1], reshape(mp, (M * N,))) for mp in matpols ]
-  
+    policies = [ vcat(reshape(mp, (M * N,))) for mp in matpols ]
+
   end
 
-  augment(game), labels
-
+  augment(game), policies
 end
 
 hash(game :: MNKGame) = Base.hash(game.board)

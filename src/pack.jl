@@ -122,9 +122,10 @@ function typed_destruct(value :: T) where {T}
   dict
 end
 
-function typed_construct(dict)
-  T = construct_typeinfo(dict["typeinfo"])
-  construct(T, dict)
+function typed_construct(T, dict)
+  F = construct_typeinfo(dict["typeinfo"])
+  @assert F <: T
+  construct(F, dict)
 end
 
 function destruct(value :: T) where {T}
@@ -145,9 +146,14 @@ macro mappack(T)
   quote
     Pack.msgpack_type(:: Type{<: $T}) = Pack.MapType()
     Pack.to_msgpack(:: Pack.MapType, x :: $T) = Pack.typed_destruct(x)
-    Pack.from_msgpack(:: Type{<: $T}, dict) = Pack.typed_construct(dict)
-    Pack.from_msgpack(:: Type{Vector{F}}, v :: Vector) where {F <: $T} =
+    Pack.from_msgpack(:: Type{<: $T}, dict :: Dict) = Pack.typed_construct($T, dict)
+    # This is be needed when Pack.unpack(_, Vector{...}) is called, because the
+    # components of the vector are then already unpacked *before*
+    # the method Pack.from_msgpack(_, :: Vector) is called
+    Pack.from_msgpack(:: Type{<: $T}, x :: $T) = x 
+    Pack.from_msgpack(:: Type{Vector{F}}, v :: Vector) where {F <: $T} = begin
       F[Pack.from_msgpack(F, x) for x in v]
+    end
   end |> esc
 end
 
@@ -178,35 +184,4 @@ end
 msgpack_type( :: Type{Bytes}) = BinaryType()
 to_msgpack(:: BinaryType, bytes :: Bytes) = bytes.data
 from_msgpack(:: Type{Bytes}, data :: Vector{UInt8}) = Bytes(data)
-
-#
-# Knet parameters and batchnorm moments
-#
-# Knet parameters are essentially saved as Float32 arrays.
-# This code relies on internals of Knet...
-
-#import Knet
-
-#const KnetParam{T, N} = Knet.Param{Array{T, N}} where {T <: Binary, N}
-#const KnetBNMoments = Knet.Ops20.BNMoments
-
-#msgpack_type(:: Type{<: KnetParam}) = MapType()
-#to_msgpack(:: MapType, x :: KnetParam) = Dict("param" => Knet.value(x))
-
-#from_msgpack(:: Type{KnetParam{T, N}}, d :: Dict) where {T, N} =
-#  from_msgpack(Array{T, N}, d["param"]) |> Knet.Param
-
-#msgpack_type(:: Type{KnetBNMoments}) = MapType()
-#to_msgpack(:: MapType, bn :: KnetBNMoments) =
-#  Dict("momentum" => bn.momentum, "mean" => bn.mean, "var" => bn.var)
-
-#function from_msgpack(:: Type{KnetBNMoments}, dict)
-#  T = Array{Float32, 1} # hack: use N = 1 since we save size explicitly
-#  mean = isnothing(dict["mean"]) ? nothing : from_msgpack(T, dict["mean"])
-#  var = isnothing(dict["var"]) ? nothing : from_msgpack(T, dict["var"])
-#  momentum = Float32(dict["momentum"])
-#  Knet.bnmoments(; mean, var, momentum)
-
-
-# NeuralModel(trunk, vhead, vfeat = Feature.Value(weight = 0.3, loss = ))
 

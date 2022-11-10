@@ -131,7 +131,7 @@ function train(player, ds = nothing; batchsize = 512, loss = Training.Loss(), ep
     print("generating dummy dataset...")
     G = Model.gametype(player)
     p = Player.MCTSPlayer(Model.RandomModel(), power = 10)
-    ds = Player.record(p, 200, game = G)
+    ds = Player.record(p, 200, instance = G)
     println(" done")
   end
   println("dataset size ", length(ds))

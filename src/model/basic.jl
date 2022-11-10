@@ -38,13 +38,8 @@ This model returns value 0 and a uniform policy vector for each game state.
 struct DummyModel <: AbstractModel{AbstractGame, false} end
 Pack.register(DummyModel)
 
-function (m :: DummyModel)(g :: AbstractGame, args...)
-  0f0, uniform_policy(policy_length(g)), Float32[]
-end
-
-function (m :: DummyModel)(g :: Vector{<:AbstractGame}, args...)
-  cat_outputs(m.(g, args...))
-end
+apply(m :: DummyModel, g :: AbstractGame) =
+  (value = 0f0, policy = uniform_policy(policy_length(g)))
 
 Base.copy(m :: DummyModel) = m
 
@@ -59,13 +54,8 @@ each game state.
 struct RandomModel <: AbstractModel{AbstractGame, false} end
 Pack.register(RandomModel)
 
-function (m :: RandomModel)(g :: AbstractGame, args...)
-  0f0, random_policy(policy_length(g)), Float32[]
-end
-
-function (m :: RandomModel)(g :: Vector{<: AbstractGame}, args...)
-  cat_outputs(m.(g, args...))
-end
+apply(m :: RandomModel, g :: AbstractGame) =
+  (value = 0f0, policy = random_policy(policy_length(g)))
 
 Base.copy(m :: RandomModel) = m
 
@@ -82,17 +72,11 @@ is used for the tree search.
 struct RolloutModel <: AbstractModel{AbstractGame, false} end
 Pack.register(RolloutModel)
 
-function (m :: RolloutModel)(g :: AbstractGame, args...)
-
+function apply(m :: RolloutModel, g :: AbstractGame)
   result = random_playout(g)
   value = status(result) * current_player(g)
 
-  Float32(value), uniform_policy(policy_length(g)), Float32[]
-
-end
-
-function (m :: RolloutModel)(g :: Vector{<: AbstractGame}, args...)
-  cat_outputs(m.(g, args...))
+  (value = Float32(value), policy = uniform_policy(policy_length(g)))
 end
 
 Base.copy(m :: RolloutModel) = m

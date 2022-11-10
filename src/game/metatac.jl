@@ -179,9 +179,9 @@ end
 
 function augment(game :: MetaTac, label :: Vector{Float32})
 
-  matpol = reshape(label[2:end], (9, 9))
+  matpol = reshape(label, (9, 9))
   matpols = apply_dihedral_group(matpol)
-  labels = [ vcat(label[1], reshape(mp, (81,))) for mp in matpols ]
+  labels = [ reshape(mp, (81,)) for mp in matpols ]
 
   augment(game), labels
 end

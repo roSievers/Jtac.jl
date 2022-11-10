@@ -8,7 +8,9 @@ queried repeatedly.
 mutable struct Caching{G} <: AbstractModel{G, false}
   model :: AbstractModel{G}
   max_cachesize :: Int
+
   cache :: Dict{UInt64, Tuple{Float32, Vector{Float32}}}
+
   calls_cached :: Int
   calls_uncached :: Int
 end
@@ -38,20 +40,6 @@ end
 # Helper constructor for packing
 Caching{G}(model :: AbstractModel, max_cachesize) where {G} =
   Caching(model; max_cachesize)
-
-function (m :: Caching{G})(game :: G, use_features = false) where {G <: AbstractGame}
-
-  error("Cannot apply `Caching` model directly. Use `apply(model, game)`")
-
-end
-
-function (m :: Caching{G})( games :: Vector{G}
-                          , use_features = false
-                          ) where {G <: AbstractGame}
-
-  error("Cannot apply `Caching` model directly. Use `apply(model, game)`")
-
-end
 
 function apply(m :: Caching{G}, game :: G) where {G <: AbstractGame}
   m.calls_cached += 1
@@ -88,7 +76,6 @@ base_model(m :: Caching) = base_model(m.model)
 training_model(m :: Caching) = training_model(m.model)
 
 is_async(m :: Caching) = is_async(m.model)
-features(m :: Caching) = Feature[]
 
 function tune( m :: Caching
              ; gpu = on_gpu(base_model(m))

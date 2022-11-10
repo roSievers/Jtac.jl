@@ -83,6 +83,13 @@ end
 expand_to_pair(t :: NTuple{2, Int}) = t
 expand_to_pair(t :: Int) = (t, t)
 
+# Found slight performance advantages if temporary gpu variables
+# are immediately released
+
+release_gpu_memory(x) = nothing
+release_gpu_memory(x :: Knet.KnetArray{Float32}) =
+  Knet.KnetArrays.freeKnetPtr(x.ptr)
+
 # -------- Layer Weights ----------------------------------------------------- #
 
 #const WeightData = Union{ Array{Float32}
@@ -205,7 +212,12 @@ function Dense( i :: Int, o :: Int, f = "id"; bias = true, gpu = false )
   Dense{gpu}(w, b, f)
 end
 
-(d :: Dense)(x) = d.a.f.(d.w.data * Knet.mat(x) .+ d.b.data)
+function (d :: Dense)(x)
+  tmp = d.w.data * Knet.mat(x)
+  res = d.a.f.(tmp .+ d.b.data)
+  release_gpu_memory(tmp)
+  res
+end
 
 function swap(d :: Dense{GPU}) where {GPU}
   at = atype(!GPU)
@@ -278,15 +290,10 @@ function Conv( ci :: Int, co :: Int, f = "id";
 
 end
 
-(c :: Conv{false})(x) =
-  c.a.f.(Knet.conv4(c.w.data, x, padding = c.p, stride = c.s) .+ c.b.data)
-
-function (c :: Conv{true})(x)
+function (c :: Conv)(x)
   tmp = Knet.conv4(c.w.data, x, padding = c.p, stride = c.s)
   res = c.a.f.(tmp .+ c.b.data)
-  if !(tmp isa AutoGrad.Result)
-    Knet.KnetArrays.freeKnetPtr(tmp.ptr)
-  end
+  release_gpu_memory(tmp)
   res
 end
 
@@ -369,8 +376,12 @@ function Deconv( ci :: Int, co :: Int, f = "id";
 
 end
 
-(d :: Deconv)(x) =
-  d.a.f.(Knet.deconv4(d.w.data, x, padding = d.p, stride = d.s) .+ d.b.data)
+function (d :: Deconv)(x)
+  tmp = Knet.deconv4(d.w.data, x, padding = d.p, stride = d.s)
+  res = d.a.f.(tmp .+ d.b.data)
+  release_gpu_memory(tmp)
+  res
+end
 
 function swap(d :: Deconv{GPU}) where {GPU}
   at = atype(!GPU)
@@ -428,7 +439,10 @@ function Pool(f = "id"; window = 2, padding = 0, stride = window, gpu = false)
 end
 
 function (p :: Pool)(x)
-  p.a.f.(Knet.pool(x, window = p.w, padding = p.p, stride = p.s))
+  tmp = Knet.pool(x, window = p.w, padding = p.p, stride = p.s)
+  res = p.a.f.(tmp)
+  release_gpu_memory(tmp)
+  res
 end
 
 swap(p :: Pool{GPU}) where {GPU} = Pool{!GPU}(p.w, p.p, p.s, p.a)
@@ -541,14 +555,10 @@ function Batchnorm(channels, f = "id"; gpu = false)
   gpu ? swap(b) : b
 end
 
-(b :: Batchnorm)(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params.data))
-
-(b :: Batchnorm{false})(x) = b.a.f.(Knet.batchnorm(x, b.moments, b.params.data))
-
-function (b :: Batchnorm{true})(x)
+function (b :: Batchnorm)(x)
   tmp = Knet.batchnorm(x, b.moments, b.params.data)
   res = b.a.f.(tmp)
-#  Knet.KnetArrays.freeKnetPtr(tmp.ptr)
+  # Freeing tmp caused errors... why?
   res
 end
 
@@ -600,20 +610,11 @@ function Chain(layers :: Layer{GPU}...; gpu = nothing) where {GPU}
   end
 end
 
-function (c :: Chain{false})(x)
-  for l in c.layers
-    x = l(x)
-  end
-  x
-end
-
-function (c :: Chain{true})(x)
+function (c :: Chain)(x)
   xold = c.layers[1](x)
   for l in c.layers[2:end]
     x = l(xold)
-    if !(xold isa AutoGrad.Result)
-      Knet.KnetArrays.freeKnetPtr(xold.ptr)
-    end
+    release_gpu_memory(xold)
     xold = x
   end
   xold
@@ -644,7 +645,7 @@ function show_composite(name, io :: IO, layers)
     else
       layers = [layers[1]; nothing; layers[end]]
     end
-    print(io, "$name($n: ")
+    print(io, "$name($n, ")
     for l in layers[1:end-1]
       pp(l);
       print(io, " -> ")
@@ -714,18 +715,18 @@ function (s :: Stack{GPU})(x) where {GPU}
 
   batchsize = size(x)[end]
 
-  features = s.stack_input ? Any[x] : Any[]
+  out = s.stack_input ? Any[x] : Any[]
 
   for layer in s.layers
     x = layer(x)
-    push!(features, x)
+    push!(out, x)
   end
 
-  features = map(features) do data
+  out = map(out) do data
     reshape(data, (prod(size(data)[1:end-1]), batchsize))
   end
 
-  vcat(features...)
+  vcat(out...)
 
 end
 
@@ -787,14 +788,10 @@ function Residual(layers :: Layer{GPU}...; f = "id", gpu = GPU) where {GPU}
   Residual(Chain(ls...), NamedFunction(f))
 end
 
-(r :: Residual{false})(x) = r.a.f.(r.chain(x) .+ x)
-
-function (r :: Residual{true})(x)
+function (r :: Residual)(x)
   tmp = r.chain(x)
   res = r.a.f.(tmp .+ x)
-  if !(tmp isa AutoGrad.Result)
-    Knet.KnetArrays.freeKnetPtr(tmp.ptr)
-  end
+  release_gpu_memory(tmp)
   res
 end
 
@@ -824,6 +821,7 @@ Base.show(io :: IO, r :: Residual) = show_composite("Residual", io, layers(r))
 function Base.show(io :: IO, mime :: MIME"text/plain", r :: Residual{GPU}, indent = 0) where {GPU}
   show_composite("Residual", io, mime, layers(r), GPU, indent)
 end
+
 
 # -------- Chain/Stack Macro ------------------------------------------------- #
 

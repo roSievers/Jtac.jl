@@ -22,22 +22,15 @@ end
 # -------- Neural Model ------------------------------------------------------ #
 
 """
-Trainable model that uses a neural network to generate the value and policy
-for a game state. Optionally, the network can also predict features by
-applying a dedicated dense layer on the representation used for value and
-policy prediction.
+Trainable model that uses a neural network to generate value and policy targets
+for a game state. Optionally, the network can also predict other targets.
 """
 struct NeuralModel{G, GPU} <: AbstractModel{G, GPU}
 
-  trunk :: Layer{GPU}           # Takes input and returns layer before logits
-  features :: Vector{Feature}   # Features that the network must predict
+  trunk :: Layer{GPU}                    # map tensorized game state to trunk features
 
-  vhead :: Layer{GPU}          # value head
-  phead :: Layer{GPU}          # policy head
-  fheads :: Vector{Layer{GPU}} # feature heads
-
-  vconv :: NamedFunction    # Converts value-logit to value
-  pconv :: NamedFunction    # Converts policy-logits to policy
+  heads :: Vector{Layer{GPU}}            # target heads
+  targets :: Vector{PredictionTarget{G}} # targets
 
 end
 
@@ -45,143 +38,167 @@ Pack.register(NeuralModel)
 Pack.freeze(m :: NeuralModel) = to_cpu(m)
 
 """
-    NeuralModel(G, trunk [, features; vhead, phead, fheads, vconv, pconv])
+    NeuralModel(G, trunk [; vhead, phead, value, policy, opt_targets, opt_heads])
 
-Construct a model for gametype `G` based on the neural network `trunk`,
-optionally with `features` enabled. The heads `vhead`, `phead`, and `fheads` are
-optional neural network layers that produce "logits" for the value, policy and
-feature prediction. The functions `vconv` and `pconv` are used to map the
-"logits" to values and policies. The respective feature converters are contained
-in `features`.
+Construct a model for gametype `G` based on the layer `trunk`,
+with optional targets `opt_targets` enabled. The heads `vhead`, `phead`, and
+`opt_heads` are neural network layers that produce the logits for target
+prediction. The activation functions of the targets are used to map the logits
+to the actual target estimates.
 """
 function NeuralModel( :: Type{G}
                     , trunk :: Layer{GPU}
-                    , features = Feature[]
-                    ; vhead :: Union{Nothing, Layer{GPU}} = nothing
-                    , phead :: Union{Nothing, Layer{GPU}} = nothing
-                    , fheads :: Vector = [nothing for _ in features]
-                    , vconv = "tanh"
-                    , pconv = "softmax"
+                    ; vhead = nothing
+                    , phead = nothing
+                    , value :: ValueTarget{G} = ValueTarget(G)
+                    , policy :: PolicyTarget{G} = PolicyTarget(G)
+                    , opt_targets = []
+                    , opt_heads = nothing
                     ) where {G, GPU}
 
   @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
-  @assert length(unique(features)) == length(features) "Provided features are not unique"
-  features = convert(Vector{Feature}, features)
 
-  pl = policy_length(G)
-  fl = feature_length(features, G)
+  targets = PredictionTarget{G}[value, policy, (t for t in opt_targets)...]
+
+  if isnothing(opt_heads)
+    heads = [vhead, phead, (nothing for _ in targets[3:end])...]
+  end
+
+  @assert length(targets) == length(heads) "Number of heads does not match number of headed targets"
+
+  # Check the provided heads or create linear heads if nothing is specified
   os = outsize(trunk, size(G))
+  heads = Layer{GPU}[ prepare_head(h, os, length(t), GPU) for (h, t) in zip(heads, targets) ]
 
-  # Check the provided heads and create linear heads if not specified
-  vhead = prepare_head(vhead, os, 1, GPU)
-  phead = prepare_head(phead, os, pl, GPU)
-  fheads = Layer{GPU}[ prepare_head(fh, os, feature_length(f, G), GPU) for (fh, f) in zip(fheads, features) ]
-
-  NeuralModel{G, GPU}(trunk, features, vhead, phead, fheads, vconv, pconv) 
+  NeuralModel{G, GPU}(trunk, heads, targets) 
 
 end
 
+function add_target!( m :: NeuralModel{G, GPU}
+                    , t :: PredictionTarget
+                    , head :: Union{Nothing, Layer{GPU}} = nothing
+                    ) where {G, GPU}
+
+  os = outsize(m.trunk, size(G))
+  head = prepare_head(head, os, length(t), GPU)
+  push!(m.targets, t)
+  push!(m.heads, head)
+
+end
+
+function Target.adapt(m :: NeuralModel{G, GPU}, targets) where {G, GPU}
+  idx = Target.adapt(m.targets, targets)
+  NeuralModel{G, GPU}(m.trunk, m.heads[idx], m.targets[idx])
+end
 
 # Low level access to neural model predictions
-function (m :: NeuralModel{G})(data, use_features = false) where {G <: AbstractGame}
+function (m :: NeuralModel{G, GPU})( data
+                                   , opt_targets = false
+                                   ) where {G <: AbstractGame, GPU}
 
-  # Get the trunk output to calculate policy, value, features
-  out = m.trunk(data)
+  # Get the trunk output and batch size
+  tout = m.trunk(data)
+  bs = size(tout)[end]
 
-  bs = size(out)[end]                 # batchsize
-  pl = policy_length(G)               # policy length
-  fl = feature_length(m.features, G)  # feature length
+  ts = m.targets
 
-  # Apply the converters for value and policy on suitable reshapes
-  v = m.vconv.f.(reshape(m.vhead(out), bs))
-  p = m.pconv.f(reshape(m.phead(out), pl, bs), dims=1)
-
-  # Apply the feature head if features are to be calculated
-  if use_features && !isempty(m.fheads) #TODO: DOES NOT WORK RIGHT NOW
-
-    f = reshape(m.fhead(out), fl, bs)
-
-    fs = map(features(l), feature_indices(features(l), G)) do feat, sel
-      feature_conv(feat, f[sel,:])
-    end
-
-    # Collect the converted features
-    f = isempty(fs) ? similar(p, 0, length(v)) : vcat(fs...)
-
+  # prepare iteration over targets
+  if opt_targets
+    ht = zip(m.heads, ts)
   else
+    ht = zip(m.heads[1:2], ts[1:2])
+  end
 
-    f = similar(p, 0, length(v))
+  # predict the desired targets
+  out = map(ht) do (head, target)
+
+    tmp = reshape(head(tout), length(target), bs)
+    res = Target.activate(target, tmp)
+    release_gpu_memory(tmp)
+    res
 
   end
 
-  (v, p, f)
+  release_gpu_memory(tout)
+  out
 
 end
 
-# Higher level access to neural model predictions
+# Higher level access
 function (m :: NeuralModel{G, GPU})( games :: Vector{G}
-                                   , use_features = false
-                                   ) where {G <: AbstractGame, GPU}
+                                   , opt_targets = false
+                                   ) where {G <: AbstractGame, GPU} 
 
   at = atype(GPU)
   data = convert(at, Game.array(games))
 
-  m(data, use_features)
+  m(data, opt_targets) :: Vector{Matrix{Float32}}
 
 end
 
-function (m :: NeuralModel{G, GPU})( game :: G
-                                   , use_features = false
-                                   ) where {G <: AbstractGame, GPU}
+function (m :: NeuralModel{G})( game :: G
+                              , opt_targets = false
+                              ) where {G <: AbstractGame}
 
-  v, p, f = m([game], use_features)
+  m([game], opt_targets)
 
-  v[1], reshape(p, :), reshape(f, :)
+end
 
+function apply(m :: NeuralModel{G}, game :: G, opt_targets = false) where {G <: AbstractGame}
+  if !opt_targets
+    v, p = m(game, false)
+    (value = v[1], policy = reshape(p |> to_cpu, :))
+  else
+    output = m(game, true)
+    ts = m.targets
+    names = (Target.name(t) for t in ts) 
+    vals = map(output) do val
+      if length(val) == 1
+        val[1]
+      else
+        reshape(val, :)
+      end
+    end
+    (; zip(names, vals)...)
+  end
 end
 
 function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
-  
+
   NeuralModel{G, !GPU}( swap(m.trunk)
-                      , m.features
-                      , swap(m.vhead)
-                      , swap(m.phead)
-                      , swap.(m.fheads)
-                      , m.vconv
-                      , m.pconv )
+                      , swap.(m.heads)
+                      , m.targets )
 
 end
 
 function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
 
   NeuralModel{G, GPU}( copy(m.trunk)
-                     , m.features
-                     , copy(m.vhead)
-                     , copy(m.phead)
-                     , copy.(m.fheads)
-                     , m.vconv
-                     , m.pconv )
+                     , copy.(m.heads)
+                     , m.targets )
 
 end
 
-features(m :: NeuralModel) = m.features
+Target.targets(m :: NeuralModel) = m.targets
 
 training_model(m :: NeuralModel) = m
 
-function Base.show(io :: IO, model :: NeuralModel{G, GPU}) where {G, GPU}
+
+function Base.show(io :: IO, m :: NeuralModel{G, GPU}) where {G, GPU}
   at = GPU ? "GPU" : "CPU"
   print(io, "NeuralModel{$(Game.name(G)), $at}(")
-  show(io, model.trunk)
+  show(io, m.trunk)
   print(io, ")")
 end
 
-function Base.show(io :: IO, :: MIME"text/plain", model :: NeuralModel{G, GPU}) where {G, GPU}
+function Base.show(io :: IO, :: MIME"text/plain", m :: NeuralModel{G, GPU}) where {G, GPU}
   at = GPU ? "GPU" : "CPU"
   println(io, "NeuralModel{$(Game.name(G)), $at}:")
-  print(io, "  trunk: "); show(io, model.trunk); println(io)
-  print(io, "  vhead: "); show(io, model.vhead); println(io)
-  print(io, "  phead: "); show(io, model.phead); println(io)
-  print(io, "  fheads: "); show(io, model.fheads)
+  print(io, "  trunk: "); show(io, m.trunk)
+  for (h, t) in zip(m.heads, m.targets)
+    name = Target.name(t)
+    println(io); print(io, "  $name: "); show(io, h)
+  end
 end
 
 function tune( m :: NeuralModel{G, GPU}

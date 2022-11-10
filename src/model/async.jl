@@ -70,22 +70,6 @@ function Async{G}( model :: AbstractModel{G},
   Async(model; max_batchsize, buffersize)
 end
 
-function (m :: Async{G})( game :: G
-                        , use_features = false
-                        ) where {G <: AbstractGame}
-
-  error("Cannot apply `Async` model directly. Use `apply(model, game)`")
-
-end
-
-function (m :: Async{G})( games :: Vector{G}
-                        , use_features = false
-                        ) where {G <: AbstractGame}
-
-  error("Cannot apply `Async` model directly. Use `apply(model, game)`")
-
-end
-
 function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
   out_channel = Channel(1)
   put!(m.channel, (copy(game), out_channel))
@@ -107,10 +91,6 @@ base_model(m :: Async) = base_model(m.model)
 training_model(m :: Async) = training_model(m.model)
 
 is_async(m :: Async) = true
-
-# Async networks cannot calculate features. To get the features of the
-# network on which it is based, access them via training_model(...)
-features(m :: Async) = Feature[]
 
 function tune( m :: Async
              ; gpu = on_gpu(base_model(m))
@@ -161,10 +141,9 @@ function worker_thread(channel, model, max_batchsize, profile)
 
         push!(profile.batchsize, length(inputs))
 
-        v, p, _ = model(first.(inputs))
+        v, p = model(first.(inputs))
         v = to_cpu(v)
         p = to_cpu(p)
-
 
         for i = 1:length(inputs)
           put!(inputs[i][2], (value = v[i], policy = p[:,i]))

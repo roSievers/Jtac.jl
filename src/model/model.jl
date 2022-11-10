@@ -33,33 +33,43 @@ to_cpu(a :: Float32) = a
 
 to_gpu(a) = convert(atype(true), a)
 
-"""
-    apply(model, game)
 
-Apply `model` to `game`, yielding a named `(value, policy)` tuple.
-"""
-function apply(model :: AbstractModel{G}, game :: G) where {G <: AbstractGame}
-  v, p, _ = model(game)
-  (value = v, policy = p |> to_cpu)
-end
 
 """
-    features(model)
+    apply(model, game, opt_targets = false)
 
-Obtain the list of features which are enabled for `model`.
+Apply `model` to `game`, yielding a named named tuple of target predictions. If
+`opt_targets` is set to `true`, optional targets are also calculated and
+included in the named tuple.
+
+Note that models which are meant for selfplay only (i.e., not for training) only
+implement `apply(model, game)`.
 """
-features(model :: AbstractModel) = Feature[]
+apply(model :: AbstractModel, game) = error("not implemented")
+apply(model :: AbstractModel, game, opt_targets) =
+  error("Targets not implemented for $(typeof(model))")
 
 """
-    apply_features(model, game)
+    gametype(model)
 
-Apply `model` to `game`, yielding a `(value, policy, feature_values)` tuple.
+Get the julia type `G <: AbstractGame` that `model` can be applied to.
 """
-function apply_features(model :: AbstractModel{G}, game :: G) where {G <: AbstractGame}
-  v, p, f = model(game, true)
-  (value = v, policy = p |> to_cpu, features = f |> to_cpu)
-end
+gametype(model :: AbstractModel{G}) where {G <: AbstractGame} = G
 
+"""
+    targets(model)
+
+Prediction targets enabled for `model`. `ValueTarget` and `PolicyTarget` are
+enabled for each model.
+"""
+Target.targets(model :: AbstractModel{G}) where {G} = Target.defaults(G)
+
+"""
+    opt_targets(model)
+
+Optional prediction targets enabled for `model`.
+"""
+opt_targets(model) = targets(model)[3:end]
 
 """
     ntasks(model)
@@ -102,19 +112,33 @@ On models, this always returns the model itself. Can return `nothing` if
 """
 playing_model(m :: AbstractModel) = m
 
-"""
-    gametype(model)
-
-Get the julia type `G <: AbstractGame` that `model` can be applied to.
-"""
-gametype(model :: AbstractModel{G}) where {G <: AbstractGame} = G
 
 """
-    count_params(model)
+    params(model, bias = true)
 
-Count the number of free parameters in `model`.
+Get an iterable of the trainable parameters stored in `model`. If `bias
+= false`, bias / offset parameters are not included.
 """
-count_params(model :: AbstractModel) = sum(length, Knet.params(model))
+function params(model :: AbstractModel, bias = true)
+  if bias
+    Knet.params(model)
+  else
+    filter(Knet.params(model)) do param
+      s = size(param)
+      maximum(s) < prod(s)
+    end
+  end
+end
+
+"""
+    count_params(model, bias = true)
+
+Count the number of trainable parameters in `model`. If `bias = false`, bias
+/ offset parameters are not included.
+"""
+count_params(model :: AbstractModel, bias = true) =
+  sum(length, params(model, bias))
+
 
 """
     tune(; gpu, async, cache)
