@@ -21,7 +21,7 @@ is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 # Small perturbation constant for breaking symmerties in the MCTS algorithm by
 # injecting a little dose of randomness
-const mcts_eps = 1f-15
+const mcts_eps = 1f-6
 
 # Logit normal distribution used to dilute the prior policy distribution
 # at the root node

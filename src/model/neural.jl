@@ -132,8 +132,10 @@ function (m :: NeuralModel{G, GPU})( games :: Vector{G}
   at = atype(GPU)
   data = convert(at, Game.array(games))
 
-  m(data, opt_targets) :: Vector{Matrix{Float32}}
-
+  results = m(data, opt_targets) 
+  map(results) do result
+    convert(Array, result) :: Matrix{Float32}
+  end
 end
 
 function (m :: NeuralModel{G})( game :: G
@@ -156,7 +158,7 @@ function apply(m :: NeuralModel{G}, game :: G, opt_targets = false) where {G <: 
       if length(val) == 1
         val[1]
       else
-        reshape(val, :)
+        to_cpu(reshape(val, :))
       end
     end
     (; zip(names, vals)...)

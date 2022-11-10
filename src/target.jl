@@ -191,7 +191,7 @@ DummyTarget(G :: Type{<: AbstractGame}, data = [0.0f0]) = DummyTarget{G}(data)
 Base.length(t :: DummyTarget) = length(t.data)
 name(:: DummyTarget) = :dummy
 
-loss(:: DummyTarget, l, v) = sum(abs, l .- v)
+loss(:: DummyTarget, l, v) = sum(abs2, l .- v)
 evaluate(t :: DummyTarget, _game, _idx, _history) = t.data
 
 
@@ -203,7 +203,6 @@ struct L2Reg <: RegularizationTarget end
 
 Pack.register(L2Reg)
 
-Base.length(:: L2Reg) = 0
 name(:: L2Reg) = :l2reg
 
 function loss(:: L2Reg, model)
@@ -216,7 +215,6 @@ struct L1Reg <: RegularizationTarget end
 
 Pack.register(L1Reg)
 
-Base.length(:: L1Reg) = 0
 name(:: L1Reg) = :l1reg
 
 function loss(:: L1Reg, model)

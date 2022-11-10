@@ -50,6 +50,14 @@ apply(model :: AbstractModel, game, opt_targets) =
   error("Targets not implemented for $(typeof(model))")
 
 """
+     assist(model, game)
+
+Returns a named tuple with possible entries `value` and `policy` that can be used
+by `Assisted` models.
+"""
+assist(model :: AbstractModel, game) = (;)
+
+"""
     gametype(model)
 
 Get the julia type `G <: AbstractGame` that `model` can be applied to.
