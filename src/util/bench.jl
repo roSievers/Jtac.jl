@@ -102,7 +102,7 @@ function record_threaded(player, n; copy_model = false, augment = false, kwargs.
         p = copy_model ? copy(player) : player
         Player.record( p, ticket
                      , callback = game_cb, callback_move = move_cb
-                     , merge = false, distributed = false
+                     , merge = false
                      , augment = augment, kwargs...)
       end
     end
@@ -126,7 +126,7 @@ function record_threaded(player, n; copy_model = false, augment = false, kwargs.
   dss
 end
 
-function train(player, ds = nothing; batchsize = 512, loss = Training.Loss(), epochs = 20, kwargs...)
+function train(player, ds = nothing; batchsize = 512, epochs = 20, kwargs...)
   if isnothing(ds)
     print("generating dummy dataset...")
     G = Model.gametype(player)
@@ -150,7 +150,7 @@ function train(player, ds = nothing; batchsize = 512, loss = Training.Loss(), ep
   time = 0.
   for epoch in 1:epochs
     for (i, cache) in enumerate(batches)
-      dt = @elapsed Training.train_step!(loss, model, cache)
+      dt = @elapsed Training.train_step!(model, cache)
       games = length(cache)
       total += games
       time += dt
