@@ -29,6 +29,8 @@ function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   )
 end
 
+is_augmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
+
 function Base.:(==)(a::MNKGame{M, N, K}, b::MNKGame{M, N, K}) where {M, N, K}
   all([ all(a.board .== b.board)
       , a.current_player == b.current_player

@@ -87,6 +87,14 @@ Returns whether a game is finished or not.
 """
 is_over(game :: AbstractGame) = is_over(status(game))
 
+"""
+    is_augmentable(game)
+
+Whether a game or gametype is augmentable or not.
+"""
+is_augmentable(g :: AbstractGame) = is_augmentable(typeof(g))
+is_augmentable(:: Type{<: AbstractGame}) = false
+
 # Data representation of the game as layered 2d image from the perspective of
 # the active player (active player plays with 1, other with -1)
 """

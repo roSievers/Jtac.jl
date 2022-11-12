@@ -110,6 +110,7 @@ module Game
          augment,
          draw,
          is_over,
+         is_augmentable,
          random_turn!,
          random_turns!,
          instance

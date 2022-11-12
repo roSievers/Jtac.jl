@@ -16,6 +16,7 @@ function MetaTac()
   MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
 end
 
+is_augmentable(:: Type{MetaTac}) = true
 
 function Base.copy(s :: MetaTac) :: MetaTac
   MetaTac(

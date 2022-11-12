@@ -18,12 +18,12 @@ Let `player` think about `game` and return a policy.
 think(p :: AbstractPlayer, game :: AbstractGame) :: Vector{Float32} = error("Not implemented")
 
 """
-    evaluate(player, game)
+    apply(player, game)
 
 Let `player` evaluate `game` and return a named `(value, policy)` tuple.
 Only implemented for `IntuitionPlayer` and `MCTSPlayer`.
 """
-evaluate(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
+Model.apply(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
 
 """
     choose_index(probs)
@@ -187,7 +187,7 @@ function think( p :: IntuitionPlayer{G}
   apply_temperature(policy, p.temperature)
 end
 
-function evaluate(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
+function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
 
   actions = legal_actions(game)
   policy = zeros(Float32, policy_length(game))
@@ -314,7 +314,7 @@ function think( p :: MCTSPlayer{G}
   policy
 end
 
-function evaluate(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
+function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 
   v, pol = mcts_value_policy( p.model
                             , game

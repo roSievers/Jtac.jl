@@ -10,6 +10,25 @@ function ticket_sizes(n, m)
   ns
 end
 
+struct StopMatch <: Exception end
+
+"""
+    stop_match()
+    stop_match(n)
+
+Can be used in the `callback_move` argument for `record` in order to
+stop recording a game. The method `stop_match(n)` is a function
+that takes an argument `k` and calls `stop_match()` when `k > n`.
+
+## Usage
+The following call of `record` will cancel matches that make more
+than 50 moves.
+
+    Player.record(args...; callback_move = Player.stop_match(50), kwargs...)
+"""
+stop_match() = throw(StopMatch())
+stop_match(n :: Int) = k -> (k > n && stop_match())
+
 # -------- Generating Datasets: API ------------------------------------------ #
 
 """
@@ -58,7 +77,7 @@ function record( p :: AbstractPlayer{G}
                , n :: Int = 1
                ; merge = true
                , threads = :auto
-               , callback_move = () -> nothing
+               , callback_move = _ -> nothing
                , opt_targets = Target.targets(p)[3:end]
                , kwargs... ) where {G}
 
@@ -96,36 +115,50 @@ function record( p :: AbstractPlayer{G}
 
       dataset = DataSet(typeof(game), targets)
 
-      while !is_over(game)
+      moves = 0
 
-        # Get the improved policy from the player
-        policy = think(p, game)
+      try
 
-        # Record the current game state and policy target label
-        # (we do not know the value label yet)
+        while !is_over(game)
+
+          # Get the improved policy from the player
+          policy = think(p, game)
+
+          # Record the current game state and policy target label
+          # (we do not know the value label yet)
+          push!(dataset.games, copy(game))
+          push!(dataset.labels[2], policy)
+
+          # Advance the game by randomly drawing from the policy
+          apply_action!(game, choose_index(policy))
+
+          moves += 1
+          callback_move(moves)
+
+        end
+
+        # Push the final game state to the dataset. This game state is included
+        # for calculating optional targets, but it has to be removed afterwards
+        pl = policy_length(H)
         push!(dataset.games, copy(game))
-        push!(dataset.labels[2], policy)
+        push!(dataset.labels[2], ones(Float32, pl) ./ pl)
 
-        # Advance the game by randomly drawing from the policy
-        apply_action!(game, choose_index(policy))
-        callback_move()
+        # Now we know how the game ended. Add value labels to the dataset.
+        # Optional targets have to be recorded *after* augmentation
+        s = status(dataset.games[end])
+        for game in dataset.games
+          push!(dataset.labels[1], Float32[current_player(game) * s])
+        end
 
+        dataset
+
+      catch err
+        if err isa StopMatch
+          DataSet(typeof(game), targets)
+        else
+          throw(err)
+        end
       end
-
-      # Push the final game state to the dataset. This game state is included
-      # for calculating optional targets, but it has to be removed afterwards
-      pl = policy_length(H)
-      push!(dataset.games, copy(game))
-      push!(dataset.labels[2], ones(Float32, pl) ./ pl)
-
-      # Now we know how the game ended. Add value labels to the dataset.
-      # Optional targets have to be recorded *after* augmentation
-      s = status(dataset.games[end])
-      for game in dataset.games
-        push!(dataset.labels[1], Float32[current_player(game) * s])
-      end
-
-      dataset
 
     end
 
@@ -144,7 +177,7 @@ function record_with_branching( G :: Type{<: AbstractGame}
                               , play :: Function # maps game to dataset
                               , n :: Int
                               ; ntasks 
-                              , augment = true
+                              , augment = Game.is_augmentable(G)
                               , callback = () -> nothing
                               , instance = () -> Game.instance(G)
                               , branch = Game.branch(prob = 0, steps = 1) )
@@ -186,8 +219,9 @@ function record_with_branching( G :: Type{<: AbstractGame}
 end
 
 
-function record_opt_targets!( dataset :: DataSet{G}
-                            ) where {G <: AbstractGame}
+function record_opt_targets!(dataset :: DataSet{G}) where {G}
+
+  length(dataset) == 0 && return
 
   opt_targets = Target.targets(dataset)[3:end]
   for (l, target) in enumerate(opt_targets)
@@ -240,7 +274,7 @@ function record( p :: AbstractPlayer{H}
     isopen(ch) || throw(StopRecording())
   end
 
-  run_loops(player) = begin
+  main_loop(player) = begin
     asyncmap(1:ntasks; ntasks) do _
       while isopen(ch)
         ds = nothing
@@ -269,10 +303,10 @@ function record( p :: AbstractPlayer{H}
 
   if use_threads
     _threaded([p]; threads) do idx, ps
-      run_loops(ps[1])
+      main_loop(ps[1])
     end
   else
-    run_loops(p)
+    main_loop(p)
   end
 
   nothing
@@ -282,40 +316,68 @@ end
 
 
 """
-    record_model(model, games [; augment])
+    evaluate(model or player, games [; augment])
 
-Record a dataset by applying `model` to `games`. `callback` is a function that is
-called after each application of `model` to a game state.
+Record a dataset by applying `model` or `player` to `games`.
 """
-function record_model( model :: AbstractModel{G}
-                     , games :: Vector{T}
-                     ; augment = false
-                     ) where {G, T <: G}
+function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
+                 , games :: Vector{T}
+                 ; augment = false
+                 , threads = :auto
+                 ) where {G, T <: G}
 
   games = augment ? mapreduce(Game.augment, vcat, games) : games
 
   targets = Target.targets(model)
   labels = [Data.LabelData() for _ in targets]
 
-  # TODO: this can be made faster when specializing on NeuralModels, where many
-  # games can be evaluated in parallel
-  for game in games
-    if length(targets) == 2
-      output = apply(model, game)
-    else
-      output = apply(model, game, true)
-    end
-    for l in 1:length(targets)
-      if output[l] isa Float32
-        val = Float32[output[l]]
-      else
-        val = output[l]
-      end
-      push!(labels[l], val)
-    end
-  end
+  # Using only a single BLAS thread was beneficial for performance in all tests
+  t = BLAS.get_num_threads()
+  BLAS.set_num_threads(1)
 
-  DataSet(games, labels, targets)
+  # Do we want to use threading?
+  bgthreads = Threads.nthreads() - 1
+  use_threads =
+    threads == true || threads == :copy ||
+    threads == :auto && bgthreads > 0 && is_async(model)
+
+  if use_threads
+
+    n = length(games)
+    tickets = ticket_sizes(n, bgthreads)
+    idxs = [0; cumsum(tickets)]
+    ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
+    dss = _threaded([model]; threads) do idx, ps
+      ds = evaluate( ps[1]
+                   , games[ranges[idx]]
+                   ; threads = false
+                   , augment )
+      ds
+    end
+    merge(dss...)
+  else
+
+    # TODO: this can be made faster when specializing on NeuralModels, where many
+    # games can be evaluated in parallel
+    for game in games
+      if length(targets) == 2 || model isa AbstractPlayer
+        output = apply(model, game)
+      else
+        output = apply(model, game, true)
+      end
+      for l in 1:length(targets)
+        if output[l] isa Float32
+          val = Float32[output[l]]
+        else
+          val = output[l]
+        end
+        push!(labels[l], val)
+      end
+    end
+
+    DataSet(games, labels, targets)
+
+  end
 
 end
 

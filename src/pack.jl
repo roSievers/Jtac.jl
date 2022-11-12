@@ -125,7 +125,8 @@ end
 function typed_construct(T, dict)
   F = construct_typeinfo(dict["typeinfo"])
   @assert F <: T
-  construct(F, dict)
+  value = construct(F, dict)
+  unfreeze(value)
 end
 
 function destruct(value :: T) where {T}
@@ -139,7 +140,6 @@ function construct(T :: Type, dict)
   tn = Dict(n => F for (n, F) in zip(names, types))
   args = [from_msgpack(tn[n], dict[String(n)]) for n in fields(T)]
   value = T(args...)
-  unfreeze(value)
 end
 
 macro mappack(T)

@@ -106,7 +106,7 @@ end
 Returns the default `ValueTarget(G)` and `PolicyTarget(G)` for gametype `G`.
 """
 defaults(G :: Type{<: AbstractGame}) =
-  PredictionTarget[ValueTarget(G), PolicyTarget(G)]
+  PredictionTarget{G}[ValueTarget(G), PolicyTarget(G)]
 
 """
     targets(object)

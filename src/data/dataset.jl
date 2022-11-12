@@ -58,13 +58,11 @@ function Pack.construct(:: Type{DataSet{G}}, d :: Dict) where {G}
   Data.DataSet(games, labels, targets)
 end
 
-function Pack.freeze(d :: DataSet{G}) where {G}
-  DataSet{G}(Pack.freeze.(d.games), d.labels, d.targets)
-end
+Pack.freeze(d :: DataSet) =
+  DataSet(Pack.freeze.(d.games), d.labels, d.targets)
 
-function Pack.unfreeze(d :: DataSet{G}) where {G}
-  DataSet{G}(Pack.unfreeze.(d.games), d.labels, d.targets)
-end
+Pack.unfreeze(d :: DataSet) =
+  DataSet(Pack.unfreeze.(d.games), d.labels, d.targets)
 
 
 """
@@ -171,6 +169,7 @@ end
 
 function Game.augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: AbstractGame
 
+  length(d) == 0 && return [d]
 
   # This function will usually be called on not yet fully constructed datasets:
   # *after* value and policy targets have been recorded but *before* all
