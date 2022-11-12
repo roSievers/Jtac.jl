@@ -15,7 +15,7 @@ function record(player, n; augment = false, kwargs...)
   move_ch = RemoteChannel(() -> Channel{Bool}(1000))
   game_ch = RemoteChannel(() -> Channel{Bool}(1000))
   
-  move_cb = () -> (put!(move_ch, true); yield())
+  move_cb = _ -> (put!(move_ch, true); yield())
   game_cb = () -> (put!(game_ch, true); yield())
 
   update = t -> begin
@@ -40,8 +40,8 @@ function record(player, n; augment = false, kwargs...)
     end
     @async begin
       dss = Player.record( player, n
-                       ; callback = game_cb, callback_move = move_cb
-                       , merge = false, augment = augment, kwargs...)
+                         ; callback = game_cb, callback_move = move_cb
+                         , merge = false, augment = augment, kwargs...)
       put!(move_ch, false)
       put!(game_ch, false)
     end
@@ -74,7 +74,7 @@ function record_threaded(player, n; copy_model = false, augment = false, kwargs.
   moves = Threads.Atomic{Int}(0)
   games = Threads.Atomic{Int}(0)
 
-  move_cb = () -> Threads.atomic_add!(moves, 1)
+  move_cb = _ -> Threads.atomic_add!(moves, 1)
   game_cb = () -> Threads.atomic_add!(games, 1)
 
   # recording times to measure moves / second

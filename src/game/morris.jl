@@ -24,7 +24,7 @@ end
 
 Pack.register(Morris)
 
-Morris() where {M, N, K} = Morris(zeros(Int, 9), 1, 0, Status(), 6, 100)
+Morris() = Morris(zeros(Int, 9), 1, 0, Status(), 6, 100)
 
 function Base.copy(s :: Morris) :: Morris
   Morris(

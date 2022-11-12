@@ -19,7 +19,7 @@ function Pool( :: Type{G}
              , criterion :: Function
              ; capacity :: Int = 100000
              , targets = Target.defaults(G)
-             ) where {N, G <: AbstractGame}
+             ) where {G <: AbstractGame}
 
   @assert all(x -> x isa DataType, meta)
   M = NamedTuple{keys(meta), Tuple{values(meta)...}}

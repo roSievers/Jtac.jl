@@ -102,7 +102,7 @@ end
 
 Load a dataset for games from file `name`.
 """
-function load(fname :: String) where G <: AbstractGame
+function load(fname :: String)
   open(io -> Pack.unpack_compressed(io, DataSet), fname)
 end
 
@@ -129,21 +129,26 @@ function Base.append!(d :: DataSet{G}, dd :: DataSet{G}) where {G <: AbstractGam
 
 end
 
-function Base.merge(d :: DataSet{G}, ds...) where {G <: AbstractGame}
+function Base.merge(ds :: Vector{DataSet{G}}) where {G <: AbstractGame}
 
-  ts = [Target.targets(d), Target.targets.(ds)...]
+  @assert length(ds) > 0 "Cannot merge empty DataSets"
 
-  compatible =
-    all(length(ts[1]) .== length.(ts)) && all(map(Target.compatible, ts...))
+  d = ds[1]
+
+  compatible = all(ds) do x
+    td = Target.targets(d)
+    tx = Target.targets(x)
+    length(d) == length(x) && all(Target.compatible.(td, tx))
+  end
 
   # Create and return the merged dataset
-  dataset = DataSet(G)
-  dataset.targets = Target.targets(d)
+  dataset = DataSet(G, Target.targets(d))
 
-  dataset.games  = vcat([d.games,  (x.games  for x in ds)...]...)
-  for i in 1:length(dataset.targets)
-    label = vcat((d.labels[i],  (x.labels[i] for x in ds)...)...)
-    push!(dataset.labels, label)
+  for d in ds
+    append!(dataset.games, d.games)
+    for i in 1:length(dataset.targets)
+      append!(dataset.labels[i], d.labels[i])
+    end
   end
 
   @assert check_consistency(dataset)

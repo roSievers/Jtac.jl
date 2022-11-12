@@ -169,7 +169,7 @@ function record( p :: AbstractPlayer{G}
 
   BLAS.set_num_threads(t)
 
-  merge ? Base.merge(ds...) : ds
+  merge ? Base.merge(ds) : ds
 
 end
 
@@ -203,7 +203,7 @@ function record_with_branching( G :: Type{<: AbstractGame}
     foreach(record_opt_targets!, datasets)
 
     callback()
-    Base.merge(datasets...)
+    Base.merge(datasets)
 
   end
 
@@ -354,7 +354,7 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
                    , augment )
       ds
     end
-    merge(dss...)
+    merge(dss)
   else
 
     # TODO: this can be made faster when specializing on NeuralModels, where many
