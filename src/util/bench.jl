@@ -182,7 +182,7 @@ function benchmark_cpu(; threads = false, async = 25)
   end
   println()
   println("-- training --")
-  train(player, merge(ds...))
+  train(player, merge(ds))
 
   println("\nMetaTac (simple):")
   println("-- recording --")
@@ -196,7 +196,7 @@ function benchmark_cpu(; threads = false, async = 25)
   end
   println()
   println("-- training --")
-  train(player, merge(ds...))
+  train(player, merge(ds))
 
 
   BLAS.set_num_threads(t) 
@@ -217,7 +217,7 @@ function benchmark_gpu(; threads = false, async = 100)
   end
   println()
   println("-- training --")
-  train(player, merge(ds...))
+  train(player, merge(ds))
 
   println("\nMetaTac (medium):")
   println("-- recording --")
@@ -231,7 +231,7 @@ function benchmark_gpu(; threads = false, async = 100)
   end
   println()
   println("-- training --")
-  train(player, merge(ds...))
+  train(player, merge(ds))
 
   println("\nMetaTac (large):")
   println("-- recording --")
@@ -245,7 +245,7 @@ function benchmark_gpu(; threads = false, async = 100)
   end
   println()
   println("-- training --")
-  train(player, merge(ds...))
+  train(player, merge(ds))
 
   nothing
 end
