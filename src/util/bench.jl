@@ -203,7 +203,7 @@ function benchmark_cpu(; threads = false, async = 25)
   nothing
 end
 
-function benchmark_gpu(; threads = false, async = 100)
+function benchmark_gpu(; threads = false, async = 50)
 
   println("\nMetaTac (simple):")
   println("-- recording --")

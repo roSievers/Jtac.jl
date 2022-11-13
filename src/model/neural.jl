@@ -114,12 +114,12 @@ function (m :: NeuralModel{G, GPU})( data
 
     tmp = reshape(head(tout), length(target), bs)
     res = Target.activate(target, tmp)
-    release_gpu_memory(tmp)
+    release_gpu_memory!(tmp)
     res
 
   end
 
-  release_gpu_memory(tout)
+  release_gpu_memory!(tout)
   out
 
 end
@@ -133,6 +133,8 @@ function (m :: NeuralModel{G, GPU})( games :: Vector{G}
   data = convert(at, Game.array(games))
 
   results = m(data, opt_targets) 
+  release_gpu_memory!(data)
+
   map(results) do result
     convert(Array, result) :: Matrix{Float32}
   end

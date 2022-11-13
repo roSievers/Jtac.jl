@@ -47,7 +47,19 @@ count_params(layer :: Layer) = sum(length, Knet.params(layer))
 
 # Convert (gpu :: Bool) to the underlying representing array type
  
-atype(gpu :: Bool) = gpu ? Knet.KnetArray{Float32} : Array{Float32}
+atype_gpu() = CUDA.CuArray{Float32}
+atype(gpu :: Bool) = gpu ? atype_gpu() : Array{Float32}
+
+# Found slight performance advantages if temporary gpu variables
+# are immediately released
+
+release_gpu_memory!(x) = nothing
+
+release_gpu_memory!(x :: CUDA.CuArray{Float32}) =
+  CUDA.unsafe_free!(x)
+
+release_gpu_memory!(x :: Knet.KnetArray{Float32}) =
+  Knet.KnetArrays.freeKnetPtr(x.ptr)
 
 # Check if something is an AutoGrad param or not
  
@@ -83,12 +95,6 @@ end
 expand_to_pair(t :: NTuple{2, Int}) = t
 expand_to_pair(t :: Int) = (t, t)
 
-# Found slight performance advantages if temporary gpu variables
-# are immediately released
-
-release_gpu_memory(x) = nothing
-release_gpu_memory(x :: Knet.KnetArray{Float32}) =
-  Knet.KnetArrays.freeKnetPtr(x.ptr)
 
 # -------- Layer Weights ----------------------------------------------------- #
 
@@ -215,7 +221,7 @@ end
 function (d :: Dense)(x)
   tmp = d.w.data * Knet.mat(x)
   res = d.a.f.(tmp .+ d.b.data)
-  release_gpu_memory(tmp)
+  release_gpu_memory!(tmp)
   res
 end
 
@@ -293,7 +299,7 @@ end
 function (c :: Conv)(x)
   tmp = Knet.conv4(c.w.data, x, padding = c.p, stride = c.s)
   res = c.a.f.(tmp .+ c.b.data)
-  release_gpu_memory(tmp)
+  release_gpu_memory!(tmp)
   res
 end
 
@@ -379,7 +385,7 @@ end
 function (d :: Deconv)(x)
   tmp = Knet.deconv4(d.w.data, x, padding = d.p, stride = d.s)
   res = d.a.f.(tmp .+ d.b.data)
-  release_gpu_memory(tmp)
+  release_gpu_memory!(tmp)
   res
 end
 
@@ -441,7 +447,7 @@ end
 function (p :: Pool)(x)
   tmp = Knet.pool(x, window = p.w, padding = p.p, stride = p.s)
   res = p.a.f.(tmp)
-  release_gpu_memory(tmp)
+  release_gpu_memory!(tmp)
   res
 end
 
@@ -614,7 +620,7 @@ function (c :: Chain)(x)
   xold = c.layers[1](x)
   for l in c.layers[2:end]
     x = l(xold)
-    release_gpu_memory(xold)
+    release_gpu_memory!(xold)
     xold = x
   end
   xold
@@ -791,7 +797,7 @@ end
 function (r :: Residual)(x)
   tmp = r.chain(x)
   res = r.a.f.(tmp .+ x)
-  release_gpu_memory(tmp)
+  release_gpu_memory!(tmp)
   res
 end
 
