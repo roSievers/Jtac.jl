@@ -364,13 +364,13 @@ export Util,
        Training
 
 # Init of module Jtac
-function __init__()
+#function __init__()
   # Resolves bug when CUDA.cached_memory is not defined
-  @eval begin
-    Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) =
-      min(CUDA.Mem.info()[1], length(x)*sizeof(eltype(x)) * 100)
-  end
-end
+#  @eval begin
+#    Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) =
+#      min(CUDA.Mem.info()[1], length(x)*sizeof(eltype(x)) * 100)
+#  end
+#end
 
 
 end # module Jtac

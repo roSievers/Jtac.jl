@@ -194,8 +194,11 @@ function apply_temperature(values :: Vector{Float32}, temp :: Float32)
   elseif temp == 1f0
     values / sum(values)
   else
-    weights = values.^(1/temp)
-    weights / sum(weights)
+    # cast to Float64 so that low temperatures make less problems
+    logs = log.(Float64.(values)) / temp
+    logs .= logs .- maximum(logs)
+    weights = exp.(logs)
+    Float32.(weights / sum(weights))
   end
 end
 

@@ -278,7 +278,8 @@ function record( p :: AbstractPlayer{H}
     asyncmap(1:ntasks; ntasks) do _
       while isopen(ch)
         ds = nothing
-        try ds = record(player, 1; threads = false, merge = true, callback_move = cb, kwargs...)
+        try ds = record( player, 1; threads = false, merge = true
+                       , callback_move = cb, kwargs... )
         catch err
           err isa StopRecording && break
           throw(err)
@@ -309,7 +310,8 @@ function record( p :: AbstractPlayer{H}
     main_loop(p)
   end
 
-  nothing
+  BLAS.set_num_threads(t)
+
 end
 
 
@@ -320,7 +322,7 @@ end
 
 Record a dataset by applying `model` or `player` to `games`.
 """
-function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
+function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
                  , games :: Vector{T}
                  ; augment = false
                  , threads = :auto
@@ -328,7 +330,7 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
 
   games = augment ? mapreduce(Game.augment, vcat, games) : games
 
-  targets = Target.targets(model)
+  targets = Target.targets(p)
   labels = [Data.LabelData() for _ in targets]
 
   # Using only a single BLAS thread was beneficial for performance in all tests
@@ -339,7 +341,7 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
   bgthreads = Threads.nthreads() - 1
   use_threads =
     threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(model)
+    threads == :auto && bgthreads > 0 && is_async(p)
 
   if use_threads
 
@@ -347,7 +349,7 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
     tickets = ticket_sizes(n, bgthreads)
     idxs = [0; cumsum(tickets)]
     ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
-    dss = _threaded([model]; threads) do idx, ps
+    dss = _threaded([p]; threads) do idx, ps
       ds = evaluate( ps[1]
                    , games[ranges[idx]]
                    ; threads = false
@@ -360,10 +362,10 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
     # TODO: this can be made faster when specializing on NeuralModels, where many
     # games can be evaluated in parallel
     for game in games
-      if length(targets) == 2 || model isa AbstractPlayer
-        output = apply(model, game)
+      if p isa NeuralModel
+        output = apply(p, game, true)
       else
-        output = apply(model, game, true)
+        output = apply(p, game)
       end
       for l in 1:length(targets)
         if output[l] isa Float32
@@ -381,6 +383,61 @@ function evaluate( model :: Union{AbstractModel{G}, AbstractPlayer{G}}
 
 end
 
+"""
+    evaluate(model or player, channel; instance, augment, threads)
+"""
+function evaluate( p :: Union{AbstractPlayer, AbstractModel}
+                 , ch :: AbstractChannel
+                 ; instance
+                 , augment = false
+                 , threads = :auto )
+
+  main_loop(player) = begin
+    while isopen(ch)
+      games = nothing
+      try
+        game = instance()
+        games = augment ? Game.augment(game) : [game]
+      catch err
+        err isa StopRecording && break
+        throw(err)
+      end
+      try
+        for game in games
+          if player isa NeuralModel
+            output = apply(player, game, true)
+          else
+            output = apply(player, game)
+          end
+          put!(ch, (game, output))
+        end
+      catch err
+        err isa InvalidStateException && break
+        throw(err)
+      end
+    end
+
+  end
+
+  t = BLAS.get_num_threads()
+  BLAS.set_num_threads(1)
+
+  bgthreads = Threads.nthreads() - 1
+  use_threads =
+    threads == true || threads == :copy ||
+    threads == :auto && bgthreads > 0 && is_async(p)
+
+  if use_threads
+    _threaded([p]; threads) do idx, ps
+      main_loop(ps[1])
+    end
+  else
+    main_loop(p)
+  end
+
+  BLAS.set_num_threads(t)
+
+end
 
 # -------- Threaded Recording --------------------------------------------- #
 
@@ -389,9 +446,7 @@ function _threaded(handle :: Function, ps :: Vector; threads)
   bgthreads = Threads.nthreads() - 1
   @assert bgthreads > 0 "No background threads available"
 
-  # TODO: Is this safe for any model?
-  # Using threads is only safe for async models or if each thread
-  # gets its own copy of the model
+  # Not sure: Is this safe for any model?
   copy = threads == :copy
   #safe = all(is_async(p) for p in ps) || copy
   #@assert safe "Threading for non-async models is unsafe"

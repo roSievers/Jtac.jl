@@ -43,7 +43,10 @@ end
 Let `player` make an action decision about `game`, based on the policy
 `think(player, game)`.
 """
-decide(p :: AbstractPlayer, game :: AbstractGame) = choose_index(think(p, game))
+function decide(p :: AbstractPlayer, game :: AbstractGame)
+  @assert !Game.is_over(game) "Cannot decide action on a finished game"
+  choose_index(think(p, game))
+end
 
 """
     decide_chain(player, game)
@@ -176,7 +179,7 @@ end
 function think( p :: IntuitionPlayer{G}
               , game :: G
               ) :: Vector{Float32} where {G <: AbstractGame} 
-  
+
   # Get all legal actions and their model policy values
   actions = legal_actions(game)
   policy = zeros(Float32, policy_length(game))
