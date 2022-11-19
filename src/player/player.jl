@@ -401,11 +401,12 @@ function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
-  println(io, "MCTSPlayer{$(Game.name(G))} with power $(p.power):")
+  println(io, "MCTSPlayer{$(Game.name(G))}")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
   print(io, " dilu: $(p.dilution)"); println(io)
   print(io, " expl: $(p.exploration)"); println(io)
+  print(io, " power: $(p.power)"); println(io)
   print(io, " model: "); show(io, MIME"text/plain"(), p.model)
 end
 

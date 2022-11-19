@@ -10,6 +10,39 @@ function ticket_sizes(n, m)
   ns
 end
 
+"""
+  use_threads(threads, player)
+
+Helper function that detects when threading is safe to use for `player`.
+Uses information of `threads` which can be `true`, `:auto`, or `:copy`.
+"""
+function use_threads(threads, player)
+  bgthreads = Threads.nthreads() - 1
+  tmodel = training_model(player)
+  # If no training model exists, we assume that everything is thread-safe :)
+  can_async = is_async(player) || isnothing(tmodel)
+  threads == true || threads == :copy ||
+  threads == :auto && bgthreads > 0 && can_async
+end
+
+"""
+    with_BLAS_threads(f, n)
+
+Call `f()` under the temporary setting `BLAS.set_num_threads(n)`.
+"""
+function with_BLAS_threads(f, n)
+  t = BLAS.get_num_threads()
+  BLAS.set_num_threads(n)
+  try f()
+  finally
+    BLAS.set_num_threads(t)
+  end
+end
+
+"""
+Exception that can be used to stop the recording or evaluation of matches via
+the callback or instance functions.
+"""
 struct StopMatch <: Exception end
 
 """
@@ -81,29 +114,24 @@ function record( p :: AbstractPlayer{G}
                , opt_targets = Target.targets(p)[3:end]
                , kwargs... ) where {G}
 
-  # Using only a single BLAS thread was beneficial for performance in all tests
-  t = BLAS.get_num_threads()
-  BLAS.set_num_threads(1)
 
-  # Do we want to use threading?
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(p)
+  if use_threads(threads, p)
 
-  if use_threads
+    ds = with_BLAS_threads(1) do
 
-    tickets = ticket_sizes(n, bgthreads)
-    dss = _threaded([p]; threads) do idx, ps
-      record( ps[1]
-            , tickets[idx]
-            ; threads = false
-            , merge = false
-            , opt_targets
-            , callback_move
-            , kwargs... )
+      tickets = ticket_sizes(n, bgthreads)
+      dss = _threaded([p]; threads) do idx, ps
+        record( ps[1]
+              , tickets[idx]
+              ; threads = false
+              , merge = false
+              , opt_targets
+              , callback_move
+              , kwargs... )
+      end
+      vcat(dss...)
+
     end
-    ds = vcat(dss...)
 
   else
 
@@ -162,12 +190,12 @@ function record( p :: AbstractPlayer{G}
 
     end
 
-    # Record several matches with (optional) branching and augmentation
-    ds = record_with_branching(G, play, n; ntasks = Model.ntasks(p), kwargs...)
+    ds = with_BLAS_threads(1) do
+      # Record several matches with (optional) branching and augmentation
+      record_with_branching(G, play, n; ntasks = Model.ntasks(p), kwargs...)
+    end
 
   end
-
-  BLAS.set_num_threads(t)
 
   merge ? Base.merge(ds) : ds
 
@@ -294,23 +322,17 @@ function record( p :: AbstractPlayer{H}
     nothing
   end
 
-  t = BLAS.get_num_threads()
-  BLAS.set_num_threads(1)
+  with_BLAS_threads(1) do
 
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(p)
-
-  if use_threads
-    _threaded([p]; threads) do idx, ps
-      main_loop(ps[1])
+    if use_threads(threads, p)
+      _threaded([p]; threads) do idx, ps
+        main_loop(ps[1])
+      end
+    else
+      main_loop(p)
     end
-  else
-    main_loop(p)
-  end
 
-  BLAS.set_num_threads(t)
+  end
 
 end
 
@@ -333,53 +355,48 @@ function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
   targets = Target.targets(p)
   labels = [Data.LabelData() for _ in targets]
 
-  # Using only a single BLAS thread was beneficial for performance in all tests
-  t = BLAS.get_num_threads()
-  BLAS.set_num_threads(1)
+  with_BLAS_threads(1) do
 
-  # Do we want to use threading?
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(p)
+    if use_threads(threads, p)
 
-  if use_threads
-
-    n = length(games)
-    tickets = ticket_sizes(n, bgthreads)
-    idxs = [0; cumsum(tickets)]
-    ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
-    dss = _threaded([p]; threads) do idx, ps
-      ds = evaluate( ps[1]
-                   , games[ranges[idx]]
-                   ; threads = false
-                   , augment )
-      ds
-    end
-    merge(dss)
-  else
-
-    # TODO: this can be made faster when specializing on NeuralModels, where many
-    # games can be evaluated in parallel
-    for game in games
-      if p isa NeuralModel
-        output = apply(p, game, true)
-      else
-        output = apply(p, game)
+      n = length(games)
+      tickets = ticket_sizes(n, bgthreads)
+      idxs = [0; cumsum(tickets)]
+      ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
+      dss = _threaded([p]; threads) do idx, ps
+        ds = evaluate( ps[1]
+                     , games[ranges[idx]]
+                     ; threads = false
+                     , augment )
+        ds
       end
-      for l in 1:length(targets)
-        if output[l] isa Float32
-          val = Float32[output[l]]
+      merge(dss)
+
+    else
+
+      # TODO: this can be made faster when specializing on NeuralModels, where many
+      # games can be evaluated in parallel
+      for game in games
+        if p isa NeuralModel
+          output = apply(p, game, true)
         else
-          val = output[l]
+          output = apply(p, game)
         end
-        push!(labels[l], val)
+        for l in 1:length(targets)
+          if output[l] isa Float32
+            val = Float32[output[l]]
+          else
+            val = output[l]
+          end
+          push!(labels[l], val)
+        end
       end
+
+      DataSet(games, labels, targets)
+
     end
 
-    DataSet(games, labels, targets)
-
-  end
+  end # with_BLAS_threads(1)
 
 end
 
@@ -403,40 +420,34 @@ function evaluate( p :: Union{AbstractPlayer, AbstractModel}
         err isa StopRecording && break
         throw(err)
       end
-      try
-        for game in games
-          if player isa NeuralModel
-            output = apply(player, game, true)
-          else
-            output = apply(player, game)
-          end
-          put!(ch, (game, output))
+      for game in games
+        if player isa NeuralModel
+          output = apply(player, game, true)
+        else # Todo: Introduce target evaluation for players too?
+          output = apply(player, game)
         end
-      catch err
-        err isa InvalidStateException && break
-        throw(err)
+        try
+          put!(ch, (game, output))
+          yield()
+        catch err
+          err isa InvalidStateException && break
+          throw(err)
+        end
       end
     end
-
   end
 
-  t = BLAS.get_num_threads()
-  BLAS.set_num_threads(1)
+  with_BLAS_threads(1) do
 
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0 && is_async(p)
-
-  if use_threads
-    _threaded([p]; threads) do idx, ps
-      main_loop(ps[1])
+    if use_threads(threads, p)
+      _threaded([p]; threads) do idx, ps
+        main_loop(ps[1])
+      end
+    else
+      main_loop(p)
     end
-  else
-    main_loop(p)
-  end
 
-  BLAS.set_num_threads(t)
+  end
 
 end
 
