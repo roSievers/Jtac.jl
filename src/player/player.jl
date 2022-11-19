@@ -107,6 +107,8 @@ Model.training_model(:: AbstractPlayer) = nothing
 
 Target.targets(:: AbstractPlayer{G}) where {G} = Target.defaults(G)
 
+Data.DataSet(p :: AbstractPlayer) = Data.DataSet(Model.base_model(p))
+
 
 # Player ids to get more unique default names
 get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))

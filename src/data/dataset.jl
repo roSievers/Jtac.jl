@@ -78,7 +78,7 @@ DataSet(G :: Type{<: AbstractGame}, targets = []) =
          , convert(Vector{PredictionTarget{G}}, targets) )
 
 function DataSet(m :: AbstractModel{G}) where {G}
-  targets = Target.targets(training_model(m))
+  targets = Target.targets(m)
   DataSet(G, targets)
 end
 

@@ -396,8 +396,9 @@ function evaluate( p :: Union{AbstractPlayer, AbstractModel}
     while isopen(ch)
       games = nothing
       try
-        game = instance()
-        games = augment ? Game.augment(game) : [game]
+        games = instance()
+        games = games isa AbstractGame ? [games] : games
+        games = augment ? vcat(Game.augment.(games)...) : games
       catch err
         err isa StopRecording && break
         throw(err)
