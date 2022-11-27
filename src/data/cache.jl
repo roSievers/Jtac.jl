@@ -27,3 +27,7 @@ end
 
 Base.length(c :: Cache) = size(c.data)[end]
 
+function Model.release_gpu_memory!(c :: Cache{<: AbstractGame, true})
+  Model.release_gpu_memory!(c.data)
+  foreach(Model.release_gpu_memory!, c.labels)
+end

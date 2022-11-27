@@ -133,9 +133,14 @@ end
 # -------- Training on Datasets ---------------------------------------------- #
 
 """
-    train!(model/player, dataset; <keyword arguments>)
+    train!(model/player, trainset[s], testset; <keyword arguments>)
 
-Train `model`, or the training model of `player`, on `dataset`.
+Train `model`, or the training model of `player`, on `trainset`.
+Evaluate the loss on `testset` after each epoch.
+
+The second argument can be a vector of trainsets. In this case, not all game
+states are brought into array representation at the same time, reducing the
+memory requirements.
 
 # Arguments
 - `epochs = 10`: Number of iterations through `dataset`.
@@ -160,7 +165,8 @@ Training.train!(model, dataset; epochs = 15, reg_targets, weights)
 ```
 """
 function train!( player  :: Union{AbstractPlayer, AbstractModel}
-               , trainset :: DataSet
+               , trainsets :: Vector{<: DataSet}
+               , testset = nothing
                ; epochs = 10
                , batchsize = 50
                , reg_targets = []
@@ -169,46 +175,60 @@ function train!( player  :: Union{AbstractPlayer, AbstractModel}
                , callback_epoch = (_) -> nothing
                , optimizer = nothing
                , quiet = false
+               , store_on_gpu = false
                , kwargs... )
+
+  @assert !isempty(trainsets) "Trainset vector is empty"
 
   model = training_model(player)
   set_optimizer!(model, optimizer; kwargs...)
   gpu = on_gpu(model)
 
-  trainset = Target.adapt(trainset, model)
+  trainsets = [Target.adapt(ts, model) for ts in trainsets]
 
   targets = [Target.targets(model); reg_targets]
   !quiet && info_loss_header(targets)
 
-  # Generate the batch iterator (each iteration is shuffled independently)
-  batches = Batches( trainset
-                   , batchsize
-                   , shuffle = true
-                   , partial = true
-                   , gpu = gpu )
 
   # Iterate through the trainset epochs times
   for j in 1:epochs
 
     if !quiet
-      step, finish = Util.stepper("# Learning...", length(batches))
+      step, finish = Util.stepper("# Learning...", sum(length, trainsets))
     end
 
-    for (i, cache) in enumerate(batches)
+    for ts in trainsets
+      # Generate the batch iterator (each iteration is shuffled independently)
+      batches = Batches( ts
+                       , batchsize
+                       ; shuffle = true
+                       , partial = true
+                       , gpu
+                       , store_on_gpu )
 
-      train_step!(model, cache; reg_targets, weights)
-      callback_step(i)
-      !quiet && step()
+      for (i, cache) in enumerate(batches)
 
+        train_step!(model, cache; reg_targets, weights)
+        callback_step(i)
+        !quiet && step()
+
+      end
     end
 
     if !quiet
       finish()
-      info_loss_values(model, j, trainset; reg_targets, weights)
+      info_loss_values(model, j, trainsets[1], testset; reg_targets, weights)
     end
 
     callback_epoch(j)
   end
+end
+
+function train!( player :: Union{AbstractPlayer, AbstractModel}
+               , trainset :: DataSet
+               , args...
+               ; kwargs... )
+  train!(player, [trainset], args...; kwargs...)
 end
 
 

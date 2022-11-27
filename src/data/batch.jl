@@ -1,7 +1,9 @@
 
-struct Batches{G <: AbstractGame, GPU}
+mutable struct Batches{G <: AbstractGame, GPU}
 
   cache :: Cache{G}
+
+  last_cache :: Union{Nothing, Cache{G}}
 
   batchsize :: Int
   shuffle :: Bool
@@ -21,7 +23,7 @@ function Batches( d :: DataSet{G}
 
   indices = collect(1:length(d))
   cache = Cache(d, gpu = store_on_gpu)
-  Batches{G, gpu}(cache, batchsize, shuffle, partial, indices)
+  Batches{G, gpu}(cache, nothing, batchsize, shuffle, partial, indices)
 end
 
 function Base.length(b :: Batches)
@@ -40,6 +42,7 @@ function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame,
 
   # Check for end of iteration
   if start > l || !b.partial && stop - start < b.batchsize - 1
+    Model.release_gpu_memory!(b.last_cache)
     return nothing
   end
 
@@ -51,7 +54,11 @@ function Base.iterate(b :: Batches{G, GPU}, start = 1) where {G <: AbstractGame,
     label[:, idx]
   end
 
+  Model.release_gpu_memory!(b.last_cache)
+
   cache = Cache{G}(data, labels, gpu = GPU)
+
+  b.last_cache = cache
 
   # Return the (cache, new_start) state tuple
   cache, stop + 1
