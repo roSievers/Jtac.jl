@@ -119,7 +119,7 @@ function record( p :: AbstractPlayer{G}
 
     ds = with_BLAS_threads(1) do
 
-      tickets = ticket_sizes(n, bgthreads)
+      tickets = ticket_sizes(n, Threads.nthreads() - 1)
       dss = _threaded([p]; threads) do idx, ps
         record( ps[1]
               , tickets[idx]
@@ -360,7 +360,7 @@ function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
     if use_threads(threads, p)
 
       n = length(games)
-      tickets = ticket_sizes(n, bgthreads)
+      tickets = ticket_sizes(n, Threads.nthreads() - 1)
       idxs = [0; cumsum(tickets)]
       ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
       dss = _threaded([p]; threads) do idx, ps
