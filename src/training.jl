@@ -194,7 +194,8 @@ function train!( player  :: Union{AbstractPlayer, AbstractModel}
   for j in 1:epochs
 
     if !quiet
-      step, finish = Util.stepper("# Learning...", sum(length, trainsets))
+      steps = ceil(Int, sum(length, trainsets) / batchsize)
+      step, finish = Util.stepper("# Learning...", steps)
     end
 
     for ts in trainsets
@@ -244,7 +245,7 @@ function _train!( player :: AbstractPlayer{G}
                 , testfrac = 0.1
                 , reg_targets = []
                 , weights = (;)
-                , optimizer = Knet.SGD
+                , optimizer = Knet.Momentum
                 , replays = 0
                 , quiet = false
                 , callback_epoch = (_) -> nothing

@@ -157,19 +157,21 @@ function Base.merge(ds :: Vector{DataSet{G}}) where {G <: AbstractGame}
 
 end
 
-function Base.split(d :: DataSet{G}, size :: Int; shuffle = true) where {G}
+function Base.split(d :: DataSet{G}, maxsize :: Int; shuffle = false) where {G}
 
   n = length(d)
-  @assert size <= n "Cannot split dataset of length $n at position $size."
+  maxsize >= n && return [d]
 
   idx = shuffle ? randperm(n) : 1:n
-  idx1, idx2 = idx[1:size], idx[size+1:end]
+  pos = [collect(1:maxsize:n); n+1]
+  idxs = [idx[i:j-1] for (i,j) in zip(pos[1:end-1], pos[2:end])]
 
-  d1 = DataSet{G}(d.games[idx1], d.labels[idx1], d.targets)
-  d2 = DataSet{G}(d.games[idx2], d.labels[idx2], d.targets)
-
-  d1, d2
-
+  map(idxs) do idx
+    labels = map(1:length(d.targets)) do i
+      d.labels[i][idx]
+    end
+    DataSet{G}(d.games[idx], labels, d.targets)
+  end
 end
 
 function Game.augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: AbstractGame
