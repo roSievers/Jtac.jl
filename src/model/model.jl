@@ -27,6 +27,7 @@ improved policy for its decision).
 abstract type AbstractModel{G <: AbstractGame, GPU} <: Element{GPU} end
 
 Pack.@mappack AbstractModel
+Pack.freeze(m :: AbstractModel) = to_cpu(m)
 
 to_cpu(a) = convert(atype(false), a)
 to_cpu(a :: Float32) = a
@@ -174,7 +175,7 @@ tune(; kwargs...) = model -> tune(model; kwargs...)
 Save `model` to the file `fname`. The typical file extension
 is `.jtm`.
 """
-save(fname, model) = open(io -> Pack.pack(io, model), fname, "w")
+save(fname, model) = open(io -> Pack.pack(io, model |> to_cpu), fname, "w")
 
 """
     load(fname)

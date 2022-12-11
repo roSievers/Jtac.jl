@@ -162,7 +162,6 @@ function trim!(dp :: Pool)
   total = length(dp)
 #  flagged = length(indices)
 
-
   while length(indices) > dp.capacity
     # Get the lowest quality value in the pool that is not yet flagged for
     # removal
@@ -184,6 +183,6 @@ function trim!(dp :: Pool)
   dp.data = dp.data[indices]
   dp.meta = dp.meta[indices]
 
-  total - length(indices)
+  total - length(indices), minq
 end
 
