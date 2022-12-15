@@ -185,3 +185,8 @@ msgpack_type( :: Type{Bytes}) = BinaryType()
 to_msgpack(:: BinaryType, bytes :: Bytes) = bytes.data
 from_msgpack(:: Type{Bytes}, data :: Vector{UInt8}) = Bytes(data)
 
+
+Base.convert(:: Type{Bytes}, :: Nothing) = Bytes([])
+Base.convert(:: Type{Bytes}, x) = Bytes(pack(x))
+
+
