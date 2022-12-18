@@ -12,6 +12,7 @@ module Events
 
   import Base.@kwdef
 
+  import Jtac.Util: camlcase, snakecase
   using Jtac
 
   """
@@ -19,7 +20,6 @@ module Events
   queried from external clients for visualization of the training progress. Each
   subtype of `Event` possesses the fields
 
-      type
       timestamp
       client_id
 
@@ -37,25 +37,16 @@ module Events
   """
   abstract type Event end
 
-  msgpack_type(:: Type{Event}) = Pack.MapType()
+  Pack.@typedpack Event
 
-  function from_msgpack(:: Type{Event}, d :: Dict)
-    sym = to_camlcase(d["type"])
-    T = eval(Symbol(sym))
-    args = map(fieldnames(T)) do name
-      d[string(name)]
-    end
-    T(args...)
-  end
+  Pack.decompose_subtype(T :: Type{<: Event}) = snakecase(T)
+  Pack.compose_subtype(str, :: Type{Event}) = camlcase(str) |> Symbol |> eval
 
-  to_camlcase(str :: String) =
-    join(uppercasefirst(word) for word in split(str, "_"))
 
   """
   Start of the training session
   """
   @kwdef struct StartSession <: Event
-    type :: Symbol = :start_session
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -67,7 +58,6 @@ module Events
   End of the training session
   """
   @kwdef struct StopSession <: Event
-    type :: Symbol = :stop_session
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -79,7 +69,6 @@ module Events
   A model has been loaded
   """
   @kwdef struct LoadModel <: Event
-    type :: Symbol = :load_model
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -92,7 +81,6 @@ module Events
   A client has logged in
   """
   @kwdef struct LoginClient <: Event
-    type :: Symbol = :login_client
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -103,7 +91,6 @@ module Events
   A client has logged off
   """
   @kwdef struct LogoutClient <: Event
-    type :: Symbol = :logout_client
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -114,7 +101,6 @@ module Events
   A model generation started
   """
   @kwdef struct StartGeneration <: Event
-    type :: Symbol = :start_generation
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -126,7 +112,6 @@ module Events
   A model generation ended
   """
   @kwdef struct StopGeneration <: Event
-    type :: Symbol = :stop_generation
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -137,7 +122,6 @@ module Events
   The server status has been queried
   """
   @kwdef struct QueryStatus <: Event
-    type :: Symbol = :query_status
     timestamp :: Float64 = time()
     client_id :: UInt
   end
@@ -146,7 +130,6 @@ module Events
   The server history has been queried
   """
   @kwdef struct QueryHistory <: Event
-    type :: Symbol = :query_history
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -158,7 +141,6 @@ module Events
   The current model generation has been queried
   """
   @kwdef struct QueryGeneration <: Event
-    type :: Symbol = :query_generation
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -169,7 +151,6 @@ module Events
   A model has been queried
   """
   @kwdef struct QueryModel <: Event
-    type :: Symbol = :query_model
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -180,7 +161,6 @@ module Events
   The current player (and other selfplay information) has been queried
   """
   @kwdef struct QueryPlayer <: Event
-    type :: Symbol = :query_player
     timestamp :: Float64 = time()
     client_id :: UInt
   end
@@ -189,7 +169,6 @@ module Events
   Training data was uploaded
   """
   @kwdef struct UploadData <: Event
-    type :: Symbol = :upload_data
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -201,7 +180,6 @@ module Events
   A ranking was uploaded
   """
   @kwdef struct UploadContest <: Event
-    type :: Symbol = :upload_contest
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -212,7 +190,6 @@ module Events
   Config parameters were modified
   """
   @kwdef struct SetParam <: Event
-    type :: Symbol = :set_param
     timestamp :: Float64 = time()
     client_id :: UInt
 
@@ -224,7 +201,6 @@ module Events
   Training mode was started
   """
   @kwdef struct StartTraining <: Event
-    type :: Symbol = :start_training
     timestamp :: Float64 = time()
     client_id :: UInt = 0
   end
@@ -233,7 +209,6 @@ module Events
   Training mode was stopped
   """
   @kwdef struct StopTraining <: Event
-    type :: Symbol = :stop_training
     timestamp :: Float64 = time()
     client_id :: UInt = 0
   end
@@ -242,7 +217,6 @@ module Events
   A training step (which may contain several batches) was conducted
   """
   @kwdef struct StepTraining <: Event
-    type :: Symbol = :step_training
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -257,7 +231,6 @@ module Events
   Recording mode was initiated
   """
   @kwdef struct StartRecording <: Event
-    type :: Symbol = :start_recording
     timestamp :: Float64 = time()
     client_id :: UInt = 0
   end
@@ -266,7 +239,6 @@ module Events
   Recording mode was ended
   """
   @kwdef struct StopRecording <: Event
-    type :: Symbol = :stop_recording
     timestamp :: Float64 = time()
     client_id :: UInt = 0
   end
@@ -275,7 +247,6 @@ module Events
   A dataset was recorded by the server
   """
   @kwdef struct StepRecording <: Event
-    type :: Symbol = :step_recording
     timestamp :: Float64 = time()
     client_id :: UInt = 0
 
@@ -290,11 +261,22 @@ module Api
   import Base.@kwdef
 
   import Jtac: Pack, Data, Model, Player
+  import Jtac.Util: snakecase, camlcase
   import ..Events: Event
+
+  abstract type Message end
+  abstract type Action <: Message end
+  abstract type Response <: Message end
+
+  Pack.@typedpack Action
+  Pack.@typedpack Response
+
+  Pack.decompose_subtype(M :: Type{<: Message}) = snakecase(M)
+  Pack.compose_subtype(str, :: Type{<: Message}) = camlcase(str) |> Symbol |> eval
 
   # We always obtain a response from the socket, even if authorization fails. If
   # we don't, then it has to be an error and should be treated as such.
-  function handle(msg, rtype, host = ip"127.0.0.1", port = 7238 )
+  function handle(msg, rtype, port = 7238, host = ip"127.0.0.1", )
     try
       sock = Sockets.connect(host, port)
       Pack.pack(sock, msg)
@@ -317,15 +299,14 @@ module Api
   which can be used for authentication.
   """
   login(args...; kwargs...) =
-    handle(LoginMsg(; kwargs...), LoginRes, args...)
+    handle(Login(; kwargs...), LoginRes, args...)
 
-  @kwdef struct LoginMsg
-    action :: Symbol = :login
+  @kwdef struct Login <: Action
     client_name :: String
     password :: String = ""
   end
 
-  @kwdef struct LoginRes
+  @kwdef struct LoginRes <: Response
     client_id :: UInt
   end
 
@@ -341,14 +322,13 @@ module Api
   which can be used for authentication.
   """
   logout(args...; kwargs...) =
-    handle(LogoutMsg(; kwargs...), LogoutRes, args...)
+    handle(Logout(; kwargs...), LogoutRes, args...)
 
-  @kwdef struct LogoutMsg
-    action :: Symbol = :logout
+  @kwdef struct Logout <: Action
     client_id :: UInt
   end
 
-  @kwdef struct LogoutRes
+  @kwdef struct LogoutRes <: Response
     success :: Bool
   end
 
@@ -368,17 +348,16 @@ module Api
 
   """
   query_status(args...; kwargs...) =
-    handle(QueryStatusMsg(; kwargs...), QueryStatusRes, args...)
+    handle(QueryStatus(; kwargs...), QueryStatusRes, args...)
 
-  @kwdef struct QueryStatusMsg
-    action :: Symbol = :query_status
+  @kwdef struct QueryStatus <: Action
     client_id :: UInt
   end
 
-  @kwdef struct QueryStatusRes
+  @kwdef struct QueryStatusRes <: Response
     session_id :: UInt
     clients :: Vector{String}
-    training :: Bool
+    state :: Symbol
     generation :: Int
   end
 
@@ -397,16 +376,15 @@ module Api
   The event api is documented in the module `Events`.
   """
   query_history(args...; kwargs...) =
-    handle(QueryHistoryMsg(; kwargs...), QueryHistoryRes, args...)
+    handle(QueryHistory(; kwargs...), QueryHistoryRes, args...)
 
-  @kwdef struct QueryHistoryMsg
-    action :: Symbol = :query_history
+  @kwdef struct QueryHistory <: Action
     client_id :: UInt
-    starting_at :: Int
-    max_entries :: Int
+    starting_at :: Int = 1
+    max_entries :: Int = -1
   end
 
-  @kwdef struct QueryHistoryRes
+  @kwdef struct QueryHistoryRes <: Response
     history :: Vector{Event}
   end
 
@@ -420,15 +398,14 @@ module Api
       generation :: Int
   """
   query_generation(args...; kwargs...) =
-    handle(QueryGenerationMsg(; kwargs...), QueryGenerationRes, args...)
+    handle(QueryGeneration(; kwargs...), QueryGenerationRes, args...)
 
-  @kwdef struct QueryGenerationMsg
-    action :: Symbol = :query_generation
+  @kwdef struct QueryGeneration <: Action
     client_id :: UInt
     wait :: Bool
   end
 
-  @kwdef struct QueryGenerationRes
+  @kwdef struct QueryGenerationRes <: Response
     generation :: Int
   end
 
@@ -444,16 +421,15 @@ module Api
       generation :: Int
   """
   query_model(args...; kwargs...) =
-    handle(QueryModelMsg(; kwargs...), QueryModelRes, args...)
+    handle(QueryModel(; kwargs...), QueryModelRes, args...)
 
-  @kwdef struct QueryModelMsg
-    action :: Symbol = :query_model
+  @kwdef struct QueryModel <: Action
     client_id :: UInt
     generation :: Int = -1
   end
 
-  @kwdef struct QueryModelRes
-    model :: Model.NeuralModel
+  @kwdef struct QueryModelRes <: Response
+    model :: Model.AbstractModel
     generation :: Int
   end
 
@@ -475,21 +451,20 @@ module Api
 
   """
   query_player(args...; kwargs...) =
-    handle(QueryPlayerMsg(; kwargs...), QueryPlayerRes, args...)
+    handle(QueryPlayer(; kwargs...), QueryPlayerRes, args...)
 
-  @kwdef struct QueryPlayerMsg
-    action :: Symbol = :query_player
+  @kwdef struct QueryPlayer <: Action
     client_id :: UInt
     generation :: Int = 0
   end
 
-  @kwdef struct QueryPlayerSig
+  @kwdef struct QueryPlayerRes <: Response
     player :: Player.MCTSPlayer
     generation :: Int
-    instance_randomization :: Float64
-    branch_probability :: Float64
-    branch_step_min :: Int
-    branch_step_max :: Int
+    instance_randomization :: Float64 = 0.
+    branch_probability :: Float64 = 0.
+    branch_step_min :: Int = 1
+    branch_step_max :: Int = 10
   end
 
   """
@@ -503,16 +478,15 @@ module Api
       success :: Bool
   """
   upload_data(args...; kwargs...) =
-    handle(UploadDataMsg(; kwargs...), UploadDataRes, args...)
+    handle(UploadData(; kwargs...), UploadDataRes, args...)
 
-  @kwdef struct UploadDataMsg
-    action :: Symbol = :upload_data
+  @kwdef struct UploadData <: Action
     client_id :: UInt64
     generation :: Int
     data :: Data.DataSet
   end
 
-  @kwdef struct UploadDataRes
+  @kwdef struct UploadDataRes <: Response
     success :: Bool
   end
 
@@ -527,15 +501,14 @@ module Api
       success :: Bool
   """
   upload_contest(args...; kwargs...) =
-    handle(UploadContestMsg(; kwargs...), UploadContestRes, args...)
+    handle(UploadContest(; kwargs...), UploadContestRes, args...)
 
-  @kwdef struct UploadContestMsg
-    action :: Symbol = :upload_contest
+  @kwdef struct UploadContest <: Action
     client_id :: UInt
     ranking :: Player.Ranking
   end
 
-  @kwdef struct UploadContestRes
+  @kwdef struct UploadContestRes <: Response
     success :: Bool
   end
 
@@ -550,16 +523,15 @@ module Api
     success :: Bool
   """
   set_param(args...; kwargs...) =
-    handle(SetParamMsg(; kwargs...), SetParamRes, args...)
+    handle(SetParam(; kwargs...), SetParamRes, args...)
 
-  @kwdef struct SetParamMsg
-    action :: Symbol = :set_param
+  @kwdef struct SetParam <: Action
     client_id :: UInt
     param :: Vector{String}
     value :: Vector{Any}
   end
 
-  @kwdef struct SetParamRes
+  @kwdef struct SetParamRes <: Response
     success :: Bool
   end
 
@@ -574,14 +546,13 @@ module Api
     success :: Bool
   """
   stop_training(args...; kwargs...) =
-    handle(StopTrainingMsg(; kwargs...), StopTrainingRes, args...)
+    handle(StopTraining(; kwargs...), StopTrainingRes, args...)
 
-  @kwdef struct StopTrainingMsg
-    action :: Symbol = :stop_training
+  @kwdef struct StopTraining <: Action
     client_id :: UInt
   end
 
-  @kwdef struct StopTrainingRes
+  @kwdef struct StopTrainingRes <: Response
     success :: Bool
   end
 
@@ -596,14 +567,13 @@ module Api
     success :: Bool
   """
   start_training(args...; kwargs...) =
-    handle(StartTrainingMsg(; kwargs...), StartTrainingRes, args...)
+    handle(StartTraining(; kwargs...), StartTrainingRes, args...)
 
-  @kwdef struct StartTrainingMsg
-    action :: Symbol = :start_training
+  @kwdef struct StartTraining <: Action
     client_id :: UInt
   end
 
-  @kwdef struct StartTrainingRes
+  @kwdef struct StartTrainingRes <: Response
     success :: Bool
   end
 
@@ -618,14 +588,13 @@ module Api
     success :: Bool
   """
   stop_recording(args...; kwargs...) =
-    handle(StopRecordingMsg(; kwargs...), StopRecordingRes, args...)
+    handle(StopRecording(; kwargs...), StopRecordingRes, args...)
 
-  @kwdef struct StopRecordingMsg
-    action :: Symbol = :stop_recording
+  @kwdef struct StopRecording <: Action
     client_id :: UInt
   end
 
-  @kwdef struct StopRecordingRes
+  @kwdef struct StopRecordingRes <: Response
     success :: Bool
   end
 
@@ -640,14 +609,13 @@ module Api
     success :: Bool
   """
   start_recording(args...; kwargs...) =
-    handle(StartRecordingMsg(; kwargs...), StartRecordingRes, args...)
+    handle(StartRecording(; kwargs...), StartRecordingRes, args...)
 
-  @kwdef struct StartRecordingMsg
-    action :: Symbol = :start_recording
+  @kwdef struct StartRecording <: Action
     client_id :: UInt
   end
 
-  @kwdef struct StartRecordingRes
+  @kwdef struct StartRecordingRes <: Response
     success :: Bool
   end
 
@@ -831,8 +799,5 @@ function train( player :: MCTSPlayer{G}
 
   end
 
-
 end
-
-
 
