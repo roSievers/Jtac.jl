@@ -106,46 +106,51 @@ determined.
 """
 struct Ranking
   players :: Vector{String}
-  results :: Array{Int, 3}
+  results :: Vector{Int}
 
-  elo  :: Array{Float64}
+  elo  :: Vector{Float64}
   sadv :: Float64
   draw :: Float64
 
-  elostd  :: Array{Float64}
+  elostd  :: Vector{Float64}
   sadvstd :: Float64
   drawstd :: Float64
 end
 
+# Since msgpack can not handle Arrays of higher dimension than 1 without
+# customization (and forgets the size), we offer this additional constructor
+Ranking(ps :: Vector{String}, r :: Array{Int, 3}, args...) =
+  Ranking(ps, reshape(r, :), args...)
+
 Pack.@structpack Ranking
 
 """
-    Ranking(players, results; steps = 100)
-    Ranking(players, n [, active]; steps = 100, <keyword arguments>)
+    rank(players, results; steps = 100)
+    rank(players, n [, active]; steps = 100, <keyword arguments>)
 
 Get a ranking of `players` based on `results` from a previous call of the
 function `compete`. Alternatively, results are generated on the fly via
 `compete` for `n` games with all corresponding keyword arguments.  The number of
 steps in the iterative maximum likelihood solver can be specified via `steps`.
 """
-function Ranking(players :: Vector{String}, results :: Array{Int, 3}; steps = 100)
+function rank(players :: Vector{String}, results :: Array{Int, 3}; steps = 100)
   elo, sadv, draw = mlestimate(results; steps = steps)
   elostd, sadvstd, drawstd = stdestimate(results, elo, sadv, draw)
   Ranking(players, results, elo, sadv, draw, elostd, sadvstd, drawstd)
 end
 
-function Ranking(players, results :: Array{Int, 3}; steps = 100)
-  Ranking(name.(players), results, steps = steps)
+function rank(players, results :: Array{Int, 3}; steps = 100)
+  rank(name.(players), results, steps = steps)
 end
 
-function Ranking(players, args...; steps = 100, kwargs...)
+function rank(players, args...; steps = 100, kwargs...)
   results = compete(players, args...; kwargs...)
-  Ranking(players, results; steps = steps)
+  rank(players, results; steps = steps)
 end
 
 function Base.show(io :: IO, r :: Ranking)
-  n = sum(r.results)
   p = length(r.players)
+  n = sum(r.results)
   print(io, "Ranking($p players, $n games)")
 end
 
@@ -178,7 +183,8 @@ function Base.string(rk :: Ranking, matrix = false)
 
   if matrix
 
-    mat = rk.results[perm, perm, 3] - rk.results[perm, perm, 1]
+    res = reshape(rk.results, length(rk.players), length(rk.players), 3)
+    mat = res[perm, perm, 3] - res[perm, perm, 1]
     nm = maximum(ndigits, mat)
 
     for (i, row) in enumerate(rows)
