@@ -280,9 +280,12 @@ module Api
     try
       sock = Sockets.connect(host, port)
       Pack.pack(sock, msg)
-      Pack.unpack(sock, rtype)
+      res = Pack.unpack(sock, Response)
+      @assert res isa rtype
+      res
     catch err
       @warn "Error during communication with $host:$port: $err"
+      nothing
     end
   end
 
@@ -402,7 +405,7 @@ module Api
 
   @kwdef struct QueryGeneration <: Action
     client_id :: UInt
-    wait :: Bool
+    wait :: Bool = false
   end
 
   @kwdef struct QueryGenerationRes <: Response

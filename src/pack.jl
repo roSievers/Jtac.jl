@@ -1,12 +1,9 @@
 
 import MsgPack: BinaryType, StringType, MapType, StructType
-import MsgPack: msgpack_type, to_msgpack, from_msgpack
+import MsgPack: msgpack_type, to_msgpack, from_msgpack, pack, unpack
 
 import TranscodingStreams: TOKEN_END
 import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
-
-pack(args...) = MsgPack.pack(args...)
-unpack(args...) = MsgPack.unpack(args...)
 
 function pack_compressed(io :: IO, value)
   stream = ZstdCompressorStream(io)
@@ -188,5 +185,62 @@ from_msgpack(:: Type{Bytes}, data :: Vector{UInt8}) = Bytes(data)
 
 Base.convert(:: Type{Bytes}, :: Nothing) = Bytes([])
 Base.convert(:: Type{Bytes}, x) = Bytes(pack(x))
+
+# ------- Typed packing ------------------------------------------------------ #
+
+decompose_subtype(T :: DataType) = error("'decompose_subtype' not implemented for $T")
+compose_subtype(_, T :: DataType) = error("'compose_subtype' not implemented for $T")
+
+function array_length(io)
+  byte = read(io, UInt8)
+  if byte >> 4 == 0x09 # fixed array
+    (byte << 4 >> 4) |> Base.ntoh |> Int # remove first 4 bytes and handle endianness
+  elseif byte == 0xdc # array with length <= 2^16 - 1
+    read(io, UInt16) |> Base.ntoh |> Int
+  elseif byte == 0xdd # array with length <= 2^32 - 1
+    read(io, UInt32) |> Base.ntoh |> Int
+  else
+    ArgumentError("array_length: invalid msgpack array byte")
+  end
+end
+
+macro typedpack(T)
+  S = Base.gensym(:S)
+
+  quote
+    Pack.msgpack_type( :: Type{<: $T}) = Pack.StructType()
+
+    function Pack.pack(io :: IO, val :: $S) where {$S <: $T}
+      keys = Base.fieldnames($S)
+      type = Pack.decompose_subtype($S)
+      val = Pack.freeze(val)
+      value = (; (key => Base.getfield(val, key) for key in keys)...)
+      Pack.pack(io, (; type, value))
+    end
+
+    function Pack.unpack(io :: IO, :: Type{$T}; kwargs...)
+      @assert read(io, UInt8) == 0x82
+      @assert Pack.unpack(io, Symbol) == :type
+      $S = Pack.compose_subtype(Pack.unpack(io), $T)
+      @assert $S <: $T
+      @assert Pack.unpack(io, Symbol) == :value
+      value = Pack.unpack(io, $S; kwargs...)
+      Pack.unfreeze(value)
+    end
+
+    function Pack.unpack(io :: IO, :: Type{Vector{$T}}; kwargs...)
+      len = Pack.array_length(io)
+      vec = Vector{$T}(undef, len)
+      for i in 1:len
+        vec[i] = Pack.unpack(io, $T; kwargs...)
+      end
+      vec
+    end
+  end |> esc
+
+end
+
+
+
 
 
