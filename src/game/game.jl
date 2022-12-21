@@ -244,19 +244,38 @@ name(G :: Type{<: AbstractGame}) = split(string(G), ".")[end]
 name(game :: AbstractGame) = name(typeof(game))
 
 """
-    instance(game or gen)
+    instance(game)
+    instance(G [, random])
 
-Obtain a game instance. If the argument is an instance of `AbstractGame`, this
-returns the same instance. Otherwise, the argument is understood as a game
-generator and is called.
+Obtain a game instance. Acts as identity on arguments `game` of type
+`AbstractGame`. If a game type `G` is provided, a new instance is created.
+
+The optional keyword argument `random` can be used to stochastically randomize
+the created instance. For example, if `random = 0.7`, then with probability
+`0.3` the default instance `G()` and with probability `0.7` a randomized
+instance `random_instance(G)` is returned.
 """
 instance(game :: AbstractGame) = game
-instance(gen) = gen()
 
 function instance(G :: Type{<: AbstractGame})
   @assert isconcretetype(G) "Cannot instantiate abstract game $G"
   G()
 end
+
+function instance(G :: Type{<: AbstractGame}; random)
+   if rand() < random
+     random_instance(G)
+   else
+     instance(G)
+   end
+end
+
+"""
+    random_instance(G)
+
+Return a randomized instance of game `G`.
+"""
+random_instance(G :: Type{<: AbstractGame}) = random_turns!(G(), 1:5)
 
 """
     branch(game; prob, steps = 1)
