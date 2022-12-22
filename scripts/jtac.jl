@@ -261,18 +261,23 @@ module Api
   import Base.@kwdef
 
   import Jtac: Pack, Data, Model, Player
-  import Jtac.Util: snakecase, camlcase
+  import Jtac.Data: DataSet
+  import Jtac.Player: MCTSPlayer
+
   import ..Events: Event
 
   abstract type Message end
   abstract type Action <: Message end
   abstract type Response <: Message end
 
-  Pack.@typedpack Action
-  Pack.@typedpack Response
+  Pack.@typedpack Message
 
-  Pack.decompose_subtype(M :: Type{<: Message}) = snakecase(M)
-  Pack.compose_subtype(str, :: Type{<: Message}) = camlcase(str) |> Symbol |> eval
+  struct ResponseOrError
+    res :: Union{Nothing, Response}
+    msg :: String
+  end
+
+  Pack.@structpack ResponseOrError
 
   # We always obtain a response from the socket, even if authorization fails. If
   # we don't, then it has to be an error and should be treated as such.
@@ -280,9 +285,13 @@ module Api
     try
       sock = Sockets.connect(host, port)
       Pack.pack(sock, msg)
-      res = Pack.unpack(sock, Response)
-      @assert res isa rtype
-      res
+      r = Pack.unpack(sock, ResponseOrError)
+      if isnothing(r.res)
+        @warn "Server $host:$port responded with error message: $(r.msg)"
+        nothing
+      else
+        r.res :: rtype
+      end
     catch err
       @warn "Error during communication with $host:$port: $err"
       nothing
@@ -458,11 +467,11 @@ module Api
 
   @kwdef struct QueryPlayer <: Action
     client_id :: UInt
-    generation :: Int = 0
+    generation :: Int = -1
   end
 
   @kwdef struct QueryPlayerRes <: Response
-    player :: Player.MCTSPlayer
+    player :: MCTSPlayer
     generation :: Int
     instance_randomization :: Float64 = 0.
     branch_probability :: Float64 = 0.
@@ -486,7 +495,7 @@ module Api
   @kwdef struct UploadData <: Action
     client_id :: UInt64
     generation :: Int
-    data :: Data.DataSet
+    data :: DataSet
   end
 
   @kwdef struct UploadDataRes <: Response
@@ -767,6 +776,194 @@ module Config
 
 
 end # module Config
+
+module Client
+
+  import Player: StopRecording
+
+  isrunning(ch) = isopen(ch.data) && isopen(ch.selfplay) 
+
+  function stop(ch)
+    close(ch.data)
+    close(ch.selfplay)
+  end
+
+  function init_selfplay_refs!(ch, config)
+    player, gen, options = take!(ch.selfplay)
+    player = Player.tune(player; gpu = config.gpu, async = config.async)
+    @info "initialized selfplay references (generation $gen)"
+    (player = Ref(player), gen = Ref(gen), options = Ref(options))
+  end
+
+  function update_selfplay_refs!(refs, ch, config)
+    if isready(ch.selfplay)
+      r = init_selfplay_refs!(ch, config)
+      refs.player[] = r.player[]
+      refs.gen[] = r.gen[]
+      refs.options[] = r.options[]
+      @info "updated selfplay references (generation $gen)"
+    end
+  end
+
+  function selfplay(ch, config)
+
+    callback_move() = isrunning(ch) || throw(StopRecording())
+
+    refs = init_selfplay_refs!(ch, config)
+
+    asyncmap(1:config.async, ntasks = config.async) do idx
+
+      gen = -1
+
+      while isrunning(ch)
+
+        update_selfplay_refs!(refs, ch, config)
+        
+        # generation changed, update variables
+        if gen != refs.gen[]
+
+          gen = refs.gen[]
+          player = refs.player[]
+          opts = refs.options[]
+
+          steps = opts.branch_step_min:opts.branch_step_max
+          branch(game) = Game.branch(game, prob = opts.branch_prob, steps = steps)
+          instance(G) = Game.randomized_instance(G, opts.instance_randomization)
+
+        end
+
+        try
+          ds = Player.record( player, 1
+                            ; threads = false
+                            , merge = true
+                            , branch
+                            , instance
+                            , callback_move )
+
+          put!(ch.data, (ds, gen))
+          @info "task $idx: created dataset of length $(length(ds)) (generation $gen)"
+
+        catch err
+          err isa StopRecording && break
+          err isa InvalidStateException && break
+
+          close(ch.data)
+          close(ch.selfplay)
+          throw(err)
+
+        end
+      end
+    end
+    nothing
+  end
+
+  function put_player!(ch, r)
+    gen = r.generation
+    player = r.player
+    options = (; r.instance_randomization, r.branch_probability
+               , r.branch_step_min, r.branch_step_max )
+    put!(ch.selfplay, (player, gen, options))
+    @info "registered new model generation $gen"
+    @info "options: $options"
+  end
+
+  function register_generations(host, port, client_id, ch)
+    try
+      while isrunning(ch)
+        r = Api.query_generation(host, port; client_id, wait = true)
+        r = Api.query_player(host, port; client_id, r.generation)
+        put_player!(ch, r)
+      end
+    catch err
+      @show err
+      stop(ch)
+    end
+  end
+
+  function upload_data(host, port, client_id, ch)
+    try
+      while isrunning(ch)
+        (data, generation) = take!(ch.data)
+        r = Api.upload_data(host, port; client_id, generation, data)
+        if r.success
+          @info "uploaded dataset of length $(length(data))"
+        else
+          @info "upload of dataset not successful"
+        end
+      end
+    catch err
+      @show err
+      stop(ch)
+    end
+  end
+
+  function register_stopsignal(ch)
+    read(stdin)
+    stop(ch)
+  end
+
+  function communicate(host, port, client_id, ch)
+
+    r = Api.query_player(host, port; client_id) 
+    isnothing(r) && (stop(ch); return)
+    put_player!(ch, r)
+
+    @sync begin
+      @async register_stopsignal(ch)
+      @async register_generations(host, port, client_id, ch)
+      @async upload_data(host, port, client_id, ch)
+    end
+  end
+
+  function record(
+                 ; host :: String = "127.0.0.1"
+                 , port :: Int = 7348
+                 , gpu :: Int = -1
+                 , async :: Int = 50
+                 , name :: String = ENV["USER"] * "-" * rand(1:10000)
+                 , password :: String = ""
+                 , retry_gap :: Float64 = 30. )
+
+    @assert Threads.nthreads() >= 2 "Jtac record client requires at least two threads"
+
+    # TODO: store all information here and read it from file (optionally)
+    config = Dict("gpu" => gpu, "async" => async)
+
+    while true
+      try
+        r = Api.login(host, port; password)
+
+        if isnothing(r)
+          @warn "Login at $host:$port failed"
+
+        else
+          @info "Logged in at $host:$port (client_id $(r.client_id))"
+          client_id = r.client_id
+          ch = (data = Channel(1000), selfplay = Channel(1))
+
+          @sync begin
+            Threads.@spawn communicate(host, port, client_id, ch)
+            Threads.@spawn selfplay(ch, config)
+          end
+        end
+
+      catch
+        @error "internal error encountered"
+        rethrow()
+
+      end
+
+      ch = nothing
+      GC.gc()
+
+      @info "trying to reconnect in $retry_gap seconds"
+      sleep(retry_gap)
+
+    end
+
+  end
+end
+
 
 function train( player :: MCTSPlayer{G}
               ; batchsize :: Int = 512
