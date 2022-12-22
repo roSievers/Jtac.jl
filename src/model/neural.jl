@@ -2,21 +2,15 @@
 # -------- Neural Network Head Creation -------------------------------------- #
 
 function prepare_head(head, s, l, gpu)
-
   if isnothing(head)
-
     head = Dense(prod(s), l, gpu = gpu)
-
   else
-
     @assert valid_insize(head, s) "Head incompatible with trunk."
     @assert prod(outsize(head, s)) == l "Head incompatible with game."
     head = (on_gpu(head) == gpu) ? head : swap(head)
-
   end
 
   head
-
 end
 
 # -------- Neural Model ------------------------------------------------------ #
@@ -25,16 +19,12 @@ end
 Trainable model that uses a neural network to generate value and policy targets
 for a game state. Optionally, the network can also predict other targets.
 """
-struct NeuralModel{G, GPU} <: AbstractModel{G, GPU}
-
+struct NeuralModel{G <: AbstractGame, GPU} <: AbstractModel{G, GPU}
   trunk :: Layer{GPU}                    # map tensorized game state to trunk features
-
   heads :: Vector{Layer{GPU}}            # target heads
   targets :: Vector{PredictionTarget{G}} # targets
-
 end
 
-Pack.register(NeuralModel)
 Pack.freeze(m :: NeuralModel) = to_cpu(m)
 
 """
@@ -57,7 +47,6 @@ function NeuralModel( :: Type{G}
                     ) where {G, GPU}
 
   @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
-
   targets = PredictionTarget{G}[value, policy, (t for t in opt_targets)...]
 
   if isnothing(opt_heads)
@@ -71,7 +60,6 @@ function NeuralModel( :: Type{G}
   heads = Layer{GPU}[ prepare_head(h, os, length(t), GPU) for (h, t) in zip(heads, targets) ]
 
   NeuralModel{G, GPU}(trunk, heads, targets) 
-
 end
 
 function add_target!( m :: NeuralModel{G, GPU}
@@ -83,7 +71,6 @@ function add_target!( m :: NeuralModel{G, GPU}
   head = prepare_head(head, os, length(t), GPU)
   push!(m.targets, t)
   push!(m.heads, head)
-
 end
 
 function Target.adapt(m :: NeuralModel{G, GPU}, targets) where {G, GPU}

@@ -15,8 +15,11 @@ mutable struct Caching{G} <: AbstractModel{G, false}
   calls_uncached :: Int
 end
 
-Pack.register(Caching)
-Pack.@mappack Caching [:model, :max_cachesize]
+Pack.@onlyfields Caching [:model, :max_cachesize]
+
+Caching{G}(model, max_cachesize) where {G} =
+  Caching(model; max_cachesize) :: Caching{G}
+
 Pack.freeze(m :: Caching) = switch_model(m, Pack.freeze(m.model))
 
 """
@@ -36,10 +39,6 @@ function Caching(model :: AbstractModel; max_cachesize = 100000)
   sizehint!(cache, max_cachesize)
   Caching(model, max_cachesize, cache, 0, 0)
 end
-
-# Helper constructor for packing
-Caching{G}(model :: AbstractModel, max_cachesize) where {G} =
-  Caching(model; max_cachesize)
 
 function apply(m :: Caching{G}, game :: G) where {G <: AbstractGame}
   m.calls_cached += 1

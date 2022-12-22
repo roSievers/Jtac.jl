@@ -45,14 +45,10 @@ different components of the loss function.
 """
 abstract type AbstractTarget end
 
-Pack.@mappack AbstractTarget
-Pack.register(AbstractTarget)
+Pack.@typed AbstractTarget
 
 abstract type PredictionTarget{G <: AbstractGame} <: AbstractTarget end
 abstract type RegularizationTarget <: AbstractTarget end
-
-Pack.register(PredictionTarget)
-Pack.register(RegularizationTarget)
 
 Base.length(t :: PredictionTarget) = error("Not implemented")
 
@@ -147,8 +143,6 @@ Value target. Receives special treatment and does not have to implement `evaluat
 """
 struct ValueTarget{G} <: PredictionTarget{G} end
 
-Pack.register(ValueTarget)
-
 ValueTarget(G :: Type{<: AbstractGame}) = ValueTarget{G}()
 
 Base.length(:: ValueTarget) = 1
@@ -166,8 +160,6 @@ Policy target. Receives special treatment and does not have to implement
 """
 struct PolicyTarget{G} <: PredictionTarget{G} end
 
-Pack.register(PolicyTarget)
-
 PolicyTarget(G :: Type{<: AbstractGame}) = PolicyTarget{G}()
 
 Base.length(:: PolicyTarget{G}) where {G <: AbstractGame} = policy_length(G)
@@ -184,8 +176,6 @@ struct DummyTarget{G} <: PredictionTarget{G}
   data :: Vector{Float32}
 end
 
-Pack.register(DummyTarget)
-
 DummyTarget(G :: Type{<: AbstractGame}, data = [0.0f0]) = DummyTarget{G}(data)
 
 Base.length(t :: DummyTarget) = length(t.data)
@@ -201,8 +191,6 @@ evaluate(t :: DummyTarget, _game, _idx, _history) = t.data
 
 struct L2Reg <: RegularizationTarget end
 
-Pack.register(L2Reg)
-
 name(:: L2Reg) = :l2reg
 
 function loss(:: L2Reg, model)
@@ -212,8 +200,6 @@ function loss(:: L2Reg, model)
 end
 
 struct L1Reg <: RegularizationTarget end
-
-Pack.register(L1Reg)
 
 name(:: L1Reg) = :l1reg
 

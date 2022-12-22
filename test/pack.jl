@@ -46,11 +46,11 @@
     all(l(data) .== unpacked(data))
   end
 
-  layer = Model.@chain (9, 9, 3) Pool() Dropout(0.5) Conv(16, "relu") Dense(8, "relu")
+  layer = Model.@chain (9, 9, 3) Conv(16, "relu") Dense(8, "relu")
   data = rand(Float32, 9, 9, 3, 1)
   @test pack_unpack(layer, data)
 
-  layer = Model.@chain (9, 9, 3) Pool() Dropout(0.5) Conv(16, "relu") Batchnorm()
+  layer = Model.@chain (9, 9, 3) Conv(16, "relu") Batchnorm()
   data = rand(Float32, 9, 9, 3, 1)
   @test pack_unpack(layer, data)
 
@@ -140,7 +140,7 @@
   end
 
   G = Game.MetaTac
-  model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Batchnorm() Pool() Dense(32, "relu"))
+  model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Batchnorm() Dense(32, "relu"))
 
   player = Player.IntuitionPlayer(model, temperature = 0.75)
   @test pack_unpack(player)

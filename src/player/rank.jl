@@ -122,7 +122,7 @@ end
 Ranking(ps :: Vector{String}, r :: Array{Int, 3}, args...) =
   Ranking(ps, reshape(r, :), args...)
 
-Pack.@structpack Ranking
+Pack.@untyped Ranking
 
 """
     rank(players, results; steps = 100)

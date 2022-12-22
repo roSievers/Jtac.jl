@@ -18,8 +18,6 @@ mutable struct Nim <: AbstractGame
   status :: Status
 end
 
-Pack.register(Nim)
-
 Nim() = Nim(ones(Int, 15), 1, 3, Status())
 
 function Base.copy(s :: Nim) :: Nim

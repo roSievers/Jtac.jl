@@ -22,8 +22,6 @@ mutable struct Morris <: AbstractGame
   actions_left :: Int # A move counter after which the game ends in a draw
 end
 
-Pack.register(Morris)
-
 Morris() = Morris(zeros(Int, 9), 1, 0, Status(), 6, 100)
 
 function Base.copy(s :: Morris) :: Morris

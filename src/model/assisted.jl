@@ -4,9 +4,6 @@ mutable struct Assisted{G} <: AbstractModel{G, false}
   assistent :: AbstractModel
 end
 
-Pack.register(Assisted)
-Pack.@mappack Assisted
-
 function Assisted(model :: AbstractModel{H}, assistent :: AbstractModel{F}) where {H, F}
   @assert F <: H || H <: F "Assistent and model cannot be applied to the same game types"
   G = typeintersect(F, H)

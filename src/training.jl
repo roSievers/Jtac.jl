@@ -284,15 +284,15 @@ function _train!( player :: AbstractPlayer{G}
 
     # Create the training set by merging with the last `matches` generations of
     # datasets that are stored in the replay_buffer
-    trainset = merge(datasets[1:train_matches]...)
+    trainset = merge(datasets[1:train_matches])
     for set in replay_buffer
-      trainset = merge(trainset, set...)
+      trainset = merge([trainset, set...])
     end
 
     # Create the testing set by collecting the remaining datasets generated
     # in this epoch
     if testfrac > 0
-      testset = merge(datasets[train_matches+1:matches]...)
+      testset = merge(datasets[train_matches+1:matches])
     else
       testset = nothing
     end

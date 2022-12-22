@@ -9,16 +9,20 @@ Async model always returns CPU arrays, even if the worker model acts on the GPU.
 mutable struct Async{G} <: AbstractModel{G, false}
   model          :: AbstractModel{G}
   channel        :: Channel
-  thread
+  task           :: Task
 
   max_batchsize  :: Int
   buffersize     :: Int     # Must not be smaller than max_batchsize!
 
   profile
+
 end
 
-Pack.register(Async)
-Pack.@mappack Async [:model, :max_batchsize, :buffersize]
+Pack.@onlyfields Async [:model, :max_batchsize, :buffersize]
+
+Async{G}(models, max_batchsize, buffersize) where {G} =
+  Async(models; max_batchsize, buffersize) :: Async{G}
+
 Pack.freeze(m :: Async) = switch_model(m, Pack.freeze(m.model))
 
 """
@@ -49,11 +53,11 @@ function Async( model :: AbstractModel{G};
   latency = Float64[]
   profile = (batchsize = batchsize, delay = delay, latency = latency)
 
-  # Start the worker thread in the background
-  thread = @async worker_thread(channel, model, max_batchsize, profile)
+  # Start the worker task in the background
+  task = @async worker_task(channel, model, max_batchsize, profile)
 
   # Create the instance
-  amodel = Async{G}(model, channel, thread, max_batchsize, buffersize, profile)
+  amodel = Async{G}(model, channel, task, max_batchsize, buffersize, profile)
 
   # Register finalizer
   finalizer(m -> close(m.channel), amodel)
@@ -63,12 +67,6 @@ function Async( model :: AbstractModel{G};
 
 end
 
-# This constructor is used for unpacking
-function Async{G}( model :: AbstractModel{G},
-                   max_batchsize :: Int,
-                   buffersize :: Int ) where {G <: AbstractGame}
-  Async(model; max_batchsize, buffersize)
-end
 
 function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
   out_channel = Channel(1)
@@ -123,7 +121,7 @@ function closed_and_empty(channel, profile)
   end
 end
 
-function worker_thread(channel, model, max_batchsize, profile)
+function worker_task(channel, model, max_batchsize, profile)
 
   @debug "Async worker started"
 

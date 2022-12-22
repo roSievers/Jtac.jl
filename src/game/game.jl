@@ -32,8 +32,7 @@ to find out the current player, the game status, or the legal actions.
 """
 abstract type AbstractGame end
 
-Pack.@structpack AbstractGame
-Pack.register(AbstractGame)
+Pack.@untyped AbstractGame
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
  

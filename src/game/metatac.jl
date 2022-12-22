@@ -10,11 +10,7 @@ mutable struct MetaTac <: AbstractGame
   region_status_cache :: Vector{Status}
 end
 
-Pack.register(MetaTac)
-
-function MetaTac()
-  MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
-end
+MetaTac() = MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
 
 is_augmentable(:: Type{MetaTac}) = true
 

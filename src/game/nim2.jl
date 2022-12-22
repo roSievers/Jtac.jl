@@ -19,8 +19,6 @@ mutable struct Nim2 <: AbstractGame
   status :: Status
 end
 
-Pack.register(Nim2)
-
 Nim2() = Nim2(15, 1, 3, Status())
 
 function Base.copy(s :: Nim2) :: Nim2

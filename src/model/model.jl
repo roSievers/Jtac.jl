@@ -26,7 +26,7 @@ improved policy for its decision).
 """
 abstract type AbstractModel{G <: AbstractGame, GPU} <: Element{GPU} end
 
-Pack.@mappack AbstractModel
+Pack.@typed AbstractModel
 Pack.freeze(m :: AbstractModel) = to_cpu(m)
 
 to_cpu(a) = convert(atype(false), a)

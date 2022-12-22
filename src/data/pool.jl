@@ -160,7 +160,8 @@ function trim!(dp :: Pool)
   q = dp.criterion.(dp.meta)
   indices = findall(x -> x > 0, q)
   total = length(dp)
-#  flagged = length(indices)
+
+  minq = 0.
 
   while length(indices) > dp.capacity
     # Get the lowest quality value in the pool that is not yet flagged for

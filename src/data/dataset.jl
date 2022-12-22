@@ -1,7 +1,36 @@
 
 # -------- Datasets ---------------------------------------------------------- #
 
-const LabelData = Vector{Vector{Float32}}
+struct LabelData
+  data :: Vector{Vector{Float32}}
+end
+
+Pack.@untyped LabelData
+
+Pack.fieldnames(:: Type{LabelData}) = [:length, :bytes]
+Pack.fieldtypes(:: Type{LabelData}) = [Int, Pack.Bytes]
+Pack.fieldvalues(l :: LabelData) = [length(l.data), Pack.Bytes(reduce(vcat, l.data))]
+
+function Pack.construct(:: Type{LabelData}, length, bytes)
+  data = reinterpret(Float32, bytes.data)
+  data = reshape(data, :, Int(length))
+  LabelData(collect.(eachcol(data)))
+end
+
+LabelData() = LabelData([])
+
+Base.length(ld :: LabelData) = Base.length(ld.data)
+Base.copy(ld :: LabelData) = LabelData(copy(ld.data))
+
+Base.append!(ld :: LabelData, ld2 :: LabelData) = append!(ld.data, ld2.data)
+Base.push!(ld :: LabelData, args...) = push!(ld.data, args...)
+Base.pop!(ld :: LabelData) = pop!(ld.data)
+
+Base.iterate(ld :: LabelData, args...) = iterate(ld.data, args...)
+Base.getindex(ld :: LabelData, args...) = getindex(ld.data, args...)
+
+Base.convert(:: Type{LabelData}, data :: Vector{Vector{Float32}}) = LabelData(data)
+Base.convert(:: Type{Vector{Vector{Float32}}}, ld :: LabelData) = ld.data
 
 """
 Structure that holds a list of games and labels, i.e., prediction targets for
@@ -18,52 +47,7 @@ mutable struct DataSet{G <: AbstractGame}
   targets :: Vector{PredictionTarget{G}}
 end
 
-Pack.register(DataSet)
-Pack.@mappack DataSet
-
-function Pack.destruct(ds :: DataSet)
-  label = reduce(vcat, reduce.(vcat, ds.labels))
-  bytes = reinterpret(UInt8, label)
-  Dict{String, Any}(
-      "games" => Pack.Bytes(Pack.pack(ds.games))
-    , "labels" => Pack.Bytes(bytes)
-    , "targets" => Pack.Bytes(Pack.pack(ds.targets))
-  )
-end
-
-function split_array(x, lengths)
-  res = LabelData()
-  start = firstindex(x)
-  for len in lengths
-    push!(res, x[start:(start+len-1)])
-    start += len
-  end
-  res
-end
-
-function Pack.construct(:: Type{DataSet{G}}, d :: Dict) where {G}
-  games = Pack.unpack(d["games"], Vector{G})
-  targets = Pack.unpack(d["targets"], Vector{PredictionTarget{G}})
-
-  data = reinterpret(Float32, d["labels"])
-  lengths = length.(targets) .* length(games)
-
-  @assert length(data) == sum(lengths)
-
-  labels = map(split_array(data, lengths)) do arr
-    arr = reshape(arr, :, length(games))
-    collect.(eachcol(arr))
-  end
-
-  Data.DataSet(games, labels, targets)
-end
-
-Pack.freeze(d :: DataSet) =
-  DataSet(Pack.freeze.(d.games), d.labels, d.targets)
-
-Pack.unfreeze(d :: DataSet) =
-  DataSet(Pack.unfreeze.(d.games), d.labels, d.targets)
-
+Pack.@typed DataSet
 
 """
       DataSet(G, targets)
@@ -200,7 +184,7 @@ function Game.augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: Abstract
     policies = map(x -> x[j], ps)
     values = copy(values)
 
-    labels = [values, policies, (LabelData() for _ in 1:length(d.labels)-2)...]
+    labels = [values, LabelData(policies), (LabelData() for _ in 1:length(d.labels)-2)...]
 
     DataSet(games, labels, d.targets)
   end

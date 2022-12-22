@@ -17,13 +17,13 @@ import .Player: MCTSPlayer, record
   @test data isa Data.DataSet{G}
   @test length(data) == length(sel) == 20
   Data.capacity!(dp, 50)
-  @test Data.trim!(dp) == 50
+  @test Data.trim!(dp)[1] == 50
   @test length(dp) == Data.capacity(dp)
   Data.update!(dp) do meta
     (;meta..., age = meta.age + 1)
   end
   @test dp.meta[1].age == 2
   Data.criterion!(x -> 2 - x.age, dp)
-  @test Data.trim!(dp) == Data.capacity(dp)
+  @test Data.trim!(dp)[1] == Data.capacity(dp)
   @test length(dp) == 0
 end

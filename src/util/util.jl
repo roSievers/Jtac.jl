@@ -2,15 +2,6 @@
 
 # -------- Helpers ----------------------------------------------------------- #
 
-snakecase(str :: String) =
-  join(lowercase.(split(str, r"(?=[A-Z])")), "_")
-
-snakecase(sym :: Symbol) = snakecase(string(sym))
-snakecase(typ :: DataType) = snakecase(Base.nameof(typ))
-
-camlcase(str :: String) =
-  join(uppercasefirst(word) for word in split(str, "_"))
-
 # -------- Symmetry ---------------------------------------------------------- #
 
 cind(i, s) = Tuple(CartesianIndices(s)[i])
