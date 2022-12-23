@@ -364,14 +364,39 @@ export Util,
        Target,
        Training
 
-# Init of module Jtac
-#function __init__()
-  # Resolves bug when CUDA.cached_memory is not defined
-#  @eval begin
-#    Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) =
-#      min(CUDA.Mem.info()[1], length(x)*sizeof(eltype(x)) * 100)
-#  end
-#end
+# -------- Training ---------------------------------------------------------- #
 
+module Server
+  module Config
+
+    import TOML 
+
+    include("server/config.jl")
+
+  end
+
+  module Events
+
+    import ...Pack
+    import ...Player: Ranking
+
+    include("server/events.jl")
+
+  end
+
+  module Api
+
+    import ...Pack
+    import ...Data: DataSet
+    import ...Model: AbstractModel
+    import ...Player: MCTSPlayer, Ranking
+
+    import ..Events: Event
+
+    include("server/api.jl")
+
+  end
+
+end
 
 end # module Jtac
