@@ -256,16 +256,12 @@ instance `random_instance(G)` is returned.
 """
 instance(game :: AbstractGame) = game
 
-function instance(G :: Type{<: AbstractGame})
-  @assert isconcretetype(G) "Cannot instantiate abstract game $G"
-  G()
-end
-
 function instance(G :: Type{<: AbstractGame}; random)
+   @assert isconcretetype(G) "Cannot instantiate abstract game $G"
    if rand() < random
      random_instance(G)
    else
-     instance(G)
+     G()
    end
 end
 

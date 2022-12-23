@@ -175,8 +175,6 @@ struct Bytes
   data :: Vector{UInt8}
 end
 
-Bytes(arr :: Array) = Bytes(reinterpret(UInt8, reshape(arr, :)))
-
 function pack(io :: IO, val :: Bytes)
   write_bin_format(io, length(val.data))
   write(io, val.data)
@@ -186,6 +184,10 @@ function unpack(io :: IO, :: Type{Bytes})
   n = bin_length(io)
   Bytes(read(io, n))
 end
+
+
+Bytes(arr :: Array) = Bytes(reinterpret(UInt8, reshape(arr, :)))
+Base.convert(:: Type{Bytes}, bytes :: Vector{UInt8}) = Bytes(bytes)
 
 #Base.convert(:: Type{Bytes}, :: Nothing) = Bytes([])
 
