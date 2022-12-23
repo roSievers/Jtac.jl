@@ -233,12 +233,12 @@ Enables unpacking of values of type `Union{Nothing, <: T}`.
 macro nullable(T)
   S = Base.gensym(:S)
   quote
-    Pack.unpack(io :: IO, $S :: Type{Union{Nothing, <: $T}}) =
-      Pack.unpack_nullable(io, $S)
+    Pack.unpack(io :: IO, :: Type{Union{Nothing, $S}}) where {$S <: $T} =
+    Pack.unpack_nullable(io, $S)
   end |> esc
 end
 
-function unpack_nullable(io :: IO, :: Type{Union{Nothing, S}}) where {S}
+function unpack_nullable(io :: IO, S :: Type)
   if peek(io, UInt8) == 0xc0
     read(io, UInt8)
     nothing

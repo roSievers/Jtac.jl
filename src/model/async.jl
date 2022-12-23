@@ -6,7 +6,7 @@ Asynchronous model wrapper that allows a model to be called on a batch of games
 in parallel when the single calls take place in an async context. Note that an
 Async model always returns CPU arrays, even if the worker model acts on the GPU.
 """
-mutable struct Async{G} <: AbstractModel{G, false}
+mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
   model          :: AbstractModel{G}
   channel        :: Channel
   task           :: Task

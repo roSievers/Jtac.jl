@@ -1,0 +1,37 @@
+
+
+[server]
+host = "0.0.0.0"
+port = 7328
+gpu = 2
+snapshot_interval = 5
+snapshot_path = "models/$s/$s-$n.jtm"
+
+[training]
+model = "models/ludwig.jtm"
+batchsize = 1024
+stepsize = 10240
+gensize = 102400
+optimizer = "momentum"
+lr = 1e-2 # should be generalized
+
+[selfplay]
+#model = "" # used for selfplay if given and different from train.model
+power = 250
+temperature = 0.95
+exploration = 1.41
+dilution = 0.05
+instance_randomization = 0.3
+branch_probability = 0.02
+branch_step_min = 1
+branch_step_max = 2
+
+[pool]
+capacity = 5_000_000
+augment = false
+keep_generations = 3
+keep_iterations = 10
+quality_sampling = true
+quality_sampling_stop = 0.5
+quality_sampling_resume = 0.75
+

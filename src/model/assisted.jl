@@ -1,5 +1,5 @@
 
-mutable struct Assisted{G} <: AbstractModel{G, false}
+mutable struct Assisted{G <: AbstractGame} <: AbstractModel{G, false}
   model :: AbstractModel
   assistent :: AbstractModel
 end

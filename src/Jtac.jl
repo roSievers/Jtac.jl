@@ -362,7 +362,8 @@ export Util,
        Player,
        Data,
        Target,
-       Training
+       Training,
+       Server
 
 # -------- Training ---------------------------------------------------------- #
 

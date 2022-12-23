@@ -15,6 +15,9 @@ end
 
 Pack.@untyped ResponseOrError
 
+respond(sock, res :: Response) = Pack.pack(sock, ResponseOrError(res, "")) 
+respond(sock, msg :: String) = Pack.pack(sock, ResponseOrError(nothing, msg)) 
+
 # We always obtain a response from the socket, even if authorization fails. If
 # we don't, then it has to be an error and should be treated as such.
 function handle(msg, rtype, port = 7238, host = ip"127.0.0.1", )

@@ -138,7 +138,7 @@ Base.show(io :: IO, p :: RandomPlayer) = print(io, "RandomPlayer(random)")
 """
 A player that relies on the policy returned by a model.
 """
-struct IntuitionPlayer{G} <: AbstractPlayer{G}
+struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
   temperature :: Float32
   name :: String
@@ -241,7 +241,7 @@ end
 A player that relies on Markov chain tree search policies that are constructed
 with the support of a model.
 """
-struct MCTSPlayer{G} <: AbstractPlayer{G}
+struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
 
   model :: AbstractModel
 

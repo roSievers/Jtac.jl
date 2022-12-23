@@ -5,7 +5,7 @@ Model wrapper that enables game state caching. This wrapper is intended for
 accelerating MCTS playouts, since previously evaluated game states might be
 queried repeatedly.
 """
-mutable struct Caching{G} <: AbstractModel{G, false}
+mutable struct Caching{G <: AbstractGame} <: AbstractModel{G, false}
   model :: AbstractModel{G}
   max_cachesize :: Int
 
