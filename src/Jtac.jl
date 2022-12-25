@@ -354,20 +354,10 @@ module Training
 
 end # module Training
 
-
-export Util,
-       Pack,
-       Game,
-       Model,
-       Player,
-       Data,
-       Target,
-       Training,
-       Server
-
-# -------- Training ---------------------------------------------------------- #
+# -------- Server ------------------------------------------------------------ #
 
 module Server
+
   module Config
 
     import TOML 
@@ -399,5 +389,16 @@ module Server
   end
 
 end
+
+
+export Util,
+       Pack,
+       Game,
+       Model,
+       Player,
+       Data,
+       Target,
+       Training,
+       Server
 
 end # module Jtac
