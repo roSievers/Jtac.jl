@@ -71,6 +71,7 @@ function add_target!( m :: NeuralModel{G, GPU}
   head = prepare_head(head, os, length(t), GPU)
   push!(m.targets, t)
   push!(m.heads, head)
+  nothing
 end
 
 function Target.adapt(m :: NeuralModel{G, GPU}, targets) where {G, GPU}

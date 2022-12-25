@@ -139,11 +139,21 @@ function worker_task(channel, model, max_batchsize, profile)
 
         push!(profile.batchsize, length(inputs))
 
-        v, p = model(first.(inputs))
-        v = to_cpu(v)
-        p = to_cpu(p)
+        try
+          v, p = model(first.(inputs))
+          v = to_cpu(v)
+          p = to_cpu(p)
+        catch
+          for i in 1:length(inputs)
+            # Notify all callers that something went wrong
+            # Otherwise, this task fails silently and the
+            # callers hang
+            try close(inputs[i][2]) catch end
+          end
+          rethrow()
+        end
 
-        for i = 1:length(inputs)
+        for i in 1:length(inputs)
           put!(inputs[i][2], (value = v[i], policy = p[:,i]))
         end
       end
