@@ -164,6 +164,7 @@ function start(k :: AbstractKernel)
     log(k, "start: encountered error: $err")
     modify_status!(k, :failed)
   finally
+    getstatus(k) == :stopping && modify_status!(k, :stopped)
     log(k, "start: kernel exited with status :$(getstatus(k))")
     close(s.signal)
     close(s.log)
@@ -412,7 +413,7 @@ function handle_signals(k :: AbstractKernel; on_stop, on_exit)
         locked_notify(s.pause)
         break
       elseif signal == :stop
-        modify_status!(k, :stopped)
+        modify_status!(k, :stopping)
         locked_notify(s.pause)
         on_stop() # this should cause close(k.signal) from somewhere in the kernel
       elseif signal == :pause
@@ -638,8 +639,6 @@ function setdevice!(k)
   end
 end
 
-# the thread that executes update_storage also carries
-# the model and is thus responsible for picking the right gpu
 function update_storage(k :: SelfplayKernel, storage)
   gpu = setdevice!(k)
   async = getasync(k)
