@@ -123,6 +123,10 @@ end
 
 function worker_task(channel, model, max_batchsize, profile)
 
+  # this task has to run under the same CUDA device the model has been created
+  # in
+  adapt_gpu_device!(model)
+
   @debug "Async worker started"
 
   try

@@ -61,6 +61,21 @@ release_gpu_memory!(x :: CUDA.CuArray{Float32}) =
 release_gpu_memory!(x :: Knet.KnetArray{Float32}) =
   Knet.KnetArrays.freeKnetPtr(x.ptr)
 
+Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) = 0
+
+function adapt_gpu_device!(obj)
+  params = Knet.params(obj) 
+  @assert length(params) > 0
+  val = Knet.value(params[1])
+  if val isa Knet.KnetArray
+    dev = CUDA.device(val.ptr.parent)
+    CUDA.device!(dev)
+  elseif val isa CUDA.CuArray
+    dev = CUDA.device(val)
+    CUDA.device!(dev)
+  end
+end
+
 # Check if something is an AutoGrad param or not
  
 is_param(p) = isa(p, Knet.Param)
