@@ -139,10 +139,9 @@ function worker_task(channel, model, max_batchsize, profile)
 
         push!(profile.batchsize, length(inputs))
 
-        try
+        v, p = try
           v, p = model(first.(inputs))
-          v = to_cpu(v)
-          p = to_cpu(p)
+          to_cpu(v), to_cpu(p)
         catch
           for i in 1:length(inputs)
             # Notify all callers that something went wrong
