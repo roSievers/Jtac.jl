@@ -225,6 +225,7 @@ module Model
   include("model/basic.jl")
   include("model/neural.jl")
   include("model/async.jl")
+  include("model/threaded.jl")
   include("model/caching.jl")
   include("model/assisted.jl")
 

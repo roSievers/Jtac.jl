@@ -624,7 +624,7 @@ end
 
 function getasync(k)
   async = get(k.config, :async, 50) :: Integer
-  @assert 1 <= async <= 1000
+  @assert 1 <= async <= 8192
   async
 end
 
@@ -633,6 +633,7 @@ function setdevice!(k)
   if gpu >= 0
     @assert gpu < length(CUDA.devices())
     CUDA.device!(gpu)
+    log(k, "set gpu device to $gpu")
     true
   else
     false
@@ -645,7 +646,7 @@ function update_storage(k :: SelfplayKernel, storage)
 
   while getstatus(k) == :running
     player, ctx = @take_or! k.player break
-    log(k, "received new context")
+    log(k, "received player and context")
     player = Player.tune(player; gpu, async)
     modify!(storage.player, (player, ctx))
   end
@@ -676,7 +677,7 @@ function cycle_selfplays(k, storage)
 
     log(k, "cycle_selfplays: dataset generated")
     put_maybe!(k, k.data, (ds, ctx))
-    GC.gc()
+    # GC.gc()
   end
 end 
 
