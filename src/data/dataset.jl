@@ -25,6 +25,7 @@ Base.copy(ld :: LabelData) = LabelData(copy(ld.data))
 Base.append!(ld :: LabelData, ld2 :: LabelData) = append!(ld.data, ld2.data)
 Base.push!(ld :: LabelData, args...) = push!(ld.data, args...)
 Base.pop!(ld :: LabelData) = pop!(ld.data)
+Base.deleteat!(ld :: LabelData, idx) = deleteat!(ld.data, idx)
 
 Base.iterate(ld :: LabelData, args...) = iterate(ld.data, args...)
 Base.getindex(ld :: LabelData, args...) = getindex(ld.data, args...)
@@ -158,6 +159,13 @@ function Base.split(d :: DataSet{G}, maxsize :: Int; shuffle = false) where {G}
   end
 end
 
+function Base.deleteat!(d :: DataSet, idx)
+  deleteat!(d.games, idx)
+  foreach(d.labels) do label
+    deleteat!(label, idx)
+  end
+end
+
 function Game.augment(d :: DataSet{G}) :: Vector{DataSet{G}} where G <: AbstractGame
 
   length(d) == 0 && return [d]
@@ -204,6 +212,11 @@ function Target.adapt(d :: DataSet, targets)
   idx = Target.adapt(d.targets, targets)
   DataSet(d.games, d.labels[idx], d.targets[idx])
 end
+
+# replace different labels for same state by average labels
+# TODO
+#function sanitize(d :: DataSet)
+#end
 
 
 function Base.show(io :: IO, d :: DataSet{G}) where G <: AbstractGame

@@ -1,34 +1,55 @@
 
-# default config sections
+# config sections
 
 function server(
   ; host :: String = "127.0.0.1"
   , port :: Int = 7238 
-  , gpu :: Int = 0
+  , gpu :: Int = -1
   , snapshot_interval :: Int = 5
   , snapshot_path :: String = "" )
 
-  Dict( "host" => host
-      , "port" => port
-      , "gpu" => gpu
-      , "snapshot_interval" => snapshot_interval
-      , "snapshot_path" => snapshot_path )
+  Dict( :host => host
+      , :port => port
+      , :gpu => gpu
+      , :snapshot_interval => snapshot_interval
+      , :snapshot_path => snapshot_path )
+end
+
+
+function client(
+  ; host :: String = "127.0.0.1"
+  , port :: Int = 7248
+  , gpu :: Int = -1
+  , async :: Int = 50
+  , name :: String = ENV["USER"] * "-" * rand(1:1000)
+  , password :: String = ""
+  , retry_gap :: Float64 = 30. )
+
+  Dict( :host => host
+      , :port => port
+      , :gpu => gpu
+      , :async => async
+      , :name => name
+      , :password => password
+      , :retry_gap => retry_gap )
 end
 
 function training(
   ; model :: String = ""
   , batchsize :: Int = 512
-  , stepsize :: Int = batchsize * 10
-  , gensize :: Int = batchsize * 100
+  , stepsize :: Int = 10
+  , gensize :: Int = 100
   , optimizer :: Symbol = :momentum
-  , lr :: Float64 = 1e-2 )
+  , gamma :: Float64 = 0.95
+  , lr :: Float64 = 0.05 )
 
-  Dict( "model" => model
-      , "batchsize" => batchsize
-      , "stepsize" => stepsize
-      , "gensize" => gensize
-      , "optimizer" => optimizer
-      , "lr" => lr )
+  Dict( :model => model
+      , :batchsize => batchsize
+      , :stepsize => stepsize
+      , :gensize => gensize
+      , :optimizer => optimizer
+      , :gamma => gamma
+      , :lr => lr )
 end
 
 function selfplay(
@@ -37,47 +58,48 @@ function selfplay(
   , temperature :: Float64 = 1.
   , exploration :: Float64 = 1.41
   , dilution :: Float64 = 0.0
+  , augment :: Bool = false
   , instance_randomization = 0.0
   , branch_probability = 0.0
   , branch_step_min = 1
   , branch_step_max = 10 )
 
-  Dict( "model" => model
-      , "power" => power
-      , "temperature" => temperature
-      , "exploration" => exploration
-      , "dilution" => dilution
-      , "instance_randomization" => instance_randomization
-      , "branch_probability" => branch_probability
-      , "branch_step_min" => branch_step_min
-      , "branch_step_max" => branch_step_max )
+  Dict( :model => model
+      , :power => power
+      , :temperature => temperature
+      , :exploration => exploration
+      , :dilution => dilution
+      , :augment => augment
+      , :instance_randomization => instance_randomization
+      , :branch_probability => branch_probability
+      , :branch_step_min => branch_step_min
+      , :branch_step_max => branch_step_max )
 end
 
 function pool(
-  ; capacity :: Int = 1_000_000
-  , augment :: Bool = false
+  ; size_min :: Int = 0
+  , size_max :: Int = 1_000_000
+  , size_min_test :: Int = 1_000
+  , size_max_test :: Int = 10_000
   , keep_generations :: Int = 3
-  , keep_iterations :: Int = 1
-  , quality_sampling :: Bool = true
-  , quality_sampling_stop :: Float64 = quality_sampling ? 0.5 : -1.
-  , quality_sampling_resume :: Float64 = quality_sampling ? 0.75 : -1. )
+  , keep_iterations :: Int = 10 )
 
-  Dict( "capacity" => capacity
-      , "augment" => augment
-      , "keep_iterations" => keep_iterations
-      , "keep_generations" => keep_generations
-      , "quality_sampling" => quality_sampling
-      , "quality_sampling_stop" => quality_sampling_stop
-      , "quality_sampling_resume" => quality_sampling_resume )
+  Dict( :size_min => size_min
+      , :size_max => size_max
+      , :size_min_test => size_min_test
+      , :size_max_test => size_max_test
+      , :keep_iterations => keep_iterations
+      , :keep_generations => keep_generations )
 end
 
 # Auxiliary functions
 
 function default()
-  Dict( "server" => server()
-      , "training" => training()
-      , "selfplay" => selfplay()
-      , "pool" => pool() )
+  Dict( :server => server()
+      , :client => client()
+      , :training => training()
+      , :selfplay => selfplay()
+      , :pool => pool() )
 end
 
 struct ConfigKeyError <: Exception
