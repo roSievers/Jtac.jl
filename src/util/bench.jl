@@ -2,6 +2,32 @@
 import ThreadPools
 using LinearAlgebra
 
+
+function throughput(model, trials = 1000)
+  @assert model isa Model.NeuralModel
+  G = Model.gametype(model)
+  for batchsize in [1, 10, 50, 100, 200]
+    games = [Game.random_instance(G) for _ in 1:batchsize]
+    data = Game.array(games)
+    if Model.on_gpu(model)
+      data = Model.to_gpu(data)
+    end
+    println("batchsize $batchsize")
+    for (descr, input) in [("with conversion", games), ("without conversion", data)]
+      dt = @elapsed for _ in 1:trials
+        res = model(data)
+        res = Model.to_cpu.(res)
+      end
+      sps = batchsize * trials/dt
+      mps = sps / 250
+      @printf "  %s: %.2f states/s" descr sps
+      @printf " (%.2f m/s at power 250)\n" mps
+    end
+    println()
+  end
+end
+
+
 function record(player, n; augment = false, kwargs...)
 
   start_time = time()
