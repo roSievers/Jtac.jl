@@ -3,7 +3,7 @@
 
 function prepare_head(head, s, l, gpu)
   if isnothing(head)
-    head = Dense(prod(s), l, gpu = gpu)
+    head = Dense(prod(s), l, "id", gpu = gpu)
   else
     @assert valid_insize(head, s) "Head incompatible with trunk."
     @assert prod(outsize(head, s)) == l "Head incompatible with game."

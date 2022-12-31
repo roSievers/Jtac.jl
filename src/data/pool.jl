@@ -16,7 +16,7 @@ end
 
 function Pool( :: Type{G}
              , meta :: NamedTuple
-             , criterion :: Function
+             , criterion :: Function = _ -> 1.
              ; capacity :: Int = 100000
              , targets = Target.defaults(G)
              ) where {G <: AbstractGame}
@@ -78,10 +78,12 @@ end
 
 """
     criterion!(crit, pool)
+    criterion!(pool, crit)
 
 Canges the quality criterion of `pool` to `crit`.
 """
 criterion!(f :: Function, dp :: Pool) = (dp.criterion = f)
+criterion!(dp :: Pool, f :: Function) = (dp.criterion = f)
 
 
 """
@@ -122,14 +124,19 @@ quality(dp :: Pool, sel) = dp.criterion(dp.meta[sel])
 
 Quality-weighted sampling of `n` elements from `pool` without replacement.
 """
-function sample(dp :: Pool, n)
+function sample(dp :: Pool, n, weighted = false)
   # The algorithm is based on the exponential sort trick documented here:
   #   https://timvieira.github.io/blog/post/2019/09/16/algorithms-for-sampling-without-replacement/
-  @assert n < length(dp.data)
-  w = quality(dp)
-  k = length(dp.data)
-  r = rand(length(dp.data))
-  sel = partialsortperm(-log.(r) ./ w, 1:n)
+  l = length(dp.data)
+  n = min(n, l)
+  if weighted
+    w = quality(dp)
+    k = length(dp.data)
+    r = rand(l)
+    sel = partialsortperm(-log.(r) ./ w, 1:n)
+  else
+    sel = randperm(l)[1:n]
+  end
   (dp.data[sel], sel)
 end
 
@@ -150,7 +157,7 @@ function update!(f, dp :: Pool, sel)
 end
 
 """
-    trim!(pool; criterion)
+    trim!(pool)
 
 Remove data entries from `pool`. Entries with `criterion <= 0` are always
 removed. If the capacity of the pool is still exceeded, entries with `criterion
@@ -185,5 +192,20 @@ function trim!(dp :: Pool)
   dp.meta = dp.meta[indices]
 
   total - length(indices), minq
+end
+
+"""
+    trim!(pool, sel)
+
+More lightweight version of `trim!`. Only removes elements in `sel` with quality
+`0`.
+"""
+function trim!(dp :: Pool, sel)
+  indices = findall(sel) do i
+    dp.criterion(dp.meta[i]) == 0
+  end
+  indices = sort(indices)
+  deleteat!(dp.data, indices)
+  deleteat!(dp.meta, indices)
 end
 

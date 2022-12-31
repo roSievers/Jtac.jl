@@ -25,6 +25,8 @@ function use_threads(threads, player)
   threads == :auto && bgthreads > 0 && can_async
 end
 
+use_threads(threads, :: Channel) = false
+
 """
     with_BLAS_threads(f, n)
 
@@ -106,16 +108,17 @@ player = Player.MCTSPlayer(model, power = 50)
 dataset = Player.record(player, 10, augment = false)
 ```
 """
-function record( p :: AbstractPlayer{G}
+function record( p :: Union{P, Channel{P}}
                , n :: Int = 1
                ; merge = true
                , threads = :auto
                , callback_move = _ -> nothing
-               , opt_targets = Target.targets(p)[3:end]
-               , kwargs... ) where {G}
+               , opt_targets = Target.targets(fetch(p))[3:end]
+               , kwargs...
+               ) where {P <: AbstractPlayer}
 
 
-  if use_threads(threads, p)
+  if use_threads(threads, fetch(p))
 
     ds = with_BLAS_threads(1) do
 
@@ -141,7 +144,7 @@ function record( p :: AbstractPlayer{G}
       H = typeof(game)
       targets = [Target.defaults(H); opt_targets] 
 
-      dataset = DataSet(typeof(game), targets)
+      dataset = DataSet(H, targets)
 
       moves = 0
 
@@ -150,7 +153,7 @@ function record( p :: AbstractPlayer{G}
         while !is_over(game)
 
           # Get the improved policy from the player
-          policy = think(p, game)
+          policy = think(fetch(p), game)
 
           # Record the current game state and policy target label
           # (we do not know the value label yet)
@@ -192,7 +195,9 @@ function record( p :: AbstractPlayer{G}
 
     ds = with_BLAS_threads(1) do
       # Record several matches with (optional) branching and augmentation
-      record_with_branching(G, play, n; ntasks = Model.ntasks(p), kwargs...)
+      G = Model.gametype(fetch(p))
+      ntasks = Model.ntasks(fetch(p))
+      record_with_branching(G, play, n; ntasks, kwargs...)
     end
 
   end
