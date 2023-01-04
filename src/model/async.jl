@@ -69,9 +69,11 @@ end
 
 
 function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
-  out_channel = Channel(1)
+  out_channel = Condition()
   put!(m.channel, (copy(game), out_channel))
-  take!(out_channel)
+  lock(out_channel) do
+    wait(out_channel)
+  end
 end
 
 
@@ -151,13 +153,17 @@ function worker_task(channel, model, max_batchsize, profile)
             # Notify all callers that something went wrong
             # Otherwise, this task fails silently and the
             # callers hang
+            notify(c, InvalidStateException("Async worker errored"), error = true)
             try close(inputs[i][2]) catch end
           end
           rethrow()
         end
 
         for i in 1:length(inputs)
-          put!(inputs[i][2], (value = v[i], policy = p[:,i]))
+          c = inputs[i][2]
+          lock(c) do
+            notify(c, (value = v[i], policy = p[:,i]))
+          end
         end
       end
 

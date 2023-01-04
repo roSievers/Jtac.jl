@@ -182,5 +182,8 @@ save(fname, model) = open(io -> Pack.pack(io, model |> to_cpu), fname, "w")
 
 Load a Jtac model from `fname`. The typical file extension is `.jtm`.
 """
-load(fname) = open(io -> Pack.unpack(io, AbstractModel), fname)
+function load(fname; gpu = false)
+  model = open(io -> Pack.unpack(io, AbstractModel), fname)
+  to_gpu(model)
+end
 

@@ -22,6 +22,8 @@ mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G, false}
   lock
   buf_in
   buf_out
+
+  profile
 end
 
 Pack.@onlyfields Threaded [:model, :max_batchsize, :buffersize]
@@ -57,8 +59,11 @@ function Threaded( model :: NeuralModel{G};
   buf_p = [zeros(Float32, l, max_batchsize) for _ in 1:2]
   buf_out = [(v = buf_v[idx], p = buf_p[idx]) for idx in 1:2]
 
+  profile = (; batchsize = Float64[])
+
+
   inout = @async inout_task(inout_ch, calc_ch, lock, buf_in, buf_out, max_batchsize)
-  calc = Threads.@spawn calc_task(model, calc_ch, lock, buf_in, buf_out)
+  calc = @async calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
 
   # Create the instance
   tmodel = Threaded{G}( model
@@ -67,7 +72,8 @@ function Threaded( model :: NeuralModel{G};
                       , max_batchsize
                       , buffersize
                       , lock
-                      , buf_in, buf_out )
+                      , buf_in, buf_out
+                      , profile )
 
   # Register finalizer
   finalizer(tmodel) do model
@@ -121,13 +127,14 @@ end
 
 # -------- Tasks ------------------------------------------------------------- #
 
-function calc_task(model, calc_ch, lock, buf_in, buf_out)
+function calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
 
   @info "Calc task initiated on thread $(Threads.threadid())"
   adapt_gpu_device!(model)
 
   while isopen(calc_ch)
     n, idx = try take!(calc_ch) catch _ break end
+    push!(profile.batchsize, n)
 
     Base.lock(lock[idx]) do
       try
@@ -160,7 +167,7 @@ function inout_task(args...)
   put!(wake, true)
   @sync begin
     @async inout_task_idx(1, wake, args...)
-    @async inout_task_idx(2, wake, args...)
+#    @async inout_task_idx(2, wake, args...)
   end
 end
 
@@ -172,7 +179,7 @@ function inout_task_idx(idx, wake, io_ch, calc_ch, lock, buf_in, buf_out, max_ba
 
     isopen(calc_ch) || break
     n = length(inputs)
-    @show n
+    #@show n
 
 
     Base.lock(lock[idx]) do
