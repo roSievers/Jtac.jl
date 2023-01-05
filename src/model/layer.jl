@@ -50,6 +50,10 @@ count_params(layer :: Layer) = sum(length, Knet.params(layer))
 atype_gpu() = Knet.KnetArray{Float32} # alternative: CUDA.CuArray{Float32}
 atype(gpu :: Bool) = gpu ? atype_gpu() : Array{Float32}
 
+adapt_atype(:: Array, v) = convert(Array, v)
+adapt_atype(:: Knet.KnetArray, v) = convert(Knet.KnetArray, v)
+adapt_atype(:: CUDA.CuArray, v) = convert(CUDA.CuArray, v)
+
 # Found slight performance advantages if temporary gpu variables
 # are immediately released
 

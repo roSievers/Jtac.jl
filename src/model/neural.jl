@@ -163,6 +163,17 @@ function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
 
 end
 
+"""
+    array_buffer(model, batchsize)
+
+Create a `model`-compatible buffer that can hold the array representation of up
+to `batchsize` games.
+"""
+function Game.array_buffer(m :: NeuralModel{G, GPU}, batchsize) where {G, GPU}
+  buf = Game.array_buffer(G, batchsize)
+  GPU ? to_gpu(buf) : buf
+end
+
 function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
 
   NeuralModel{G, GPU}( copy(m.trunk)

@@ -101,23 +101,39 @@ is_augmentable(:: Type{<: AbstractGame}) = false
     array(games)
 
 Data representation of `game` as three-dimensional array. If a vector
-of `games` is given, a four-dimensional array is returned.
+of `games` is given, a four-dimensional array is returned. See also `Game.array!`
 """
 array(:: AbstractGame) = error("unimplemented")
 
 function array(games :: Vector{G}) where G <: AbstractGame
-
-  @assert !isempty(games) "Invalid representation of empty game vector"
-
-  results = zeros(Float32, (size(games[1])..., length(games)))
-
+  @assert !isempty(games) "Cannot produce representation of empty game vector"
+  buf = array_buffer(G, length(games))
   for i in 1:length(games)
-    results[:,:,:,i] = array(games[i])
+    buf[:,:,:,i] = array(games[i])
   end
-
-  results
-
+  buf
 end
+
+function array!(buf, games :: Vector{<: AbstractGame})
+  @assert !isempty(games) "Cannot produce representation of empty game vector"
+  @assert size(buf)[1:3] == size(games[1])
+  @assert size(buf, 4) >= length(games)
+  repr = array(games)
+  repr = Model.adapt_atype(buf, repr)
+  buf[:, :, :, 1:length(games)] .= repr
+  nothing
+end
+
+"""
+    array_buffer(G, batchsize)
+
+Create an uninitialized `Float32` array that can hold the array representation
+of up to `batchsize` games of type `G`.
+"""
+function array_buffer(G ::Type{<: AbstractGame}, batchsize)
+  zeros(Float32, size(G)..., batchsize)
+end
+
 
 """
     policy_length(game)

@@ -7,15 +7,14 @@ in parallel when the single calls take place in an async context. Note that an
 Async model always returns CPU arrays, even if the worker model acts on the GPU.
 """
 mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
-  model          :: AbstractModel{G}
-  channel        :: Channel
+  model          :: NeuralModel{G}
+  ch             :: Channel
   task           :: Task
 
   max_batchsize  :: Int
   buffersize     :: Int     # Must not be smaller than max_batchsize!
 
   profile
-
 end
 
 Pack.@onlyfields Async [:model, :max_batchsize, :buffersize]
@@ -32,20 +31,15 @@ Wraps `model` to become an asynchronous model with maximal batchsize
 `max_batchsize` for evaluation in parallel and a buffer of size `buffersize` for
 queuing.
 """
-function Async( model :: AbstractModel{G};
+function Async( model :: NeuralModel{G};
                 max_batchsize = 50, 
                 buffersize = 10max_batchsize ) where {G <: AbstractGame}
-
-  # It does not make sense to wrap Async or Caching models, since these
-  # are not suited for batch evaluation
-  @assert !(model isa Async) "Cannot wrap Async model in Async"
-  @assert !(model isa Caching) "Cannot wrap Caching model in Async"
 
   # Make sure that the buffer is larger than the maximal allowed batchsize
   @assert buffersize >= max_batchsize "Buffersize must be larger than max_batchsize"
 
   # Open the channel in which the inputs are dumped
-  channel = Channel(buffersize)
+  ch = Channel(buffersize)
 
   # For debugging and profiling, record some information
   batchsize = Int[]
@@ -54,13 +48,13 @@ function Async( model :: AbstractModel{G};
   profile = (batchsize = batchsize, delay = delay, latency = latency)
 
   # Start the worker task in the background
-  task = @async worker_task(channel, model, max_batchsize, profile)
+  task = @async worker_task(ch, model, max_batchsize, profile)
 
   # Create the instance
-  amodel = Async{G}(model, channel, task, max_batchsize, buffersize, profile)
+  amodel = Async{G}(model, ch, task, max_batchsize, buffersize, profile)
 
   # Register finalizer
-  finalizer(m -> close(m.channel), amodel)
+  finalizer(m -> close(m.ch), amodel)
 
   # Return the instance
   amodel
@@ -75,7 +69,7 @@ function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
 end
 
 
-function switch_model(m :: Async{G}, model :: AbstractModel{G}) where {G <: AbstractGame}
+function switch_model(m :: Async{G}, model :: NeuralModel{G}) where {G <: AbstractGame}
   Async( model
        , max_batchsize = m.max_batchsize
        , buffersize = m.buffersize )
@@ -112,47 +106,51 @@ end
 
 # -------- Async Worker ------------------------------------------------------ #
 
-function closed_and_empty(channel, profile)
+function closed_and_empty(ch, profile)
   try
-    push!(profile.delay, @elapsed fetch(channel))
+    push!(profile.delay, @elapsed fetch(ch))
     false
   catch _
     true
   end
 end
 
-function worker_task(channel, model, max_batchsize, profile)
+function worker_task(ch, model, max_batchsize, profile)
 
-  # this task has to run under the same CUDA device the model has been created
-  # in
+  # has to run under the same CUDA device the model has been created in
   adapt_gpu_device!(model)
+
+  # create an input buffer for up to max_batchsize games
+  buf = Game.array_buffer(model, max_batchsize)
 
   @debug "Async worker started"
 
   try
 
-    while !closed_and_empty(channel, profile)
+    while !closed_and_empty(ch, profile)
 
+      # If we arrive here, there is at least one game to evaluate
       dt = @elapsed begin
         inputs = Vector()
-        # If we arrive here, there is at least one thing to be done.
-        while isready(channel) && length(inputs) < max_batchsize
-          push!(inputs, take!(channel))
+        while isready(ch) && length(inputs) < max_batchsize
+          push!(inputs, take!(ch))
           yield()
         end
-
-        push!(profile.batchsize, length(inputs))
+        batchsize = length(inputs)
+        push!(profile.batchsize, batchsize)
 
         v, p = try
-          v, p = model(first.(inputs))
+          games = first.(inputs)
+          Game.array!(buf, games)
+          v, p = model(buf[:, :, :, 1:batchsize])
           to_cpu(v), to_cpu(p)
         catch
-          for i in 1:length(inputs)
-            # Notify all callers that something went wrong
-            # Otherwise, this task fails silently and the
-            # callers hang
+          for i in 1:batchsize
+            # Notify *all* callers that something went wrong. Otherwise, this
+            # task fails silently and callers hang
             try close(inputs[i][2]) catch end
           end
+          close(ch)
           rethrow()
         end
 
@@ -167,7 +165,7 @@ function worker_task(channel, model, max_batchsize, profile)
 
   catch err
 
-    close(channel)
+    close(ch)
     throw(err)
 
   end
