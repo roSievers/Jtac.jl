@@ -46,8 +46,19 @@ count_params(layer :: Layer) = sum(length, Knet.params(layer))
 # -------- Auxiliary Functions ----------------------------------------------- # 
 
 # Convert (gpu :: Bool) to the underlying representing array type
+
+const ATYPE = Ref{Any}(CUDA.CuArray{Float32})
  
-atype_gpu() = Knet.KnetArray{Float32} # alternative: CUDA.CuArray{Float32}
+function atype_gpu!(s)
+  s = lowercase(string(s))
+  if s in ["cu", "cuda"]
+    ATYPE[] = CUDA.CuArray{Float32}
+  elseif s in ["knet"]
+    ATYPE[] = Knet.KnetArray{Float32}
+  end
+end
+
+atype_gpu() = ATYPE[] #Knet.KnetArray{Float32} # alternative: CUDA.CuArray{Float32}
 atype(gpu :: Bool) = gpu ? atype_gpu() : Array{Float32}
 
 adapt_atype(:: Array, v) = convert(Array, v)
@@ -65,7 +76,7 @@ release_gpu_memory!(x :: CUDA.CuArray{Float32}) =
 release_gpu_memory!(x :: Knet.KnetArray{Float32}) =
   Knet.KnetArrays.freeKnetPtr(x.ptr)
 
-Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) = 0
+#Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) = 0
 
 function adapt_gpu_device!(obj)
   params = Knet.params(obj) 

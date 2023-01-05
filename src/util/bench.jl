@@ -1,30 +1,302 @@
 
-import ThreadPools
 using LinearAlgebra
 
+import ThreadPools
+import CUDA
+
+function timeit(f, trials)
+  dt = @elapsed CUDA.@sync for _ in 1:trials
+    f()
+  end
+end
+
+
+function layer_data(sz, batchsize)
+  a = "relu"
+  chain = Model.Chain(
+    [ Model.Conv(sz, sz, a, padding = 1)
+    , Model.Batchnorm(sz, a)
+    , Model.Conv(sz, sz, a, padding = 1)
+    , Model.Batchnorm(sz, a)
+    ]...
+  )
+  [ "conv$(sz)x$(sz)" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Conv(sz, sz, a, padding = 1))
+  , "dense$(8sz)x$(sz)" => (() -> rand(Float32, (8sz, batchsize)), () -> Model.Dense(8sz, sz, a))
+  , "batchnorm$sz" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Batchnorm(sz, a))
+  , "chain$sz" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> chain)
+  , "residual$sz" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Residual(chain))
+  ]
+end
+
+function layer_cpu(sz = 256; batchsize = sz, trials = 100)
+  layers = layer_data(sz, batchsize)
+  @printf "%15s  %7s  %11s\n" "operation" "runtime" "inputs / ms"
+  println("  ", join(repeat("-", 38)))
+  for (key, (get_data, get_layer)) in layers
+    @printf "%15s  " key
+    flush(stdin)
+    data = get_data()
+    layer = get_layer()
+    # precompile
+    layer(data)
+    # measure
+    dt = @elapsed for _ in 1:trials layer(data) end
+    dt = dt / batchsize / trials * 1000
+    # report
+    @printf "%7.2g  %11.2f\n" dt 1/dt
+  end
+end
+
+function layer_gpu(sz = 256; batchsize = sz, trials = 100)
+  @assert CUDA.functional() "No CUDA support detected"
+  layers = layer_data(sz, batchsize)
+  @printf "%22s  %7s  %10s\n" "operation (backend)" "runtime" "inputs / ms"
+  println("  ", join(repeat("-", 43)))
+
+  upload_data = layers[1][2][1]()
+  for at in ["knet", "cuda"]
+
+    # set gpu backend
+    Model.atype_gpu!(at)
+
+    # upload task
+    @printf "%15s (%4s)  " "upload" at
+    flush(stdin)
+    Model.to_gpu(upload_data)
+    dt = @elapsed CUDA.@sync for _ in 1:trials Model.to_gpu(upload_data) end
+    dt = dt / batchsize / trials * 1000
+    @printf "%7.2g  %11.2f\n" dt 1/dt
+    GC.gc(); CUDA.reclaim()
+
+    # download task
+    @printf "%15s (%4s)  " "download" at
+    flush(stdin)
+    download_data = Model.to_gpu(upload_data)
+    Model.to_cpu(download_data)
+    dt = @elapsed CUDA.@sync for _ in 1:trials Model.to_cpu(download_data) end
+    dt = dt / batchsize / trials * 1000
+    @printf "%7.2g  %11.2f\n" dt 1/dt
+    GC.gc(); CUDA.reclaim()
+  end
+
+  println()
+
+  for (key, (get_data, get_layer)) in layers
+    for at in ["knet", "cuda"]
+      # set gpu backend
+      Model.atype_gpu!(at)
+
+      @printf "%15s (%4s)  " key at
+      flush(stdin)
+      data = get_data() |> Model.to_gpu
+      layer = get_layer() |> Model.to_gpu
+
+      # precompile
+      layer(data)
+
+      # measure
+      dt = @elapsed CUDA.@sync for _ in 1:trials layer(data) end
+      dt = dt / batchsize / trials * 1000
+      @printf "%7.2g  %11.2f\n" dt 1/dt
+      GC.gc(); CUDA.reclaim()
+    end
+  end
+end
+
+function model_gpu(model; trials = 1000)
+  @assert model isa Model.NeuralModel
+  cpumodel = Model.to_cpu(model)
+  G = Model.gametype(model)
+  @printf "     mode (backend)  bsize     games/s  moves/s (@power 250)\n"
+  println(" ", repeat("-", 60))
+  for batchsize in [16, 32, 64, 128, 256, 512]
+    games = [Game.random_instance(G) for _ in 1:batchsize]
+
+    for at in ["cuda", "knet"]
+      # set gpu backend
+      Model.atype_gpu!(at)
+      data = Game.array(games) |> Model.to_gpu
+      model = cpumodel |> Model.to_gpu
+
+      # raw model throughput
+      model(data)
+      dt = @elapsed for _ in 1:trials
+        res = model(data)
+        res = Model.to_cpu.(res)
+      end
+      dt = dt / batchsize / trials
+      sps = 1/dt
+      mps = sps / 250
+      @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "raw" at batchsize sps mps
+
+      # model throughput with prior conversion and upload
+      model(games)
+      dt = @elapsed for _ in 1:trials
+        res = model(games)
+        res = Model.to_cpu.(res)
+      end
+      dt = dt / batchsize / trials
+      sps = 1/dt
+      mps = sps / 250
+      @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "raw+upload" at batchsize sps mps
+
+      # async
+      amodel = Model.Async(model, max_batchsize = batchsize)
+
+      # async model throughput
+      res = Vector(undef, batchsize)
+      @sync for (i, game) in enumerate(games)
+        @async res[i] = Model.apply(amodel, game)
+      end
+
+      dt = @elapsed for _ in 1:trials
+        res = Vector(undef, batchsize)
+        foreach_async(1:length(games)) do i
+          res[i] = Model.apply(amodel, games[i])
+        end
+      end
+      dt = dt / batchsize / trials
+      sps = 1/dt
+      mps = sps / 250
+      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async" at batchsize sps mps bs
+
+      GC.gc(); CUDA.reclaim()
+      println()
+    end
+  end
+
+end
+
+function foreach_async(f, it)
+  @sync for i in it
+    @async f(i)
+  end
+end
 
 function throughput(model, trials = 1000)
   @assert model isa Model.NeuralModel
   G = Model.gametype(model)
-  for batchsize in [1, 10, 50, 100, 200]
+  for batchsize in [16, 32, 64, 128, 256, 512]
     games = [Game.random_instance(G) for _ in 1:batchsize]
     data = Game.array(games)
     if Model.on_gpu(model)
       data = Model.to_gpu(data)
     end
     println("batchsize $batchsize")
-    for (descr, input) in [("with conversion", games), ("without conversion", data)]
+
+    # direct application with and without conversion
+    for (descr, input) in [("without conversion:", data), ("with conversion:   ", games)]
       dt = @elapsed for _ in 1:trials
-        res = model(data)
+        res = model(input)
         res = Model.to_cpu.(res)
       end
       sps = batchsize * trials/dt
       mps = sps / 250
-      @printf "  %s: %.2f states/s" descr sps
+      @printf "  %s %.2f states/s" descr sps
       @printf " (%.2f m/s at power 250)\n" mps
     end
+
+    # asyncmap model
+    descr = "asyncmap model:    "
+    amodel = Model.Async(model; max_batchsize = batchsize)
+    dt = @elapsed for _ in 1:trials
+      asyncmap(games, ntasks = batchsize) do game
+        res = Model.apply(amodel, game)
+      end
+    end
+    sps = batchsize * trials/dt
+    mps = sps / 250
+    bsize = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+    @printf "  %s %.2f states/s" descr sps
+    @printf " (%.2f m/s at power 250)" mps
+    @printf " (avg. batchsize %d)\n" bsize
+    amodel = nothing
+    GC.gc()
+
+    # @async model
+    descr = "@async model:      "
+    amodel = Model.Async(model; max_batchsize = batchsize)
+    dt = @elapsed for _ in 1:trials
+      ts = map(games) do game
+        @async Model.apply(amodel, game)
+      end
+      res = fetch.(ts)
+    end
+    sps = batchsize * trials/dt
+    mps = sps / 250
+    bsize = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+    @printf "  %s %.2f states/s" descr sps
+    @printf " (%.2f m/s at power 250)" mps
+    @printf " (avg. batchsize %d)\n" bsize
+    amodel = nothing
+    GC.gc()
+
+    # async-like 
+    descr = "async-like model:  "
+    dt = @elapsed async_like(trials, model, games)
+    sps = batchsize * trials/dt
+    mps = sps / 250
+    @printf "  %s %.2f states/s" descr sps
+    @printf " (%.2f m/s at power 250)\n" mps
     println()
+
   end
+end
+
+function async_like(trials, model, games)
+  bs = length(games)
+  ch = Channel(bs)
+
+  t = @async begin
+    G = Model.gametype(model)
+    while true
+      games = G[]
+      conds = Threads.Condition[]
+      while length(games) < bs
+        game, c = take!(ch)
+        push!(games, game)
+        push!(conds, c)
+        yield()
+      end
+      @assert length(games) == bs
+      val, pol = model(games)
+      v, p = Model.to_cpu(val), Model.to_cpu(pol)
+      for i in 1:length(conds)
+        c = conds[i]
+        lock(c) do
+          notify(c, (value = v[i], policy = p[:, i]))
+        end
+      end
+    end
+  end
+
+  n = length(games)
+  gamesets = [games[16i-15:16i] for i in 1:div(n, 16)]
+  for _ in 1:trials
+    i = 1
+    res = Vector(undef, n)
+#    @show res
+    @sync begin
+      map(gamesets) do games
+        @async begin
+          map(games) do game
+            @async begin
+              c = Threads.Condition()
+              put!(ch, (game, c))
+              lock(c) do
+                res[i] = wait(c)
+                i += 1
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  close(ch)
+  yield()
+  @assert Base.istaskdone(t)
 end
 
 

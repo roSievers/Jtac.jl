@@ -63,9 +63,11 @@ end
 
 
 function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
-  out_channel = Channel(1)
-  put!(m.channel, (copy(game), out_channel))
-  take!(out_channel)
+  c = Condition()
+  put!(m.channel, (copy(game), c))
+  lock(c) do
+    wait(c) # notify(ticket) in the worker will provide the value
+  end
 end
 
 
@@ -144,18 +146,24 @@ function worker_task(ch, model, max_batchsize, profile)
           Game.array!(buf, games)
           v, p = model(buf[:, :, :, 1:batchsize])
           to_cpu(v), to_cpu(p)
-        catch
+        catch err
           for i in 1:batchsize
             # Notify *all* callers that something went wrong. Otherwise, this
             # task fails silently and callers hang
-            try close(inputs[i][2]) catch end
+            c = inputs[i][2]
+            lock(c) do
+              notify(c, InvalidStateException("Async worker errored: $err"), error = true)
+            end
           end
           close(ch)
           rethrow()
         end
 
         for i in 1:length(inputs)
-          put!(inputs[i][2], (value = v[i], policy = p[:,i]))
+          c = inputs[i][2]
+          lock(c) do
+            notify(c, (value = v[i], policy = p[:,i]))
+          end
         end
       end
 
