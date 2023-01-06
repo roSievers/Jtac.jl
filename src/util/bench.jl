@@ -10,7 +10,6 @@ function timeit(f, trials)
   end
 end
 
-
 function layer_data(sz, batchsize)
   a = "relu"
   chain = Model.Chain(
@@ -501,17 +500,17 @@ function benchmark_cpu(; threads = false, async = 25)
   nothing
 end
 
-function benchmark_gpu(; threads = false, async = 50)
+function benchmark_gpu(G = Game.MetaTac; threads = false, async = 64, matches = async)
 
   println("\nMetaTac (simple):")
   println("-- recording --")
-  model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 2, filters = 64)
+  model = Model.Zoo.ZeroConv(G, blocks = 2, filters = 64)
   model = Model.tune(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
-    ds = record_threaded(player, 100)
+    ds = record_threaded(player, matches)
   else
-    ds = record(player, 100)
+    ds = record(player, matches)
   end
   println()
   println("-- training --")
@@ -519,13 +518,13 @@ function benchmark_gpu(; threads = false, async = 50)
 
   println("\nMetaTac (medium):")
   println("-- recording --")
-  model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 4, filters = 128)
+  model = Model.Zoo.ZeroConv(G, blocks = 6, filters = 128)
   model = Model.tune(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
-    ds = record_threaded(player, 100)
+    ds = record_threaded(player, matches)
   else
-    ds = record(player, 100)
+    ds = record(player, matches)
   end
   println()
   println("-- training --")
@@ -533,13 +532,13 @@ function benchmark_gpu(; threads = false, async = 50)
 
   println("\nMetaTac (large):")
   println("-- recording --")
-  model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 8, filters = 256)
+  model = Model.Zoo.ZeroConv(G, blocks = 8, filters = 256)
   model = Model.tune(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
-    ds = record_threaded(player, 100)
+    ds = record_threaded(player, matches)
   else
-    ds = record(player, 100)
+    ds = record(player, matches)
   end
   println()
   println("-- training --")

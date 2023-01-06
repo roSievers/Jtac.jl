@@ -64,7 +64,7 @@ end
 
 function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
   c = Condition()
-  put!(m.channel, (copy(game), c))
+  put!(m.ch, (copy(game), c))
   lock(c) do
     wait(c) # notify(ticket) in the worker will provide the value
   end
