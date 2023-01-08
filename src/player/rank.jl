@@ -44,54 +44,29 @@ function compete( players
                 , n :: Int
                 , active = 1:length(players)
                 ; instance = derive_gametype(players...)
-                , callback = () -> nothing
-                , threads = :auto )
+                , callback = () -> nothing )
 
   # Using only a single BLAS thread was beneficial for performance in all tests
   t = BLAS.get_num_threads()
   BLAS.set_num_threads(1)
 
-  bgthreads = Threads.nthreads() - 1
-  use_threads =
-    threads == true || threads == :copy ||
-    threads == :auto && bgthreads > 0
+  matches = plan_matches(n, length(players), length(active))
+  results = zeros(Int, length(players), length(players), 3)
+  players = enumerate(players)
 
-  if use_threads
-
-    tickets = ticket_sizes(n, bgthreads)
-    data = _threaded(players; threads) do idx, ps
-      compete(ps, tickets[idx], active; threads = false, instance, callback)
-    end
-    results = sum(data)
-
-  else
-
-    matches = plan_matches(n, length(players), length(active))
-    results = zeros(Int, length(players), length(players), 3)
-    players = enumerate(players)
-
-    l = 1
-
-    for (i, p1) in players, (j, p2) in players
-
-      if i != j && (i in active || j in active)
-
-        asyncmap(1:matches[l]) do _
-          k = pvp(p1, p2, instance = instance) + 2 # convert -1, 0, 1 to indices 1, 2, 3
-          results[i, j, k] += 1
-          callback()
-        end
-
-        l += 1
+  l = 1
+  for (i, p1) in players, (j, p2) in players
+    if i != j && (i in active || j in active)
+      asyncmap(1:matches[l]) do _
+        k = pvp(p1, p2, instance = instance) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+        results[i, j, k] += 1
+        callback()
       end
+      l += 1
     end
-
-    results
-
   end
 
   BLAS.set_num_threads(t)
-
   results
 end
 

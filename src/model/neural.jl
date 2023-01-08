@@ -213,9 +213,9 @@ function tune( m :: NeuralModel{G, GPU}
   I = Union{Signed, Unsigned} # Grr, in julia, Bool <: Integer....
   gpu != GPU && (m = swap(m))
   async == true && (m = Async(m))
-  async isa I && async > 0 && (m = Async(m, max_batchsize = async))
+  async isa I && async > 0 && (m = Async(m, batchsize = async))
   cache == true && (m = Caching(m))
-  cache isa I && cache > 0 && (m = Caching(m, max_cachesize = cache))
+  cache isa I && cache > 0 && (m = Caching(m, cachesize = cache))
   m
 end
 

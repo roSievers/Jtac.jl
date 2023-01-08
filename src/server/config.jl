@@ -6,19 +6,21 @@ function server(
   , port :: Int = 7238 
   , gpu :: Int = -1
   , snapshot_interval :: Int = 5
-  , snapshot_path :: String = "" )
+  , model_folder :: String = "" )
 
   Dict( :host => host
       , :port => port
       , :gpu => gpu
       , :snapshot_interval => snapshot_interval
-      , :snapshot_path => snapshot_path )
+      , :model_folder => snapshot_path )
 end
 
 
 function client(
   ; host :: String = "127.0.0.1"
   , port :: Int = 7248
+  , remote :: Bool = true
+  , data_folder :: String = "./data"
   , gpu :: Int = -1
   , async :: Int = 50
   , name :: String = ENV["USER"] * "-" * rand(1:1000)
@@ -27,6 +29,7 @@ function client(
 
   Dict( :host => host
       , :port => port
+      , :remote => true
       , :gpu => gpu
       , :async => async
       , :name => name

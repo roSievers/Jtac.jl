@@ -159,8 +159,8 @@ returns a function mapping a model to the given configuration, while the second
 function call returns the configured model
 
 The argument `gpu` is boolean, while `async` and `cache` can be both boolean or
-positive integers (setting the parameters `max_batchsize` for `Async` and
-`max_cachesize` for `Caching`, respectively).
+positive integers (setting the parameters `batchsize` for `Async` and
+`cachesize` for `Caching`, respectively).
 """
 function tune(model; gpu = nothing, async = nothing, cache = nothing)
   @warn "trying to tune model of type $(typeof(model)) failed"

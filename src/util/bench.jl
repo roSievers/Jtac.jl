@@ -108,7 +108,7 @@ function model_gpu(model; trials = 1000)
   G = Model.gametype(model)
   @printf "     mode (backend)  bsize     games/s  moves/s (@power 250)\n"
   println(" ", repeat("-", 60))
-  for batchsize in [16, 32, 64, 128, 256, 512]
+  for batchsize in [16, 32, 64] #, 128, 256, 512]
     games = [Game.random_instance(G) for _ in 1:batchsize]
 
     for at in ["cuda", "knet"]
@@ -140,7 +140,7 @@ function model_gpu(model; trials = 1000)
       @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "raw+upload" at batchsize sps mps
 
       # async
-      amodel = Model.Async(model, max_batchsize = batchsize)
+      amodel = Model.Async(model, batchsize = batchsize)
 
       # async model throughput
       res = Vector(undef, batchsize)
@@ -161,6 +161,29 @@ function model_gpu(model; trials = 1000)
       @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async" at batchsize sps mps bs
 
       GC.gc(); CUDA.reclaim()
+
+      # async
+      amodel = Model.Async(model, batchsize = batchsize, spawn = false, dynamic = false)
+
+      # async model throughput
+      res = Vector(undef, batchsize)
+      @sync for (i, game) in enumerate(games)
+        @async res[i] = Model.apply(amodel, game)
+      end
+
+      dt = @elapsed for _ in 1:trials
+        res = Vector(undef, batchsize)
+        foreach_spawn(1:length(games)) do i
+          res[i] = Model.apply(amodel, games[i])
+        end
+      end
+      dt = dt / batchsize / trials
+      sps = 1/dt
+      mps = sps / 250
+      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async+spawn" at batchsize sps mps bs
+
+      GC.gc(); CUDA.reclaim()
       println()
     end
   end
@@ -172,6 +195,107 @@ function foreach_async(f, it)
     @async f(i)
   end
 end
+
+function foreach_spawn(f, it, threads = Threads.nthreads())
+  n = div(length(it), threads)
+  partitions = Iterators.partition(it, n)
+  @sync for p in partitions
+    Threads.@spawn asyncmap(f, p)
+  end
+end
+
+function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn = false)
+  @assert batchsize <= ntasks
+  @assert model isa Model.NeuralModel
+  cpumodel = Model.to_cpu(model)
+  G = Model.gametype(model)
+  model = cpumodel |> Model.to_gpu
+
+
+  amodel = Model.Async(model, batchsize = batchsize, dynamic = false, spawn = spawn)
+  player = Player.MCTSPlayer(amodel, power = 250)
+
+  moves = 0
+  peak = 0
+  finished = 0
+
+  data_ch = Channel{Data.DataSet{G}}(100)
+  move_ch = Channel{Bool}(1000)
+  move_cb = _ -> (put!(move_ch, true); yield())
+
+  update = t -> begin
+    dt = t - start_time
+    mps = moves / dt
+    if mps > peak
+      peak = mps
+    end
+    @printf "\e[2K\e[1G%.2f m/s (%d / %.2f)  |  %d game(s) finished" mps moves dt finished
+  end
+
+  # precompilation
+
+  Model.apply(model, G())
+  start_time = time()
+  dss = []
+
+  @sync begin
+    @async while isopen(move_ch)
+      try take!(move_ch) catch _ break end
+      moves += 1
+    end
+    @async while isopen(data_ch)
+      sleep(0.25)
+      update(time())
+    end
+    @async begin
+      try
+        Player.record( player, data_ch
+                     , ntasks = ntasks
+                     ; callback_move = move_cb
+                     , merge = false, augment = false)
+      catch err
+        if isopen(data_ch)
+          display(err)
+        end
+      finally
+        close(move_ch)
+        close(data_ch)
+      end
+    end
+
+    @async begin
+      try
+        while finished < matches
+          ds = take!(data_ch)
+          push!(dss, ds)
+          finished += 1
+        end
+      catch err
+        display(err)
+      finally
+        close(amodel)
+        close(data_ch)
+        close(move_ch)
+      end
+    end
+  end
+
+  states_per_game = length.(dss)
+  avg = mean(states_per_game)
+  std = var(states_per_game) |> sqrt
+  min = minimum(states_per_game)
+  max = maximum(states_per_game)
+
+  bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+
+  println()
+  @printf "peak: %.2f\n" peak
+  @printf "average batchsize: %.2f\n" bs
+  @printf "%.2f ± %.2f states per game (min: %d, max: %d)\n" avg std min max
+
+  nothing
+end
+
 
 function throughput(model, trials = 1000)
   @assert model isa Model.NeuralModel
@@ -198,7 +322,7 @@ function throughput(model, trials = 1000)
 
     # asyncmap model
     descr = "asyncmap model:    "
-    amodel = Model.Async(model; max_batchsize = batchsize)
+    amodel = Model.Async(model; batchsize = batchsize)
     dt = @elapsed for _ in 1:trials
       asyncmap(games, ntasks = batchsize) do game
         res = Model.apply(amodel, game)
@@ -215,7 +339,7 @@ function throughput(model, trials = 1000)
 
     # @async model
     descr = "@async model:      "
-    amodel = Model.Async(model; max_batchsize = batchsize)
+    amodel = Model.Async(model; batchsize = batchsize)
     dt = @elapsed for _ in 1:trials
       ts = map(games) do game
         @async Model.apply(amodel, game)

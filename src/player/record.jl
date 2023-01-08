@@ -111,99 +111,69 @@ dataset = Player.record(player, 10, augment = false)
 function record( p :: Union{P, Channel{P}}
                , n :: Int = 1
                ; merge = true
-               , threads = :auto
                , callback_move = _ -> nothing
                , opt_targets = Target.targets(fetch(p))[3:end]
                , kwargs...
                ) where {P <: AbstractPlayer}
 
 
-  if use_threads(threads, fetch(p))
+  # Function that plays a single match, starting at state `game`
+  play = game -> begin
 
-    ds = with_BLAS_threads(1) do
+    H = typeof(game)
+    targets = [Target.defaults(H); opt_targets] 
+    dataset = DataSet(H, targets)
+    moves = 0
 
-      tickets = ticket_sizes(n, Threads.nthreads() - 1)
-      dss = _threaded([p]; threads) do idx, ps
-        record( ps[1]
-              , tickets[idx]
-              ; threads = false
-              , merge = false
-              , opt_targets
-              , callback_move
-              , kwargs... )
-      end
-      vcat(dss...)
+    try
+      while !is_over(game)
 
-    end
+        # Get the improved policy from the player
+        policy = think(fetch(p), game)
 
-  else
-
-    # Function that plays a single match, starting at state `game`
-    play = game -> begin
-
-      H = typeof(game)
-      targets = [Target.defaults(H); opt_targets] 
-
-      dataset = DataSet(H, targets)
-
-      moves = 0
-
-      try
-
-        while !is_over(game)
-
-          # Get the improved policy from the player
-          policy = think(fetch(p), game)
-
-          # Record the current game state and policy target label
-          # (we do not know the value label yet)
-          push!(dataset.games, copy(game))
-          push!(dataset.labels[2], policy)
-
-          # Advance the game by randomly drawing from the policy
-          apply_action!(game, choose_index(policy))
-
-          moves += 1
-          callback_move(moves)
-
-        end
-
-        # Push the final game state to the dataset. This game state is included
-        # for calculating optional targets, but it has to be removed afterwards
-        pl = policy_length(H)
+        # Record the current game state and policy target label
+        # (we do not know the value label yet)
         push!(dataset.games, copy(game))
-        push!(dataset.labels[2], ones(Float32, pl) ./ pl)
+        push!(dataset.labels[2], policy)
 
-        # Now we know how the game ended. Add value labels to the dataset.
-        # Optional targets have to be recorded *after* augmentation
-        s = status(dataset.games[end])
-        for game in dataset.games
-          push!(dataset.labels[1], Float32[current_player(game) * s])
-        end
+        # Advance the game by randomly drawing from the policy
+        apply_action!(game, choose_index(policy))
 
-        dataset
-
-      catch err
-        if err isa StopMatch
-          DataSet(typeof(game), targets)
-        else
-          throw(err)
-        end
+        moves += 1
+        callback_move(moves)
       end
 
-    end
+      # Push the final game state to the dataset. This game state is included
+      # for calculating optional targets, but it has to be removed afterwards
+      pl = policy_length(H)
+      push!(dataset.games, copy(game))
+      push!(dataset.labels[2], ones(Float32, pl) ./ pl)
 
-    ds = with_BLAS_threads(1) do
-      # Record several matches with (optional) branching and augmentation
-      G = Model.gametype(fetch(p))
-      ntasks = Model.ntasks(fetch(p))
-      record_with_branching(G, play, n; ntasks, kwargs...)
-    end
+      # Now we know how the game ended. Add value labels to the dataset.
+      # Optional targets have to be recorded *after* augmentation
+      s = status(dataset.games[end])
+      for game in dataset.games
+        push!(dataset.labels[1], Float32[current_player(game) * s])
+      end
+      dataset
 
+    catch err
+      if err isa StopMatch
+        DataSet(typeof(game), targets)
+      else
+        throw(err)
+      end
+    end
+  end
+
+  ds = with_BLAS_threads(1) do
+    # Record several matches with (optional) branching and augmentation
+    G = Model.gametype(fetch(p))
+    ntasks = Model.ntasks(fetch(p))
+    record_with_branching(G, play, n; ntasks, kwargs...)
   end
 
   merge ? Base.merge(ds) : ds
-
 end
 
 function record_with_branching( G :: Type{<: AbstractGame}
@@ -251,7 +221,6 @@ function record_with_branching( G :: Type{<: AbstractGame}
 
 end
 
-
 function record_opt_targets!(dataset :: DataSet{G}) where {G}
 
   length(dataset) == 0 && return
@@ -277,8 +246,6 @@ function record_opt_targets!(dataset :: DataSet{G}) where {G}
 end
 
 
-
-
 """
 Exception that is thrown as stop signal for the `record(player, channel)`
 method.
@@ -296,31 +263,32 @@ The function returns when `channel` is closed.
 """
 function record( p :: AbstractPlayer{H}
                , ch :: AbstractChannel{DataSet{G}}
-               ; callback_move = () -> nothing
-               , ntasks = is_async(p) ? 50 : 1
+               ; callback_move = _ -> nothing
+               , ntasks = Model.ntasks(p)
                , merge = true
-               , threads = :auto
                , kwargs... ) where {H <: AbstractGame, G <: H}
 
-  cb() = begin
-    callback_move()
+  cb(move) = begin
     isopen(ch) || throw(StopRecording())
+    callback_move(move)
   end
 
   main_loop(player) = begin
-    asyncmap(1:ntasks; ntasks) do _
-      while isopen(ch)
-        ds = nothing
-        try ds = record( player, 1; threads = false, merge = true
-                       , callback_move = cb, kwargs... )
-        catch err
-          err isa StopRecording && break
-          throw(err)
-        end
-        try put!(ch, ds)
-        catch err
-          err isa InvalidStateException && break
-          throw(err)
+    @sync for i in 1:ntasks
+      @async begin
+        while isopen(ch)
+          ds = nothing
+          try ds = record( player, 1; merge = true
+                         , callback_move = cb, kwargs... )
+          catch err
+            err isa StopRecording && break
+            throw(err)
+          end
+          try put!(ch, ds)
+          catch err
+            err isa InvalidStateException && break
+            throw(err)
+          end
         end
       end
     end
@@ -328,20 +296,9 @@ function record( p :: AbstractPlayer{H}
   end
 
   with_BLAS_threads(1) do
-
-    if use_threads(threads, p)
-      _threaded([p]; threads) do idx, ps
-        main_loop(ps[1])
-      end
-    else
       main_loop(p)
-    end
-
   end
-
 end
-
-
 
 
 """
@@ -352,7 +309,6 @@ Record a dataset by applying `model` or `player` to `games`.
 function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
                  , games :: Vector{T}
                  ; augment = false
-                 , threads = :auto
                  ) where {G, T <: G}
 
   games = augment ? mapreduce(Game.augment, vcat, games) : games
@@ -362,47 +318,27 @@ function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
 
   with_BLAS_threads(1) do
 
-    if use_threads(threads, p)
-
-      n = length(games)
-      tickets = ticket_sizes(n, Threads.nthreads() - 1)
-      idxs = [0; cumsum(tickets)]
-      ranges = [x+1:y for (x,y) in zip(idxs[1:end-1], idxs[2:end])]
-      dss = _threaded([p]; threads) do idx, ps
-        ds = evaluate( ps[1]
-                     , games[ranges[idx]]
-                     ; threads = false
-                     , augment )
-        ds
+    # TODO: this can be made faster when specializing on NeuralModels, where many
+    # games can be evaluated in parallel
+    for game in games
+      if p isa NeuralModel
+        output = apply(p, game, true)
+      else
+        output = apply(p, game)
       end
-      merge(dss)
-
-    else
-
-      # TODO: this can be made faster when specializing on NeuralModels, where many
-      # games can be evaluated in parallel
-      for game in games
-        if p isa NeuralModel
-          output = apply(p, game, true)
+      for l in 1:length(targets)
+        if output[l] isa Float32
+          val = Float32[output[l]]
         else
-          output = apply(p, game)
+          val = output[l]
         end
-        for l in 1:length(targets)
-          if output[l] isa Float32
-            val = Float32[output[l]]
-          else
-            val = output[l]
-          end
-          push!(labels[l], val)
-        end
+        push!(labels[l], val)
       end
-
-      DataSet(games, labels, targets)
-
     end
 
-  end # with_BLAS_threads(1)
+    DataSet(games, labels, targets)
 
+  end # with_BLAS_threads(1)
 end
 
 """
@@ -411,8 +347,7 @@ end
 function evaluate( p :: Union{AbstractPlayer, AbstractModel}
                  , ch :: AbstractChannel
                  ; instance
-                 , augment = false
-                 , threads = :auto )
+                 , augment = false )
 
   main_loop(player) = begin
     while isopen(ch)
@@ -443,62 +378,7 @@ function evaluate( p :: Union{AbstractPlayer, AbstractModel}
   end
 
   with_BLAS_threads(1) do
-
-    if use_threads(threads, p)
-      _threaded([p]; threads) do idx, ps
-        main_loop(ps[1])
-      end
-    else
-      main_loop(p)
-    end
-
+    main_loop(p)
   end
-
 end
-
-# -------- Threaded Recording --------------------------------------------- #
-
-function _threaded(handle :: Function, ps :: Vector; threads)
-
-  bgthreads = Threads.nthreads() - 1
-  @assert bgthreads > 0 "No background threads available"
-
-  # Not sure: Is this safe for any model?
-  copy = threads == :copy
-  #safe = all(is_async(p) for p in ps) || copy
-  #@assert safe "Threading for non-async models is unsafe"
-
-  # Having multiple threads work with different models on the same GPU created
-  # problems for us, so we don't allow more threads than GPU devices
-  ps_ = map(ps) do p
-    gpu = on_gpu(training_model(p))
-    if gpu && copy
-      @assert bgthreads <= length(CUDA.devices()) "More threads than GPU devices"
-      p = tune(p, gpu = false)
-    end
-    (p, gpu)
-  end
-
-  # Curious: if ps_ was named ps, the following code would produce random
-  # errors... Julia bug related to closures?
-
-  ThreadPools.bmap(1:bgthreads) do idx
-    if any(gpu for (_, gpu) in ps_) && copy
-      # switch CUDA device if a copy is brought to gpu
-      CUDA.device!(idx - 1)
-    end
-    ps = map(ps_) do (p, gpu)
-      if gpu && copy
-        tune(p, gpu = true)
-      elseif copy || !gpu && threads == :auto
-        Base.copy(p)
-      else
-        p
-      end
-    end
-    handle(idx, ps)
-  end
-
-end
-
 
