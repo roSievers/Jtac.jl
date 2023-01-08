@@ -1,37 +1,48 @@
+[pool]
+size_max = 1000000
+size_min = 0
+size_max_test = 10000
+size_min_test = 1000
+keep_iterations = 10
+keep_generations = 3
 
+[client]
+name = "thomas-942"
+host = "127.0.0.1"
+port = 7248
+async = 50
+isolated = false
+password = ""
+retry_gap = 30.0
 
 [server]
-host = "0.0.0.0"
-port = 7328
-gpu = 2
+name = "thomas-408"
+host = "127.0.0.1"
+port = 7238
+model_folder = "./model"
 snapshot_interval = 5
-snapshot_path = "models/$s/$s-$n.jtm"
-
-[training]
-model = "models/ludwig.jtm"
-batchsize = 1024
-stepsize = 10240
-gensize = 102400
-optimizer = "momentum"
-lr = 1e-2 # should be generalized
 
 [selfplay]
-#model = "" # used for selfplay if given and different from train.model
+gpu = -1
+model = ""
+atype = "knet"
 power = 250
-temperature = 0.95
-exploration = 1.41
-dilution = 0.05
-instance_randomization = 0.3
-branch_probability = 0.02
-branch_step_min = 1
-branch_step_max = 2
-
-[pool]
-capacity = 5_000_000
 augment = false
-keep_generations = 3
-keep_iterations = 10
-quality_sampling = true
-quality_sampling_stop = 0.5
-quality_sampling_resume = 0.75
+dilution = 0.0
+temperature = 1.0
+exploration = 1.41
+branch_step_min = 1
+branch_step_max = 10
+branch_probability = 0.0
+instance_randomization = 0.0
 
+[training]
+lr = 0.05
+gpu = -1
+atype = "cuda"
+model = ""
+gamma = 0.95
+gensize = 100
+stepsize = 10
+optimizer = "momentum"
+batchsize = 512

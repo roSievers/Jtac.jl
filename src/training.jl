@@ -360,11 +360,6 @@ expected value of game states, and other optional prediction targets.
 - `callback_epoch`: Function called after every epoch.
 - `callback_iter`: Function called after every iteration.
 - `optimizer = Knet.SGD`: Optimizer for each weight in the training model.
-- `threads = :auto`: Whether to conduct the matches on background threads.
-   If `true` or `:copy`, all available background threads are used.
-   The option `:copy` lets each thread receive a copy of the player. If this
-   is combined with GPU-based models, each thread receives its own device.
-   If `:auto`, background threads are used if this is possible.
 - `kwargs...`: Keyword arguments for `optimizer`
 
 # Examples
@@ -380,7 +375,6 @@ function train!( player :: MCTSPlayer{G}
                ; instance = () -> Game.instance(G)
                , branch = Game.branch(prob = 0., steps = 1)
                , augment = true
-               , threads = :auto
                , kwargs... ) where {G}
 
   gen_data = (cb, n) -> record( player
@@ -388,7 +382,6 @@ function train!( player :: MCTSPlayer{G}
                               ; instance 
                               , branch
                               , augment
-                              , threads
                               , merge = false
                               , callback = cb )
 
@@ -450,7 +443,6 @@ function train_contest!( player :: MCTSPlayer
                        , interval :: Int = 10
                        , temperature = player.temperature
                        , epochs = 10
-                       , threads = :auto
                        , kwargs... )
 
   if pairings <= 0
@@ -461,7 +453,6 @@ function train_contest!( player :: MCTSPlayer
                  ; reg_targets
                  , weights
                  , epochs
-                 , threads
                  , kwargs... )
 
   end
@@ -516,7 +507,6 @@ function train_contest!( player :: MCTSPlayer
       cache_results = zeros(Int, n, n, 3)
       cache_results[1:np,1:np,:] = compete( passive
                                           , cache
-                                          ; threads
                                           , callback = step )
 
       # Remove the progress bar
@@ -543,7 +533,7 @@ function train_contest!( player :: MCTSPlayer
       step, finish = Util.stepper("# Contest...", pairings)
 
       results = compete( players, pairings, aidx
-                       ; threads, callback = step )
+                       ; callback = step )
       finish()
 
       # special printing, since we want to prepend '# ' to each line
@@ -564,7 +554,6 @@ function train_contest!( player :: MCTSPlayer
         ; reg_targets
         , weights
         , epochs
-        , threads
         , callback_epoch = cb
         , kwargs... )
 

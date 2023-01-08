@@ -184,6 +184,6 @@ Load a Jtac model from `fname`. The typical file extension is `.jtm`.
 """
 function load(fname; gpu = false)
   model = open(io -> Pack.unpack(io, AbstractModel), fname)
-  to_gpu(model)
+  to_cpu(model)
 end
 

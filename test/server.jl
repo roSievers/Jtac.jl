@@ -18,7 +18,7 @@ import .Server.Api
     @test isempty(diff)
   end
   @test Config.set_param!(cfg, "server.port", 1000)
-  @test cfg["server"]["port"] == 1000
+  @test cfg[:server][:port] == 1000
 end
 
 function create_events()

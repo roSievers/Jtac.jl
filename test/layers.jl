@@ -2,7 +2,7 @@
 
 @testset "Layers" begin
   @test Model.atype(false) == Array{Float32}
-  @test Model.atype(true)  == Knet.KnetArray{Float32}
+  @test Model.atype(true)  == Model.ATYPE[]
   p = Knet.Param([1,2])
   p.opt = Knet.Adam(lr = 1e-3)
   p2 = Model.copy_param(p)

@@ -11,23 +11,6 @@ function ticket_sizes(n, m)
 end
 
 """
-  use_threads(threads, player)
-
-Helper function that detects when threading is safe to use for `player`.
-Uses information of `threads` which can be `true`, `:auto`, or `:copy`.
-"""
-function use_threads(threads, player)
-  bgthreads = Threads.nthreads() - 1
-  tmodel = training_model(player)
-  # If no training model exists, we assume that everything is thread-safe :)
-  can_async = is_async(player) || isnothing(tmodel)
-  threads == true || threads == :copy ||
-  threads == :auto && bgthreads > 0 && can_async
-end
-
-use_threads(threads, :: Channel) = false
-
-"""
     with_BLAS_threads(f, n)
 
 Call `f()` under the temporary setting `BLAS.set_num_threads(n)`.
@@ -87,11 +70,6 @@ game state.
    the mcts player model by default.
 - `callback`: Procedure that is called afer each completed match.
 - `callback_move`: Procedure called after each individual move.
-- `threads = :auto`: Whether to conduct the matches on background threads.
-   If `true` or `:copy`, all available background threads are used.
-   The option `:copy` lets each thread receive a copy of the player. If this
-   is combined with GPU-based models, each thread receives its own device.
-   If `:auto`, background threads are used if this is possible.
 
 # Examples
 ```julia
@@ -342,7 +320,7 @@ function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
 end
 
 """
-    evaluate(model or player, channel; instance, augment, threads)
+    evaluate(model or player, channel; instance, augment)
 """
 function evaluate( p :: Union{AbstractPlayer, AbstractModel}
                  , ch :: AbstractChannel
