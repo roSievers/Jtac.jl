@@ -32,19 +32,18 @@ outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
 `[i, j, :]` are `0` in this case.
 
 # Arguments
-- `game`: Initial game state. Inferred automatically if possible.
+- `instance`: Function that returns an initial game state. Inferred automatically if possible.
 - `callback`: Function called after each of the `n` matches.
-- `threads = :auto`: Whether to conduct the matches on background threads.
-   If `true` or `:copy`, all available background threads are used.
-   The option `:copy` lets each thread receive a copy of the player. If this
-   is combined with GPU-based models, each thread receives its own device.
-   If `:auto`, background threads are used if this is possible.
+- `spawn`: Whether the different matches are spawned in threads.
+- `draw_after`: Number of moves after which the game is stopped and counted as a draw.
 """
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
                 ; instance = derive_gametype(players...)
-                , callback = () -> nothing )
+                , callback = () -> nothing
+                , spawn = false
+                , draw_after = typemax(Int))
 
   # Using only a single BLAS thread was beneficial for performance in all tests
   t = BLAS.get_num_threads()
@@ -53,14 +52,27 @@ function compete( players
   matches = plan_matches(n, length(players), length(active))
   results = zeros(Int, length(players), length(players), 3)
   players = enumerate(players)
+  lk = ReentrantLock()
 
   l = 1
-  for (i, p1) in players, (j, p2) in players
+  @sync for (i, p1) in players, (j, p2) in players
     if i != j && (i in active || j in active)
-      asyncmap(1:matches[l]) do _
-        k = pvp(p1, p2, instance = instance) + 2 # convert -1, 0, 1 to indices 1, 2, 3
-        results[i, j, k] += 1
-        callback()
+      for _ in 1:matches[l]
+        if spawn
+          Threads.@spawn begin
+            k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+            lock(lk) do
+              results[i, j, k] += 1
+              callback()
+            end
+          end
+        else
+          @async begin
+            k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+            results[i, j, k] += 1
+            callback()
+          end
+        end
       end
       l += 1
     end

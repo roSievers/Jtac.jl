@@ -484,21 +484,26 @@ perspective of `player1` (-1, 0, 1) is returned.
 function pvp( p1 :: AbstractPlayer
             , p2 :: AbstractPlayer
             ; instance = derive_gametype(p1, p2)
-            , callback = (_) -> nothing )
+            , callback = (_) -> nothing
+            , draw_after = typemax(Int) )
 
   game = copy(instance())
+  moves = 0
 
   while !is_over(game)
+    # After draw_after moves, the game ends with a draw
+    moves > draw_after && return 0
+
     if current_player(game) == 1
       turn!(game, p1)
     else
       turn!(game, p2)
     end
     callback(game)
+    moves += 1
   end
 
   status(game)
-
 end
 
 """
@@ -512,12 +517,16 @@ states is returned.
 function pvp_games( p1 :: AbstractPlayer
                   , p2 :: AbstractPlayer
                   ; instance = derive_gametype(p1, p2)
-                  , callback = (_) -> nothing )
+                  , callback = (_) -> nothing
+                  , draw_after = typemax(Int) )
 
   game  = copy(instance())
   games = [copy(game)]
+  moves = 0
 
   while !is_over(game)
+    moves > draw_after && return games
+
     if current_player(game) == 1
       turn!(game, p1)
     else
@@ -525,10 +534,10 @@ function pvp_games( p1 :: AbstractPlayer
     end
     push!(games, copy(game))
     callback(game)
+    moves += 1
   end
 
   games
-
 end
 
 # TODO: this is a nice-to have function for distributed computing and for the
