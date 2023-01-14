@@ -272,9 +272,9 @@ instance `random_instance(G)` is returned.
 """
 instance(game :: AbstractGame) = game
 
-function instance(G :: Type{<: AbstractGame}; random = false)
+function instance(G :: Type{<: AbstractGame}; randomize = false)
    @assert isconcretetype(G) "Cannot instantiate abstract game $G"
-   if rand() < random
+   if rand() < randomize
      random_instance(G)
    else
      G()
@@ -298,8 +298,13 @@ the branched game is returned.
 
 The second method returns a branching function `game -> branch(game, ...)`.
 """
-branch(game; prob, steps = 1) =
-  rand() < prob ? random_turns!(copy(game), steps) : nothing
+function branch(game; prob, steps = 1)
+  if rand() < prob
+    random_turns!(copy(game), steps)
+  else
+    nothing
+  end
+end
 
 branch(; prob, steps = 1) = game -> branch(game; prob, steps)
 
@@ -311,4 +316,10 @@ branch(; prob, steps = 1) = game -> branch(game; prob, steps)
 """
 hash(game :: AbstractGame) = error("hashing for game $(typeof(game)) not implemented")
 
+"""
+   moves(game)
 
+Return the number of actions that have been applied to `game`. Returns `0` if
+not implemented for a specific game type.
+"""
+moves(:: AbstractGame) = 0

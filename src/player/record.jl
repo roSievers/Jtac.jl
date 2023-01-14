@@ -64,8 +64,8 @@ game state.
 - `branch`: Function applied to each game state after a first selfplay. It can
    return `nothing` or a branched game state, which is then used as roots for
    new matches (*without* recursive branching). See also `Game.branch`.
-- `augment = true`: Whether to apply augmentation on the generated dataset.
 - `merge = true`: Whether to return one merged dataset or `n` seperate ones.
+- `augment`: Whether to apply augmentation on the generated dataset.
 - `opt_targets`: Optional targets for which labels are recorded. Derived from
    the mcts player model by default.
 - `callback`: Procedure that is called afer each completed match.
@@ -88,20 +88,21 @@ dataset = Player.record(player, 10, augment = false)
 """
 function record( p :: Union{P, Channel{P}}
                , n :: Int = 1
-               ; merge = true
-               , callback_move = _ -> nothing
+               ; merge :: Bool = true
+               , callback_move :: Function = _ -> nothing
                , opt_targets = Target.targets(fetch(p))[3:end]
+               , best_action_after :: Int = typemax(Int) 
                , kwargs...
                ) where {P <: AbstractPlayer}
 
 
   # Function that plays a single match, starting at state `game`
-  play = game -> begin
+  play = (game, moves) -> begin
 
     H = typeof(game)
+    game = copy(game)
     targets = [Target.defaults(H); opt_targets] 
     dataset = DataSet(H, targets)
-    moves = 0
 
     try
       while !is_over(game)
@@ -115,7 +116,12 @@ function record( p :: Union{P, Channel{P}}
         push!(dataset.labels[2], policy)
 
         # Advance the game by randomly drawing from the policy
-        apply_action!(game, choose_index(policy))
+        if moves >= best_action_after
+          action = findmax(policy)[2]
+        else
+          action = choose_index(policy)
+        end
+        apply_action!(game,  action)
 
         moves += 1
         callback_move(moves)
@@ -157,7 +163,7 @@ end
 function record_with_branching( G :: Type{<: AbstractGame}
                               , play :: Function # maps game to dataset
                               , n :: Int
-                              ; ntasks 
+                              ; ntasks :: Int
                               , augment = Game.is_augmentable(G)
                               , callback = () -> nothing
                               , instance = () -> Game.instance(G)
@@ -167,15 +173,22 @@ function record_with_branching( G :: Type{<: AbstractGame}
   play_with_branching = _ -> begin
 
     root = instance()
+    H = typeof(root)
+    moves = Game.moves(root)
 
-    @assert root isa G "Instance of $G not of correct type"
+    @assert H <: G "Unexpected game instance type $H (expected $G)"
 
     # Play the game once without branching.
     # Then, create branchpoints and play them as well.
-    dataset = play(root)
-    bpoints = filter(!isnothing, branch.(dataset.games[1:end-1]))
-    branches = play.(bpoints)
-    filter!(x -> length(x) > 0, branches)
+    dataset = play(root, moves)
+    branches = DataSet{H}[]
+    for (i, game) in enumerate(dataset.games[1:end-1])
+      branchpoint = branch(game)
+      if !isnothing(branchpoint) && !Game.is_over(branchpoint)
+        ds = play(branchpoint, moves + i - 1)
+        push!(branches, ds)
+      end
+    end
 
     datasets = [dataset; branches]
 
@@ -286,7 +299,7 @@ Record a dataset by applying `model` or `player` to `games`.
 """
 function evaluate( p :: Union{AbstractModel{G}, AbstractPlayer{G}}
                  , games :: Vector{T}
-                 ; augment = false
+                 ; augment = Game.is_augmentable(T)
                  ) where {G, T <: G}
 
   games = augment ? mapreduce(Game.augment, vcat, games) : games
@@ -324,8 +337,7 @@ end
 """
 function evaluate( p :: Union{AbstractPlayer, AbstractModel}
                  , ch :: AbstractChannel
-                 ; instance
-                 , augment = false )
+                 ; instance :: Function )
 
   main_loop(player) = begin
     while isopen(ch)
