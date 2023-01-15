@@ -48,12 +48,13 @@ function loss( model :: NeuralModel{G, GPU}
              ; maxbatch = 1024
              , reg_targets = []
              , weights = (;)
+             , store_on_gpu = false
              ) where {G, GPU}
 
   pred_targets = Target.targets(model)
   ds = Target.adapt(dataset, pred_targets)
 
-  batches = Batches(ds, maxbatch, gpu = GPU)
+  batches = Batches(ds, maxbatch; gpu = GPU, store_on_gpu)
   losses = sum(batches) do cache
     _loss(model, cache; reg_targets, weights) .* length(cache)
   end ./ length(ds)
@@ -218,7 +219,13 @@ function train!( player  :: Union{AbstractPlayer, AbstractModel}
 
     if !quiet
       finish()
-      info_loss_values(model, j, trainsets[1], testset; reg_targets, weights)
+      info_loss_values( model
+                      , j
+                      , trainsets[1]
+                      , testset
+                      ; reg_targets
+                      , weights
+                      , store_on_gpu )
     end
 
     callback_epoch(j)
