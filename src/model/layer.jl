@@ -128,7 +128,7 @@ expand_to_pair(t :: Int) = (t, t)
 
 # -------- Layer Weights ----------------------------------------------------- #
 
-struct Weight
+mutable struct Weight
   data
 end
 
