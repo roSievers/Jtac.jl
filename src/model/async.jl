@@ -7,16 +7,17 @@ in parallel when the single calls take place in an async context. Note that an
 Async model always returns CPU arrays, even if the worker model acts on the GPU.
 """
 mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
-  model         :: NeuralModel{G}
-  ch            :: Channel
-  task          :: Task
+  model      :: NeuralModel{G}
+  ch         :: Channel
+  task       :: Task
 
-  batchsize     :: Int
-  buffersize    :: Int     # Must not be smaller than batchsize!
+  batchsize  :: Int
+  buffersize :: Int     # Must not be smaller than batchsize!
 
-  spawn         :: Bool
-  dynamic       :: Bool
+  spawn      :: Bool
+  dynamic    :: Bool
 
+  ch_dynamic :: Channel{Bool}
   profile
 end
 
@@ -46,26 +47,28 @@ function Async( model :: NeuralModel{G}
 
   # Open the channel in which the inputs are dumped
   ch = Channel(buffersize)
+  ch_dynamic = Channel{Bool}(1)
+  put!(ch_dynamic, dynamic)
 
   # For debugging and profiling, record some information
   profile = (batchsize = Int[], delay = Float64[], latency = Float64[])
 
   # Start the worker task in the background
   if spawn
-    task = Threads.@spawn worker(ch, model, batchsize, dynamic, profile)
+    task = Threads.@spawn worker(ch, model, batchsize, ch_dynamic, profile)
   else
-    task = @async worker(ch, model, batchsize, dynamic, profile)
+    task = @async worker(ch, model, batchsize, ch_dynamic, profile)
   end
 
   # Create the instance
-  amodel = Async{G}(model, ch, task, batchsize, buffersize, spawn, dynamic, profile)
+  amodel = Async{G}( model, ch, task, batchsize, buffersize
+                   , spawn, dynamic, ch_dynamic, profile )
 
   # Register finalizer
   finalizer(m -> close(m.ch), amodel)
 
   # Return the instance
   amodel
-
 end
 
 
@@ -77,6 +80,17 @@ function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
   end
 end
 
+dynamic_mode!(m :: AbstractModel, :: Bool) = nothing
+
+function dynamic_mode!(m :: Async{G}, dynamic :: Bool) where {G}
+  take!(m.ch_dynamic)
+  put!(m.ch_dynamic, dynamic)
+  m.dynamic = dynamic
+  try Model.apply(m, G()) catch _ end # this prevents blocking
+  nothing
+end
+
+#Base.close(m :: Async) = close(m.ch)
 
 function switch_model(m :: Async{G}, model :: NeuralModel{G}) where {G <: AbstractGame}
   Async( model
@@ -112,7 +126,6 @@ function Base.show(io :: IO, mime :: MIME"text/plain", m :: Async{G}) where {G <
   show(io, mime, m.model)
 end
 
-
 # -------- Async Worker ------------------------------------------------------ #
 
 function closed_and_empty(ch, profile)
@@ -124,8 +137,6 @@ function closed_and_empty(ch, profile)
   end
 end
 
-Base.close(m :: Async) = close(m.ch)
-
 function notify_error(conds, msg)
   for c in conds
     lock(c) do
@@ -134,7 +145,7 @@ function notify_error(conds, msg)
   end
 end
 
-function worker(ch, model, batchsize, dynamic, profile)
+function worker(ch, model, batchsize, ch_dynamic, profile)
 
   @debug "Async worker started"
 
@@ -144,13 +155,12 @@ function worker(ch, model, batchsize, dynamic, profile)
   # worker task has to run under the same CUDA device the model has been created in
   adapt_gpu_device!(model)
 
-  if dynamic
-    # dynamic modealso works wenn fewer than batchsize games are evaluated
-    expect_another_game = games -> isready(ch) && length(games) < batchsize
-  else
-    # this will lead to blocking until batchsize games have been accumulated
-    # for evaluation
-    expect_another_game = games -> length(games) < batchsize
+  expect_more_games = games -> begin
+    if fetch(ch_dynamic)
+      isready(ch) && length(games) < batchsize
+    else
+      length(games) < batchsize
+    end
   end
 
   try
@@ -161,7 +171,7 @@ function worker(ch, model, batchsize, dynamic, profile)
 
       dt = @elapsed begin
 
-        while expect_another_game(games)
+        while expect_more_games(games)
           game, c = try take!(ch) catch _ break end
           push!(games, game)
           push!(conds, c)
