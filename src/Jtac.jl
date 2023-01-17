@@ -47,8 +47,6 @@ module Util
 
   export apply_dihedral_group,
          apply_klein_four_group,
-         prepare,
-         branch,
          stepper
 
 
@@ -79,7 +77,7 @@ module Pack
 
   include("pack.jl")
 
-end
+end # module Pack
 
 # -------- Games ------------------------------------------------------------- #
 
@@ -168,8 +166,7 @@ end # module Target
 module Model
 
   using Random, Statistics, LinearAlgebra
-  using CUDA
-  import MsgPack
+  import Knet, CUDA
 
   using ..Jtac
   using ..Util
@@ -196,22 +193,6 @@ module Model
          playing_model,
          training_model,
          gametype
-
-  export LayerWeight,
-         LayerActivation,
-         Layer,
-         PrimitiveLayer,
-         CompositeLayer,
-         Pointwise,
-         Dense,
-         Conv,
-         Deconv,
-         Pool,
-         Dropout,
-         Batchnorm, 
-         Chain,
-         Stack,
-         Residual
 
   export valid_insize,
          outsize,
@@ -321,11 +302,7 @@ module Player
          turn!,
          compete,
          switch_model,
-         record,
-         record_against,
-         record_model
-
-  export Ranking
+         record
 
 end # module Player
 
@@ -365,7 +342,7 @@ module Server
 
     include("server/config.jl")
 
-  end
+  end # module Config
 
   module Events
 
@@ -374,7 +351,7 @@ module Server
 
     include("server/events.jl")
 
-  end
+  end # module Events
 
   module Api
 
@@ -387,10 +364,43 @@ module Server
 
     include("server/api.jl")
 
-  end
+  end # module Api
+
+  module Log
+
+    export log, @log, @logwarn, @logerror, @logdebug
+
+    include("server/log.jl")
+  
+  end # module Log
+
+  module Program
+
+    using Statistics
+    import Knet, CUDA
+
+    import ...Game
+    import ...Data
+    import ...Model
+    import ...Player
+    import ...Target
+    import ...Training
+
+    import ...Game: AbstractGame
+    import ...Data: DataSet, Pool, Batches
+    import ...Model: AbstractModel, NeuralModel, Async
+    import ...Player: AbstractPlayer, MCTSPlayer
+
+    using ..Log
+
+    include("server/program.jl")
+    include("server/selfplay.jl")
+    include("server/training.jl")
+    include("server/compete.jl")
+    
+  end # module Program
 
 end
-
 
 export Util,
        Pack,

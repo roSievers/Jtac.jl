@@ -21,6 +21,7 @@ function client(
   , port :: Int = 7248
   , isolated :: Bool = false
   , data_folder :: String = "./data"
+  , data_size :: Int = 10000
   , async :: Int = 50
   , name :: String = ENV["USER"] * "-" * string(rand(1:1000))
   , password :: String = ""
@@ -29,6 +30,8 @@ function client(
   Dict( :host => host
       , :port => port
       , :isolated => isolated
+      , :data_folder => data_folder
+      , :data_size => data_size
       , :async => async
       , :name => name
       , :password => password
@@ -36,7 +39,7 @@ function client(
 end
 
 function training(
-  ; model :: String = ""
+  ; model :: Union{String, Vector{String}} = ""
   , batchsize :: Int = 512
   , stepsize :: Int = 10
   , gensize :: Int = 100
@@ -64,7 +67,10 @@ function selfplay(
   , exploration :: Float64 = 1.41
   , dilution :: Float64 = 0.0
   , augment :: Bool = false
-  , instance_randomization :: Float64 = 0.0
+  , batchsize :: Int = 64
+  , ntasks :: Int = 2batchsize
+  , spawn :: Bool = true
+  , randomize_instance :: Float64 = 0.0
   , branch_probability :: Float64 = 0.0
   , branch_step_min :: Int = 1
   , branch_step_max :: Int = 10
@@ -77,7 +83,10 @@ function selfplay(
       , :exploration => exploration
       , :dilution => dilution
       , :augment => augment
-      , :instance_randomization => instance_randomization
+      , :batchsize => batchsize
+      , :ntasks => ntasks
+      , :spawn => spawn
+      , :randomize_instance => randomize_instance
       , :branch_probability => branch_probability
       , :branch_step_min => branch_step_min
       , :branch_step_max => branch_step_max
