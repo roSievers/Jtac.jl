@@ -112,6 +112,7 @@ function zero_shrink( model :: NeuralModel{G, false}
 
   end
 
+
   # heads
   for head in m.heads
     outlen = prod(Model.outsize(m.trunk, size(G)))
