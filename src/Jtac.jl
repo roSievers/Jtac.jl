@@ -338,7 +338,7 @@ module Server
 
   module Config
 
-    import TOML 
+    import Printf, TOML, Sockets 
 
     include("server/config.jl")
 
