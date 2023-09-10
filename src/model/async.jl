@@ -4,7 +4,7 @@
 """
 Asynchronous model wrapper that allows a model to be called on a batch of games
 in parallel when the single calls take place in an async context. Note that an
-Async model always returns CPU arrays, even if the worker model acts on the GPU.
+`Async` model always returns CPU arrays, even if the worker model acts on the GPU.
 """
 mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
   model      :: NeuralModel{G}
@@ -24,16 +24,26 @@ end
 Pack.@onlyfields Async [:model, :batchsize, :buffersize, :spawn, :dynamic]
 
 Async{G}(models, batchsize, buffersize, spawn, dynamic) where {G} =
-  Async(models; batchsize, buffersize, spawn, dynamic) :: Async{G}
+  Async(models; batchsize, buffersize, spawn, dynamic)
 
 Pack.freeze(m :: Async) = switch_model(m, Pack.freeze(m.model))
 
 """
-    Async(model; batchsize, buffersize)
+    Async(model; kwargs...)
 
 Wraps `model` to become an asynchronous model with maximal batchsize
 `batchsize` for evaluation in parallel and a buffer of size `buffersize` for
 queuing.
+
+## Keyword Arguments
+* `batchsize = 50`: Maximal number of games evaluated in parallel.
+* `buffersize = 10batchsize`: Size of the channel that buffers games to be \
+evaluated.
+* `spawn = false`: If true, the worker is spawned in its own thread.
+* `dynamic = true`: If true, the model does not have to wait until `batchsize` \
+games are buffered before evaluation. This can prevent blocking (if games stop \
+being evaluated) but may lead to situations where the effective batchsize is \
+systematically smaller than `batchsize`, especially if `spawn = true`.
 """
 function Async( model :: NeuralModel{G}
               ; batchsize = 50
@@ -152,7 +162,8 @@ function worker(ch, model, batchsize, ch_dynamic, profile)
   buf = Game.array_buffer(model, batchsize)
   G = Model.gametype(model)
 
-  # worker task has to run under the same CUDA device the model has been created in
+  # worker task has to run under the same CUDA device that the model has been
+  # created in
   adapt_gpu_device!(model)
 
   expect_more_games = games -> begin
@@ -178,7 +189,7 @@ function worker(ch, model, batchsize, ch_dynamic, profile)
           yield()
         end
 
-        # actual batchsize
+        # Actual batchsize
         batchsize = length(games)
         push!(profile.batchsize, batchsize)
 

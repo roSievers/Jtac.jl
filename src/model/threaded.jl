@@ -152,8 +152,6 @@ function calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
         close(calc_ch)
       end
     end
-
-    #println("calc 8")
   end
 
   close(io_ch)
@@ -179,8 +177,6 @@ function inout_task_idx(idx, wake, io_ch, calc_ch, lock, buf_in, buf_out, max_ba
 
     isopen(calc_ch) || break
     n = length(inputs)
-    #@show n
-
 
     Base.lock(lock[idx]) do
       for i in 1:n
@@ -213,7 +209,6 @@ function handle_error(f, calc_ch, inputs)
 end
 
 function collect_inputs(io_ch, calc_ch, max_batchsize)
-  #println("collect_inputs")
   inputs = Vector()
   handle_error(calc_ch, inputs) do
     wait(io_ch) # make sure that at least one entry is available
