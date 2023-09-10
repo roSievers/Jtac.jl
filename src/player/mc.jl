@@ -16,6 +16,67 @@ Broadcast.broadcastable(node :: Node) = Ref(node)
 
 is_leaf(node :: Node) :: Bool = isempty(node.children)
 
+function Base.copy(node :: Node)
+  children = copy.(node.children)
+  result = Node(node.action,
+    node.current_player,
+    node.parent,
+    children,
+    copy(node.visit_counter),
+    copy(node.expected_reward),
+    copy(node.model_policy),
+  )
+  for child in children
+    child.parent = result
+  end
+  result
+end
+
+function merge_nodes(a::Node, b::Node)::Node
+  @assert a.action == b.action "Cannot merge nodes with different actions"
+
+  # If a node has not been expanded, then current_player is zero
+  if is_leaf(a)
+    b
+  elseif is_leaf(b)
+    a
+  else
+    @assert a.current_player == b.current_player "Cannot merge nodes with different current_player: $(a.current_player), $(b.current_player)"
+    # We don't compare parents, because they come from different trees.
+    # This means the result.parent is not "correct", but all children have their
+    # parent set correctly.
+    @assert length(a.children) == length(b.children) "Cannot merge nodes with different number of children"
+    @assert length(a.visit_counter) == length(b.visit_counter) "Cannot merge nodes with different visit_counter length"
+    @assert length(a.expected_reward) == length(b.expected_reward) "Cannot merge nodes with different expected_reward length"
+    @assert length(a.model_policy) == length(b.model_policy) "Cannot merge nodes with different model_policy length"
+
+    children = merge_nodes.(a.children, b.children)
+
+    visit_counter = a.visit_counter .+ b.visit_counter
+    a_reward = a.expected_reward .* a.visit_counter
+    b_reward = b.expected_reward .* b.visit_counter
+    expected_reward = (a_reward .+ b_reward) ./ visit_counter
+
+    a_policy = a.model_policy .* sum(a.visit_counter)
+    b_policy = b.model_policy .* sum(b.visit_counter)
+    model_policy = (a_policy .+ b_policy) ./ sum(visit_counter)
+
+    result = Node(a.action, a.current_player, a.parent, children, visit_counter, expected_reward, model_policy)
+
+    for child in children
+      child.parent = result
+    end
+
+    result
+  end
+end
+
+function merge_nodes(nodes::Vector{Node})::Node
+  @assert !isempty(nodes) "Cannot merge empty vector of nodes"
+  reduce(merge_nodes, nodes)
+end
+
+
 # -------- MCTS Algorithm --------------------------------------------------- #
 
 
@@ -72,7 +133,6 @@ function descend_to_leaf!( game :: AbstractGame
 end
 
 function backpropagate!(node, p1_value) :: Nothing
-
   if !isnothing(node.parent)
     # Since the parent keeps all child-information, we have to access it
     # indirectly
@@ -205,27 +265,34 @@ end
 function mcts_policy( model
                     , game :: AbstractGame
                     ; temperature = 1.f0
+                    , parallel_roots = 1
+                    , power = 100
+                    , root = Node()
                     , kwargs...
-                    ) :: Vector{Float32}
+                    ) :: Tuple{Vector{Float32}, Node}
 
-  root = run_mcts(model, game; kwargs... )
+  power = ceil(Int, power / parallel_roots)
+  roots = asyncmap(1:parallel_roots, ntasks = parallel_roots) do index
+    run_mcts(model, game; power, root = copy(root), kwargs...)
+  end
+  root = merge_nodes(roots)
 
   # During self play, we pick a move from the improved stochastic policy
   # root.visit_counter at random.
   # visit_counter seems to be prefered over expected_reward when choosing
   # the best move in a match, as it is less susceptible to random fluctuations.
-  apply_temperature(root.visit_counter, temperature)
+  policy = apply_temperature(root.visit_counter, temperature)
+  policy, root
 end
 
 function mcts_value_policy( model
-                            , game :: AbstractGame
-                            ; temperature = 1.f0
-                            , kwargs...
-                            ) :: Tuple{Float32, Vector{Float32}}
+                          , game :: AbstractGame
+                          ; kwargs...
+                          ) :: Tuple{Float32, Vector{Float32}, Node}
 
-  root = Node()
-  policy = mcts_policy(model, game; root, temperature, kwargs...)
+  policy, root = mcts_policy(model, game; kwargs...)
   value = sum(policy .* root.expected_reward)
-  value, policy
+  value, policy, root
 end
+
 

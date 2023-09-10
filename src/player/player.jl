@@ -249,6 +249,7 @@ struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   temperature :: Float32
   exploration :: Float32
   dilution :: Float32
+  parallel_roots :: Int
 
   name :: String
 
@@ -266,6 +267,7 @@ function MCTSPlayer( model :: AbstractModel{G}
                    , temperature = 1.
                    , exploration = 1.41
                    , dilution = 0.0
+                   , parallel_roots = 1
                    , name = nothing 
                    ) where {G <: AbstractGame}
 
@@ -274,7 +276,15 @@ function MCTSPlayer( model :: AbstractModel{G}
     name = "mcts$(power)-$id"
   end
 
-  MCTSPlayer{G}(model, power, temperature, exploration, dilution, name)
+  MCTSPlayer{G}(
+    model,
+    power,
+    temperature,
+    exploration,
+    dilution,
+    parallel_roots,
+    name
+  )
 
 end
 
@@ -300,12 +310,13 @@ function think( p :: MCTSPlayer{G}
               ) :: Vector{Float32} where {G <: AbstractGame}
 
   # Improved policy over the allowed actions
-  p = mcts_policy( p.model
-                 , game
-                 , power = p.power
-                 , temperature = p.temperature
-                 , exploration = p.exploration
-                 , dilution = p.dilution )
+  p, _ = mcts_policy( p.model
+                    , game
+                    , power = p.power
+                    , temperature = p.temperature
+                    , exploration = p.exploration
+                    , dilution = p.dilution
+                    , parallel_roots = p.parallel_roots )
 
   # Full policy vector
   policy = zeros(Float32, policy_length(game))
@@ -316,12 +327,12 @@ end
 
 function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 
-  v, pol = mcts_value_policy( p.model
-                            , game
-                            , power = p.power
-                            , temperature = p.temperature
-                            , exploration = p.exploration
-                            , dilution = p.dilution )
+  v, pol, _ = mcts_value_policy( p.model
+                               , game
+                               , power = p.power
+                               , temperature = p.temperature
+                               , exploration = p.exploration
+                               , dilution = p.dilution )
 
   policy = zeros(Float32, policy_length(game))
   policy[legal_actions(game)] .= pol
@@ -341,13 +352,14 @@ function decide_chain( p :: MCTSPlayer{G}
   while !Game.is_over(game) && Game.current_player(game) == current
     remaining_power = round(Int, sum(root.visit_counter))
     power = cap_power ? p.power - remaining_power : p.power
-    pol = mcts_policy( p.model
-                     , game
-                     , root = root
-                     , power = power
-                     , temperature = p.temperature
-                     , exploration = p.exploration
-                     , dilution = p.dilution )
+    pol, root = mcts_policy( p.model
+                           , game
+                           , root = root
+                           , power = power
+                           , temperature = p.temperature
+                           , exploration = p.exploration
+                           , dilution = p.dilution
+                           , parallel_roots = p.parallel_roots )
 
     # select a child index that performed well
     index = choose_index(pol)
