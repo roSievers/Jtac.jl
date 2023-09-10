@@ -256,20 +256,21 @@ isbetween(a, b) = x -> a <= x <= b
 
 function valid_ip(str)
   try
-    @ip_str(str)
+    #TODO: check if str is a valid ip string
+    # Sockets.@ip_str(str)
     true
   catch _
     false
   end
 end
 
-const LIMITS = Dict{String, Function}(
+const LIMITS = Dict{String, Tuple{Function, String}}(
     "train.host" => (valid_ip, "invalid host ip")
   , "train.port" => (isbetween(1000, 10000), "port number must be between 1000 and 10000")
   , "play.host" => (valid_ip, "invalid host ip")
   , "play.port" => (isbetween(1000, 10000), "port number must be between 1000 and 10000")
   , "play_local.packsize" => (>=(1), "packsize must be positive")
-  , "program.selfplay.gpu" => x -> x >= -2
+  , "program.selfplay.gpu" => (x -> x >= -2, "gpu selector must be -1 (cpu) or >= 0 (gpu)")
   , "program.selfplay.atype" => (in(["knet", "cuda"]), "array type must be one of 'knet' o, 'cuda'")
   , "program.selfplay.ntasks" => (isbetween(1, 4096), "number of tasks must be between 1 and 4096")
   , "program.selfplay.batchsize" => (isbetween(1, 4096), "batchsize must be between 1 and 4096")
