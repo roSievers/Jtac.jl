@@ -155,11 +155,11 @@ function notify_error(conds, msg)
   end
 end
 
-function worker(ch, model, batchsize, ch_dynamic, profile)
+function worker(ch, model, max_batchsize, ch_dynamic, profile)
 
   @debug "Async worker started"
 
-  buf = Game.array_buffer(model, batchsize)
+  buf = Game.array_buffer(model, max_batchsize)
   G = Model.gametype(model)
 
   # worker task has to run under the same CUDA device that the model has been
@@ -168,9 +168,9 @@ function worker(ch, model, batchsize, ch_dynamic, profile)
 
   expect_more_games = games -> begin
     if fetch(ch_dynamic)
-      isready(ch) && length(games) < batchsize
+      isready(ch) && length(games) < max_batchsize
     else
-      length(games) < batchsize
+      length(games) < max_batchsize
     end
   end
 
