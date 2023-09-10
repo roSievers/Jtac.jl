@@ -178,12 +178,12 @@ is `.jtm`.
 save(fname, model) = open(io -> Pack.pack(io, model |> to_cpu), fname, "w")
 
 """
-    load(fname)
+    load(fname, gpu = false, async = false)
 
 Load a Jtac model from `fname`. The typical file extension is `.jtm`.
 """
-function load(fname; gpu = false)
+function load(fname; kwargs...)
   model = open(io -> Pack.unpack(io, AbstractModel), fname)
-  to_cpu(model)
+  Model.tune(model; kwargs...)
 end
 
