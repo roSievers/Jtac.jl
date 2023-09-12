@@ -404,7 +404,9 @@ swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 
 function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
-  print(io, "MCTSPlayer{$(Game.name(G))}($(p.name), $(p.power), $(p.temperature), $(p.exploration), $(p.dilution))")
+  print(io, "MCTSPlayer{$(Game.name(G))}")
+  print(io, "($(p.name), $(p.power)/$(p.parallel_roots), ")
+  print(io, "$(p.temperature), $(p.exploration), $(p.dilution))")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
@@ -413,7 +415,7 @@ function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <
   print(io, " temp: $(p.temperature)"); println(io)
   print(io, " dilu: $(p.dilution)"); println(io)
   print(io, " expl: $(p.exploration)"); println(io)
-  print(io, " power: $(p.power)"); println(io)
+  print(io, " power: $(p.power)/$(p.parallel_roots)"); println(io)
   print(io, " model: "); show(io, MIME"text/plain"(), p.model)
 end
 

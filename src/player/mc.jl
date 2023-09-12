@@ -18,7 +18,8 @@ is_leaf(node :: Node) :: Bool = isempty(node.children)
 
 function Base.copy(node :: Node)
   children = copy.(node.children)
-  result = Node(node.action,
+  result = Node(
+    node.action,
     node.current_player,
     node.parent,
     children,

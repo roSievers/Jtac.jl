@@ -59,15 +59,18 @@ or +1). The policy label is the policy proposed by the player for the respective
 game state.
 
 # Arguments
-- `instance`: Function applied on the game type to obtain an initial state for
-   a single match. Can be used to randomize the initial positions.
-- `branch`: Function applied to each game state after a first selfplay. It can
-   return `nothing` or a branched game state, which is then used as roots for
-   new matches (*without* recursive branching). See also `Game.branch`.
+- `instance`: Function applied on the game type to obtain an initial state for \
+a single match. Can be used to randomize the initial positions.
+- `branch`: Function applied to each game state after a first selfplay. It can \
+return `nothing` or a branched game state, which is then used as roots for \
+new matches (*without* recursive branching). See also `Game.branch`.
 - `merge = true`: Whether to return one merged dataset or `n` seperate ones.
 - `augment`: Whether to apply augmentation on the generated dataset.
-- `opt_targets`: Optional targets for which labels are recorded. Derived from
-   the mcts player model by default.
+- `opt_targets`: Optional targets for which labels are recorded. Derived from \
+the mcts player model by default.
+- `best_action_after`: If set to an integer `moves`, the action with the \
+highest policy value will deterministically be selected after `moves` moves. \
+Prior to that, the action is sampled from the policy vector.
 - `callback`: Procedure that is called afer each completed match.
 - `callback_move`: Procedure called after each individual move.
 
