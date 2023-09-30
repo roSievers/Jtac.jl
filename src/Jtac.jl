@@ -283,7 +283,7 @@ module Player
   using ..Data
   import ..Pack
 
-  include("player/mc.jl")
+  include("player/mcts.jl")
   include("player/player.jl")
   include("player/elo.jl")    # outsource to Util or rank.jl?
   include("player/rank.jl")
@@ -392,6 +392,7 @@ module Server
     import ...Player: AbstractPlayer, MCTSPlayer
 
     using ..Log
+    import ..Config
 
     include("server/program.jl")
     include("server/selfplay.jl")

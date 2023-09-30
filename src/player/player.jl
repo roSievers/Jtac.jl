@@ -25,6 +25,7 @@ Only implemented for `IntuitionPlayer` and `MCTSPlayer`.
 """
 Model.apply(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
 
+# TODO: Deprecated in MCTS-Update
 """
     choose_index(probs)
 
@@ -166,7 +167,7 @@ function IntuitionPlayer( model :: AbstractModel{G}
 end
 
 function IntuitionPlayer( player :: AbstractPlayer{G}
-                        ; temperature = player.temperature
+                        ; temperature = 1.
                         , name = nothing
                         ) where {G <: AbstractGame}
 
@@ -187,7 +188,7 @@ function think( p :: IntuitionPlayer{G}
   policy[actions] = apply(p.model, game).policy[actions]
 
   # Return the policy after applying temperature
-  apply_temperature(policy, p.temperature)
+  anneal(policy, p.temperature)
 end
 
 function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
@@ -198,7 +199,7 @@ function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGam
   res = apply(p.model, game)
   policy[actions] = res.policy[actions]
 
-  (value = res.value, policy = apply_temperature(policy, p.temperature))
+  (value = res.value, policy = anneal(policy, p.temperature))
 end
 
 name(p :: IntuitionPlayer) = p.name
@@ -242,100 +243,157 @@ A player that relies on Markov chain tree search policies that are constructed
 with the support of a model.
 """
 struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
-
   model :: AbstractModel
 
+  # MCTS options
   power :: Int
-  temperature :: Float32
-  exploration :: Float32
-  dilution :: Float32
-  parallel_roots :: Int
+  policy :: MCTSPolicy
+  selector :: ActionSelector
+  rootselector :: ActionSelector
 
   name :: String
-
 end
 
 """
-    MCTSPlayer([model; power, temperature, exploration, name])
-    MCTSPlayer(player [; power, temperature, exploration, name])
+    MCTSPlayer([model]; kwargs...)
+    MCTSPlayer(player [; power, policy, selector, rootselector, name])
 
 MCTS Player powered by `model`, which defaults to `RolloutModel`. The model can
-also be derived from `player` (this does not create a copy of the model).
+also be derived from `player`. Note: this does not create a copy of the model.
+
+By default, a classical PUCT-based player is created. For an MCTSPlayer with
+Gumbel Alpha Zero inspired presets, see [`MCTSPlayerGumbel`](@ref).
+
+## Keyword arguments
+* `power = 100`: The number of model queries the player can use per move.
+* `policy = VisitCount()`: The final policy extracted from the root node.
+* `selector = PUCT()`: The action selector during the mcts run at non-root nodes.
+* `rootselector = selector`: The action selector at root nodes.
+* `temperature`: Convenience option that replaces `policy` by `Anneal(policy, temperature)` if provided.
+* `name = nothing`: The name of the player. If `nothing`, a random name is generated.
 """
 function MCTSPlayer( model :: AbstractModel{G}
                    ; power = 100
-                   , temperature = 1.
-                   , exploration = 1.41
-                   , dilution = 0.0
-                   , parallel_roots = 1
+                   , temperature = nothing
+                   , policy = VisitCount()
+                   , selector = PUCT()
+                   , rootselector = selector
                    , name = nothing 
                    ) where {G <: AbstractGame}
 
   if isnothing(name)
-    id = get_id(model, temperature, exploration, dilution)
+    id = get_id(model, policy, selector, rootselector)
     name = "mcts$(power)-$id"
+  end
+
+  if !isnothing(temperature)
+    # Prevent annealing already annealed policies
+    if policy isa Anneal
+      policy = Anneal(policy.policy, temperature)
+    else
+      policy = Anneal(policy, temperature)
+    end
   end
 
   MCTSPlayer{G}(
     model,
     power,
-    temperature,
-    exploration,
-    dilution,
-    parallel_roots,
-    name
+    policy,
+    selector,
+    rootselector,
+    name,
   )
-
 end
 
 # The default MCTSPlayer uses the RolloutModel
 MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 
-
 function MCTSPlayer( player :: IntuitionPlayer{G}
-                   ; temperature = player.temperature
                    , kwargs...
                    ) where {G <: AbstractGame}
-
-  MCTSPlayer(playing_model(player); temperature = temperature, kwargs...)
-
-end
-
-function MCTSPlayer( player :: MCTSPlayer{G}; kwargs... ) where {G <: AbstractGame}
   MCTSPlayer(playing_model(player); kwargs...)
 end
 
+function MCTSPlayer( player :: MCTSPlayer
+                   ; power = player.power
+                   , temperature = nothing
+                   , policy = player.policy
+                   , selector = player.selector
+                   , rootselector = player.rootselector
+                   , name = nothing )
+
+  if !isnothing(temperature)
+    if policy isa Anneal
+      policy = Anneal(policy.policy, temperature)
+    else
+      policy = Anneal(policy, temperature)
+    end
+  end
+  
+  MCTSPlayer(
+    playing_model(player);
+    power,
+    temperature,
+    policy,
+    selector,
+    rootselector,
+    name,
+  )
+end
+
+
+"""
+    MCTSPlayerGumbel(model/player; [power, temperature, nactions, policy, name])
+
+Create an `MCTSPlayer` with Gumbel presets.
+
+This means that the arguments selector = `VisitPropTo()`, and rootselector
+= `SequentialHalving(nactions)` are passed to `MCTSPlayer`. The argument
+`nactions` defauts to 16, and by default `policy = ImprovedPolicy()`
+
+The remaining arguments are shared with [`MCTSPlayer`](@ref).
+"""
+function MCTSPlayerGumbel( args...
+                         ; power = 100
+                         , temperature = nothing
+                         , nactions = 16
+                         , policy = ImprovedPolicy()
+                         , name = nothing )
+  MCTSPlayer(
+    args...;
+    power,
+    temperature,
+    policy,
+    selector = VisitPropTo(),
+    rootselector = SequentialHalving(nactions),
+    name,
+  )
+end
+
+
 function think( p :: MCTSPlayer{G}
               , game :: G
+              , policy = p.policy
               ) :: Vector{Float32} where {G <: AbstractGame}
 
-  # Improved policy over the allowed actions
-  p, _ = mcts_policy( p.model
-                    , game
-                    , power = p.power
-                    , temperature = p.temperature
-                    , exploration = p.exploration
-                    , dilution = p.dilution
-                    , parallel_roots = p.parallel_roots )
+  root = mcts(game, p.model, p.power; p.selector, p.rootselector)
 
-  # Full policy vector
-  policy = zeros(Float32, policy_length(game))
-  policy[legal_actions(game)] .= p
+  actions = legal_actions(game)
+  buffer = zeros(Float32, policy_length(game))
+  buffer[actions] .= getpolicy(policy, root)
 
-  policy
+  buffer
 end
 
 function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 
-  v, pol, _ = mcts_value_policy( p.model
-                               , game
-                               , power = p.power
-                               , temperature = p.temperature
-                               , exploration = p.exploration
-                               , dilution = p.dilution )
+  root = mcts(game, p.model, p.power; p.selector, p.rootselector)
+  pol = getpolicy(p.policy, root)
+  value = sum(pol .* root.qvalues) # TODO: this can be done better
 
-  policy = zeros(Float32, policy_length(game))
-  policy[legal_actions(game)] .= pol
+  actions = legal_actions(game)
+  buffer = zeros(Float32, policy_length(game))
+  buffer[actions] .= pol
 
   (value = v, policy = policy)
 end
@@ -345,22 +403,17 @@ function decide_chain( p :: MCTSPlayer{G}
                      ; cap_power = false ) where {G <: AbstractGame}
   actions = []
   game = copy(game)
-  root = Node()
+  root = rootnode()
   current = Game.current_player(game)
 
   # act as long as the game is not finished and it is our turn
   while !Game.is_over(game) && Game.current_player(game) == current
-    remaining_power = round(Int, sum(root.visit_counter))
+    remaining_power = round(Int, sum(root.visits))
     power = cap_power ? p.power - remaining_power : p.power
-    pol, root = mcts_policy( p.model
-                           , game
-                           , root = root
-                           , power = power
-                           , temperature = p.temperature
-                           , exploration = p.exploration
-                           , dilution = p.dilution
-                           , parallel_roots = p.parallel_roots )
 
+    root = mcts(game, p.model, power; p.selector, p.rootselector, root)
+    pol = getpolicy(p.policy, root)
+    
     # select a child index that performed well
     index = choose_index(pol)
 
@@ -405,17 +458,16 @@ swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
   print(io, "MCTSPlayer{$(Game.name(G))}")
-  print(io, "($(p.name), $(p.power)/$(p.parallel_roots), ")
-  print(io, "$(p.temperature), $(p.exploration), $(p.dilution))")
+  print(io, "($(p.name), $(p.power), $(p.temperature))")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
   println(io, "MCTSPlayer{$(Game.name(G))}")
-  print(io, " name: $(p.name)"); println(io)
-  print(io, " temp: $(p.temperature)"); println(io)
-  print(io, " dilu: $(p.dilution)"); println(io)
-  print(io, " expl: $(p.exploration)"); println(io)
-  print(io, " power: $(p.power)/$(p.parallel_roots)"); println(io)
+  print(io, " name: $(p.name)\n")
+  print(io, " power: $(p.power)\n")
+  print(io, " policy: $(p.policy)\n")
+  print(io, " selector: $(p.selector)\n")
+  print(io, " rootselector: $(p.rootselector)\n")
   print(io, " model: "); show(io, MIME"text/plain"(), p.model)
 end
 
