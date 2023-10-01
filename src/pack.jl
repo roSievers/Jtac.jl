@@ -189,9 +189,8 @@ end
 Bytes(arr :: Array) = Bytes(reinterpret(UInt8, reshape(arr, :)))
 Base.convert(:: Type{Bytes}, bytes :: Vector{UInt8}) = Bytes(bytes)
 
-#Base.convert(:: Type{Bytes}, :: Nothing) = Bytes([])
 
-# -------- Vector packing / unpacking ------------------------------------------ #
+# -------- Vector packing / unpacking ---------------------------------------- #
 
 """
     @vector T
@@ -253,7 +252,7 @@ end
     fieldnames(T)
 
 Get the field names of an instance of type `T` that are included in (typed or
-untyped) packing. See also the convenience macro `Pack.@fields`.
+untyped) packing. See also the convenience macro `Pack.@onlyfields`.
 
 This function can be specialized (together with `Pack.fieldvalues` and
 `Pack.fieldytpes`) in order to provide custom packing / unpacking.
@@ -309,7 +308,6 @@ Note that this macro must only be applied to (semi-)concrete subtypes of a
 type on which `@typed` has been applied.
 """
 macro onlyfields(T, fields)
-  S = Base.gensym(:S)
   quote
     Pack.fieldnames(:: Type{<: $T}) = $fields
   end |> esc
@@ -321,7 +319,7 @@ end
     @untyped T
 
 Enable packing of all concrete subtypes `S <: T` as msgpack map type. Note that
-unpacking requires prior knowledge of the exact type `S`. For more flexible
+unpacking requires prior knowledge of the concrete type `S`. For more flexible
 (albeit slower) unpacking, see `@typed`, which additionally stores type
 information.
 """
@@ -485,7 +483,7 @@ function compose(d :: Dict, T :: Type = Any)
   S = parsetypepath(d["path"])
   params = map(x -> compose(x), d["params"])
   S = isempty(params) ? S : S{params...}
-  @assert S <: T
+  @assert S <: T "$S is not a subtype of $T"
   S
 end
 
