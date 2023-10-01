@@ -1,19 +1,44 @@
 
-# -------- Competing --------------------------------------------------------- #
+"""
+    plan_matches(n, nplayers, active)
 
-function plan_matches(n, l, a) # matches, players total, players active
-
-  pairings = l * l - (l-a)*(l-a) - a
-
-  n < pairings && @info "Not every pair competes"
-
-  matches = zeros(Int, pairings)
-  matches .+= floor(Int, n / pairings)
-  matches[1:(n % pairings)] .+= 1
-
+Returns `n` evenly distributed tuples `(i, j)`, where `1 <= i, j <= nplayers`,
+such that at least one of `i` or `j` is in `active`.
+"""
+function plan_matches(nmatches, nplayers, active)
+  stop = false
+  matches = []
+  while !stop
+    for i in 1:nplayers, j in 1:nplayers
+      if i != j && (i in active || j in active)
+        push!(matches, (i, j))
+        if length(matches) >= nmatches
+          stop = true
+          break
+        end
+      end
+    end
+  end
   Random.shuffle(matches)
 end
 
+"""
+    parallelforeach(f, items; ntasks, threads)
+
+Run `f(item)` for each `item` in `items`. If `threads = true`, threading via
+`ntasks` tasks is used. If `threads = false`, `ntasks` async tasks are used.
+"""
+function parallelforeach(f, items :: AbstractVector; ntasks, threads)
+  ch = Channel{eltype(items)}(length(items))
+  foreach(item -> put!(ch, item), items)
+  close(ch)
+  if threads
+    Threads.foreach(f, ch; ntasks)
+  else
+    asyncmap(f, ch; ntasks)
+  end
+  nothing
+end
 
 """
   compete(players, n [, active]; <keyword arguments>)
@@ -34,47 +59,45 @@ outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
 # Arguments
 - `instance`: Function that returns an initial game state. Inferred automatically if possible.
 - `callback`: Function called after each of the `n` matches.
-- `spawn`: Whether the different matches are spawned in threads.
+- `threads`: Whether to use threading.
 - `draw_after`: Number of moves after which the game is stopped and counted as a draw.
+- `verbose`: Print current ranking after each match.
 """
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
                 ; instance = derive_gametype(players...)
                 , callback = () -> nothing
-                , spawn = false
-                , draw_after = typemax(Int))
+                , verbose = false
+                , threads = false
+                , draw_after = typemax(Int) )
 
-  # Using only a single BLAS thread was beneficial for performance in all tests
+  # Using only a single BLAS thread was beneficial for performance in tests
   t = BLAS.get_num_threads()
   BLAS.set_num_threads(1)
 
-  matches = plan_matches(n, length(players), length(active))
-  results = zeros(Int, length(players), length(players), 3)
-  players = enumerate(players)
   lk = ReentrantLock()
+  matches = plan_matches(n, length(players), active)
+  results = zeros(Int, length(players), length(players), 3)
 
-  l = 1
-  @sync for (i, p1) in players, (j, p2) in players
-    if i != j && (i in active || j in active)
-      for _ in 1:matches[l]
-        if spawn
-          Threads.@spawn begin
-            k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
-            lock(lk) do
-              results[i, j, k] += 1
-              callback()
-            end
-          end
-        else
-          @async begin
-            k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
-            results[i, j, k] += 1
-            callback()
-          end
-        end
-      end
-      l += 1
+  count = 0
+  report = (p1, p2, k) -> begin
+    count += 1
+    p1, p2 = name(p1), name(p2)
+    verb = k == 3 ? ">" : (k == 1 ? "<" : "~")
+    println("Match $count: $p1 $verb $p2")
+    ranking = rank(players, results)
+    println(string(ranking))
+    println()
+  end
+
+  parallelforeach(matches; threads, ntasks = n) do (i, j)
+    p1, p2 = players[i], players[j]
+    k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+    lock(lk) do
+      results[i, j, k] += 1
+      verbose && report(p1, p2, k)
+      callback()
     end
   end
 
@@ -82,8 +105,6 @@ function compete( players
   results
 end
 
-
-# -------- Rankings ---------------------------------------------------------- #
 
 """
 Structure that contains the ranking information of a group of competing players.
@@ -154,8 +175,14 @@ end
 function Base.string(rk :: Ranking, matrix = false)
 
   # Formatting values dynamically (which does *not* work with @printf...)
-  ndigits(x) = (round(Int, x) |> digits |> length) + (x < 0)
-  sp(x, n) = repeat(" ", max(n - ndigits(round(Int, x)), 0))
+  ndigits = x -> begin
+    if !isfinite(x)
+      3
+    else
+      (round(Int, x) |> digits |> length) + (x < 0)
+    end
+  end
+  sp = (x, n) -> repeat(" ", max(n - ndigits(x), 0))
 
   # The player with highest elo will come first
   perm = sortperm(rk.elo) |> reverse
