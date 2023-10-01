@@ -102,13 +102,13 @@ function layer_gpu(sz = 256; batchsize = sz, trials = 100)
   end
 end
 
-function model_gpu(model; trials = 1000)
+function model_gpu(model; trials = 1000, batchsizes = [16, 32, 64, 128, 256, 512])
   @assert model isa Model.NeuralModel
   cpumodel = Model.to_cpu(model)
   G = Model.gametype(model)
   @printf "     mode (backend)  bsize     games/s  moves/s (@power 250)\n"
   println(" ", repeat("-", 60))
-  for batchsize in [16, 32, 64] #, 128, 256, 512]
+  for batchsize in batchsizes
     games = [Game.random_instance(G) for _ in 1:batchsize]
 
     for at in ["cuda", "knet"]
@@ -162,28 +162,28 @@ function model_gpu(model; trials = 1000)
 
       GC.gc(); CUDA.reclaim()
 
-      # async
-      amodel = Model.Async(model, batchsize = batchsize, spawn = false, dynamic = false)
-
-      # async model throughput
-      res = Vector(undef, batchsize)
-      @sync for (i, game) in enumerate(games)
-        @async res[i] = Model.apply(amodel, game)
-      end
-
-      dt = @elapsed for _ in 1:trials
-        res = Vector(undef, batchsize)
-        foreach_spawn(1:length(games)) do i
-          res[i] = Model.apply(amodel, games[i])
-        end
-      end
-      dt = dt / batchsize / trials
-      sps = 1/dt
-      mps = sps / 250
-      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
-      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async+spawn" at batchsize sps mps bs
-
-      GC.gc(); CUDA.reclaim()
+#      # async
+#      amodel = Model.Async(model, batchsize = batchsize, spawn = false, dynamic = false)
+#
+#      # async model throughput
+#      res = Vector(undef, batchsize)
+#      @sync for (i, game) in enumerate(games)
+#        @async res[i] = Model.apply(amodel, game)
+#      end
+#
+#      dt = @elapsed for _ in 1:trials
+#        res = Vector(undef, batchsize)
+#        foreach_spawn(1:length(games)) do i
+#          res[i] = Model.apply(amodel, games[i])
+#        end
+#      end
+#      dt = dt / batchsize / trials
+#      sps = 1/dt
+#      mps = sps / 250
+#      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+#      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async+spawn" at batchsize sps mps bs
+#
+#      GC.gc(); CUDA.reclaim()
       println()
     end
   end
@@ -210,7 +210,6 @@ function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn =
   cpumodel = Model.to_cpu(model)
   G = Model.gametype(model)
   model = cpumodel |> Model.to_gpu
-
 
   amodel = Model.Async(model, batchsize = batchsize, dynamic = false, spawn = spawn)
   player = Player.MCTSPlayer(amodel, power = 250)
@@ -273,7 +272,7 @@ function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn =
       catch err
         display(err)
       finally
-        close(amodel)
+        Model.dynamic_mode!(amodel, true) # prevents async model blocking
         close(data_ch)
         close(move_ch)
       end
@@ -525,6 +524,7 @@ function record_threaded(player, n; copy_model = false, augment = false, kwargs.
                      , callback = game_cb, callback_move = move_cb
                      , merge = false
                      , augment = augment, kwargs...)
+        println("Done with $ticket-ticket")
       end
     end
 
