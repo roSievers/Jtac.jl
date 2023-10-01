@@ -245,7 +245,6 @@ with the support of a model.
 struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
 
-  # MCTS options
   power :: Int
   policy :: MCTSPolicy
   selector :: ActionSelector
@@ -343,20 +342,20 @@ end
 
 
 """
-    MCTSPlayerGumbel(model/player; [power, temperature, nactions, policy, name])
+    MCTSPlayerGumbel(model/player; [nactions, selector, policy, kwargs...])
 
-Create an `MCTSPlayer` with Gumbel presets.
+Create an `MCTSPlayer` with Gumbel presets. By default, `nactions = 16`,
+`selector = VisitPropTo()`, and `policy = ImprovedPolicy()`.
 
-This means that the arguments selector = `VisitPropTo()`, and rootselector
-= `SequentialHalving(nactions)` are passed to `MCTSPlayer`. The argument
-`nactions` defauts to 16, and by default `policy = ImprovedPolicy()`
-
-The remaining arguments are shared with [`MCTSPlayer`](@ref).
+The argument `rootselector = SequentialHalving(nactions)` is passed to
+`MCTSPlayer` implicitly. The remaining arguments and defaults are shared with
+[`MCTSPlayer`](@ref).
 """
 function MCTSPlayerGumbel( args...
                          ; power = 100
                          , temperature = nothing
                          , nactions = 16
+                         , selector = VisitPropTo()
                          , policy = ImprovedPolicy()
                          , name = nothing )
   MCTSPlayer(
@@ -389,13 +388,13 @@ function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 
   root = mcts(game, p.model, p.power; p.selector, p.rootselector)
   pol = getpolicy(p.policy, root)
-  value = sum(pol .* root.qvalues) # TODO: this can be done better
+  value = sum(pol .* root.qvalues) # TODO: this can be done better by completing the q-values?
 
   actions = legal_actions(game)
   buffer = zeros(Float32, policy_length(game))
   buffer[actions] .= pol
 
-  (value = v, policy = policy)
+  (value = value, policy = policy)
 end
 
 function decide_chain( p :: MCTSPlayer{G}
@@ -446,9 +445,9 @@ function switch_model( p :: MCTSPlayer{G}
 
   MCTSPlayer{G}( m
                , p.power
-               , p.temperature
-               , p.exploration
-               , p.dilution
+               , p.policy
+               , p.selector
+               , p.rootselector
                , p.name )
 end
 
@@ -458,7 +457,7 @@ swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
 
 function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
   print(io, "MCTSPlayer{$(Game.name(G))}")
-  print(io, "($(p.name), $(p.power), $(p.temperature))")
+  print(io, "($(p.name), $(p.power))")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}

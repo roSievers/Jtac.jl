@@ -518,7 +518,7 @@ used to govern higher level action selection in players.
 Concrete subtypes must implement
 
  * `select(selector, node)` for non-root selection,
- * `select(selector, node, budget)` for root selection,
+ * `rootselect(selector, node, budget, phase)` for root selection,
  * `randomize!(selector)` for root selection.
 
 Currently, randomization at non-root nodes is not supported.
@@ -538,7 +538,7 @@ function select(sel :: ActionSelector, :: Node; buffer = nothing)
 end
 
 """
-    select(selector, root, budget, phase; [buffer])
+    rootselect(selector, root, budget, phase; [buffer])
 
 Let `selector` plan a selection strategy at the `root` node with a given power
 budget `budget` in phase `phase`. Returns an iterable with entries `(index,
@@ -549,7 +549,7 @@ if a `buffer` vector is provided.
 
 The sum of all values `visits` must be smaller than or equal to `budget`.
 """
-function select(sel :: ActionSelector, node :: Node, :: Int, :: Int; kwargs...) 
+function rootselect(sel :: ActionSelector, node :: Node, :: Int, :: Int; kwargs...) 
   ((select(sel, node; kwargs...), 1),)
 end
 
@@ -758,11 +758,11 @@ end
 
 Base.copy(sel :: SequentialHalving) = SequentialHalving(copy(sel.policy), sel.nactions)
 
-function select( sel :: SequentialHalving,
-                 node :: Node,
-                 budget :: Int,
-                 phase :: Int;
-                 buffer = Float32[] )
+function rootselect( sel :: SequentialHalving,
+                     node :: Node,
+                     budget :: Int,
+                     phase :: Int;
+                     buffer = Float32[] )
 
   nactions = div(sel.nactions, 2^phase)
   nactions = min(nactions, length(node.children))
@@ -918,7 +918,7 @@ function mcts( game :: G
   # The root selector determines how to distribute the power budget.
   phase = 0
   while budget > 0
-    selection = select(rootselector, root, budget, phase; buffer)
+    selection = rootselect(rootselector, root, budget, phase; buffer)
     if length(selection) == 1
       explore(selection[1])
     else
