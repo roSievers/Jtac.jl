@@ -79,7 +79,7 @@ Prior to that, the action is sampled from the policy vector.
 # Record 20 self-matches of an classical MCTS player with power 250
 G = Game.TicTacToe
 player = Player.MCTSPlayer(power = 250)
-dataset = Player.record(player, 20, game = G, branch = Util.branch(prob = 0.25))
+dataset = Player.record(player, 20, game = G, branch = Game.branch(prob = 0.25))
 
 # Record 10 self-matches of MCTS player with shallow predictor network and
 # power 50
