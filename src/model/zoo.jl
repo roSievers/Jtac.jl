@@ -2,7 +2,7 @@
 # -------- Linear Neural Model ----------------------------------------------- #
 
 function Shallow(G :: Type{<: AbstractGame}; kwargs...)
-  NeuralModel(G, Pointwise(); kwargs...)
+  NeuralModel(G, Model.Pointwise(); kwargs...)
 end
 
 
@@ -10,9 +10,9 @@ end
 
 function MLP(G :: Type{<: AbstractGame}, hidden, f = "relu"; kwargs...)
   widths = [ prod(size(G)), hidden...]
-  layers = [ Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
+  layers = [ Model.Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
 
-  NeuralModel(G, Chain(layers...); kwargs...)
+  NeuralModel(G, Model.Chain(layers...); kwargs...)
 end
 
 
@@ -23,7 +23,7 @@ function ShallowConv( G :: Type{<: AbstractGame}
                     ; filters = 64
                     , kwargs... )
 
-  NeuralModel(G, Conv(size(G)[3], filters, f); kwargs...)
+  NeuralModel(G, Model.Conv(size(G)[3], filters, f); kwargs...)
 end
 
 

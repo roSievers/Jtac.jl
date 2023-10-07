@@ -168,8 +168,7 @@ end
 
 """
 Auxiliary type that allows storing data structures in binary format. Relies on
-the `binary` format of the msgpack protocol. For example, this is used to more
-efficiently store neural network weights.
+the `binary` format of the msgpack protocol.
 """
 struct Bytes
   data :: Vector{UInt8}
@@ -190,7 +189,136 @@ Bytes(arr :: Array) = Bytes(reinterpret(UInt8, reshape(arr, :)))
 Base.convert(:: Type{Bytes}, bytes :: Vector{UInt8}) = Bytes(bytes)
 
 
-# -------- Vector packing / unpacking ---------------------------------------- #
+"""
+Auxiliary type that allows storing julia Float32 arrays in binary format. Relies
+on the `binary` format of the msgpack protocol.
+"""
+struct BinArray{F <: Real}
+  data :: Array{F}
+end
+
+BinArray(arr :: Array) = BinArray(arr)
+
+function pack(io :: IO, val :: BinArray{F}) where {F}
+  write_map_format(io, 3)
+  pack(io, :type)
+  pack(io, nameof(F))
+  pack(io, :size)
+  pack(io, size(val.data))
+  pack(io, :data)
+  data = reinterpret(UInt8, reshape(val.data, :))
+  write_bin_format(io, length(data))
+  write(io, data)
+end
+
+function unpack(io :: IO, :: Type{BinArray})
+  @assert map_length(io) == 3
+  @assert unpack(io, Symbol) == :type
+  type = unpack(io, Symbol)
+  F = Base.eval(type)
+  @assert F <: Real
+  @assert unpack(io, Symbol) == :size
+  size = unpack(io, Vector{Int})
+  @assert unpack(io, Symbol) == :data
+  n = bin_length(io)
+  data = read(io, n)
+  arr = reshape(reinterpret(F, data), Tuple(size))
+  arr = convert(Array{F}, arr)
+  BinArray(arr)
+end
+
+function unpack(io :: IO, :: Type{BinArray{F}}) where {F}
+  unpack(io, BinArray) :: BinArray{F}
+end
+
+
+# ------- Struct packing: field flexibility ---------------------------------- #
+
+"""
+    fieldnames(T)
+
+Get the field names of an instance of type `T` that are included in (typed or
+untyped) packing. See also the convenience macro `Pack.@onlyfields`.
+
+This function can be specialized (together with `Pack.fieldvalues` and
+`Pack.fieldytpes`) in order to provide custom packing / unpacking.
+"""
+fieldnames(T :: Type) = Base.fieldnames(T)
+
+"""
+    binarrayfieldnames(T)
+
+Returns a vector of field names of `T` that are to be packed in binary format.
+The corresponding fields must be of type `Array{<: Real}`.
+"""
+binarrayfieldnames(_) = Symbol[]
+
+"""
+    fieldvalues(val)
+
+Return a vector of entries that are packed when `val` is packed (typed or
+untyped). The entries of this vector correspond to the names returned by
+`fieldnames(typeof(val))`.
+
+This function can be specialized (together with `Pack.fieldnames` and
+`Pack.fieldytpes`) in order to provide custom packing / unpacking.
+"""
+function fieldvalues(val)
+  names = fieldnames(typeof(val))
+  (Base.getfield(val, name) for name in names)
+end
+
+"""
+    fieldtypes(T)
+
+Returns a vector of types that are used as type information for unpacking
+instances of `T`.
+
+This function can be specialized (together with `Pack.fieldnames` and
+`Pack.fieldvalues`) in order to provide custom packing / unpacking.
+"""
+function fieldtypes(T :: Type)
+  names = fieldnames(T)
+  (Base.fieldtype(T, name) for name in names)
+end
+
+"""
+    construct(T, args...)
+
+Construct values of type `T` based on arguments `args...`. This function should
+be defined for any type that implements custom packing / unpacking via
+specializing `fieldnames`, `fieldtypes`, and `fieldvalues`.
+"""
+construct(T :: Type, args...) = T(args...)
+
+"""
+    @onlyfields T fields
+
+When packing instances of type `T`, ignore fields other than the ones provided
+in `fields`. In this case, a constructor that accepts the respective fields as
+positional arguments (in the order specified in `fields`) must be provided.
+
+Note that this macro must only be applied to (semi-)concrete subtypes of a
+type on which `@untyped` or `@typed` has been applied.
+"""
+macro onlyfields(T, fields)
+  quote
+    Pack.fieldnames(:: Type{<: $T}) = $fields
+  end |> esc
+end
+
+"""
+    @binarray T fields 
+
+Mark the fields `fields` of type `T` as arrays to be saved in binary mode. The
+respective fields must be of type `Array{<: Real}`.
+"""
+macro binarray(T, fields)
+  quote
+    Pack.binarrayfieldnames(:: Type{<: $T}) = $fields
+  end |> esc
+end
+
 
 """
     @vector T
@@ -246,72 +374,6 @@ function unpack_nullable(io :: IO, S :: Type)
   end
 end
 
-# ------- Struct packing: field flexibility ---------------------------------- #
-
-"""
-    fieldnames(T)
-
-Get the field names of an instance of type `T` that are included in (typed or
-untyped) packing. See also the convenience macro `Pack.@onlyfields`.
-
-This function can be specialized (together with `Pack.fieldvalues` and
-`Pack.fieldytpes`) in order to provide custom packing / unpacking.
-"""
-fieldnames(T :: Type) = Base.fieldnames(T)
-
-"""
-    fieldvalues(val)
-
-Return a vector of entries that are packed when `val` is packed (typed or
-untyped). The entries of this vector correspond to the names returned by
-`fieldnames(typeof(val))`.
-
-This function can be specialized (together with `Pack.fieldnames` and
-`Pack.fieldytpes`) in order to provide custom packing / unpacking.
-"""
-function fieldvalues(val)
-  names = fieldnames(typeof(val))
-  (Base.getfield(val, name) for name in names)
-end
-
-"""
-    fieldtypes(T)
-
-Returns a vector of types that are used as type information for unpacking
-instances of `T`.
-
-This function can be specialized (together with `Pack.fieldnames` and
-`Pack.fieldvalues`) in order to provide custom packing / unpacking.
-"""
-function fieldtypes(T :: Type)
-  names = fieldnames(T)
-  (Base.fieldtype(T, name) for name in names)
-end
-
-"""
-    construct(T, args...)
-
-Construct values of type `T` based on arguments `args...`. This function should
-be defined for any type that implements custom packing / unpacking via
-specializing `fieldnames`, `fieldtypes`, and `fieldvalues`.
-"""
-construct(T :: Type, args...) = T(args...)
-
-"""
-    @onlyfields T fields
-
-When packing instances of type `T`, ignore fields other than the ones provided
-in `fields`. In this case, a constructor that accepts the respective fields as
-positional arguments (in the order specified in `fields`) must be provided.
-
-Note that this macro must only be applied to (semi-)concrete subtypes of a
-type on which `@typed` has been applied.
-"""
-macro onlyfields(T, fields)
-  quote
-    Pack.fieldnames(:: Type{<: $T}) = $fields
-  end |> esc
-end
 
 # ------- Struct packing: untyped -------------------------------------------- #
 
@@ -335,23 +397,37 @@ end
 
 function pack_untyped(io :: IO, val :: S) where {S}
   val = freeze(val)
-  names = fieldnames(S)
   fields = fieldvalues(val)
+  names = fieldnames(S)
+  binnames = binarrayfieldnames(S)
   @assert length(names) == length(fields)
   write_map_format(io, length(names))
   for (name, field) in zip(names, fields)
-    pack(io, name); pack(io, field)
+    pack(io, name)
+    if name in binnames
+      pack(io, BinArray(field))
+    else
+      pack(io, field)
+    end
   end
 end
 
 function unpack_untyped(io :: IO, T :: Type)
-  names = fieldnames(T)
   types = fieldtypes(T)
+  names = fieldnames(T)
+  binnames = binarrayfieldnames(T)
   @assert map_length(io) == length(names) == length(types)
+
   args = map(names, types) do name, type
     @assert unpack(io, Symbol) == name
-    unpack(io, type)
+    if name in binnames
+      F = eltype(type)
+      unpack(io, BinArray{F}).data
+    else
+      unpack(io, type)
+    end
   end
+
   val = construct(T, args...)
   Pack.unfreeze(val)
 end
@@ -391,8 +467,9 @@ end
 function pack_typed(io :: IO, val)
   val = Pack.freeze(val)
   S = typeof(val)
-  names = fieldnames(S)
   fields = fieldvalues(val)
+  names = fieldnames(S)
+  binnames = binarrayfieldnames(S)
   @assert length(names) == length(fields)
 
   write_map_format(io, length(names) + 1)
@@ -400,7 +477,12 @@ function pack_typed(io :: IO, val)
   pack(io, Pack.decompose(S))
 
   for (name, field) in zip(names, fields)
-    pack(io, name); pack(io, field)
+    pack(io, name)
+    if name in binnames
+      pack(io, BinArray(field))
+    else
+      pack(io, field)
+    end
   end
 end
 
@@ -410,13 +492,19 @@ function unpack_typed(io :: IO, T :: Type)
   S = compose(unpack(io), T)
   @assert S <: T "unexpected type $S when unpacking $T"
   
-  names = fieldnames(S)
   types = fieldtypes(S)
+  names = fieldnames(S)
+  binnames = binarrayfieldnames(S)
   @assert n == length(names) == length(types)
 
   args = map(names, types) do name, type
     @assert unpack(io, Symbol) == name
-    unpack(io, type)
+    if name in binnames
+      F = eltype(type)
+      unpack(io, BinArray{F}).data
+    else
+      unpack(io, type)
+    end
   end
 
   val = construct(S, args...)
@@ -447,6 +535,37 @@ function parsetypepath(str, T = Main)
   T :: Type
 end
 
+
+"""
+    typeparams(T)
+
+Return the type parameters of a type `T`.
+
+If `T` has more type parameters than are specified (e.g., `T = Array{Float32}`),
+the specified type parameters must come first (e.g., `T = Array{F, 1} where {F}`
+would fail).
+"""
+function typeparams(T)
+  params = nothing
+  vars = []
+  body = T
+  while isnothing(params)
+    if hasproperty(body, :parameters)
+      params = collect(body.parameters)
+    elseif hasproperty(body, :body) && hasproperty(body, :var)
+      push!(vars, body.var)
+      body = body.body
+    else
+      error("Failed to understand structure of type $T")
+    end
+  end
+  for R in reverse(vars)
+    @assert pop!(params) == R "Cannot extract type parameters from type $T"
+  end
+  params
+end
+
+
 """
     decompose(T)
 
@@ -459,10 +578,9 @@ function decompose(T :: Type)
   d = Dict()
   d["name"] = typename(T)
   d["path"] = typepath(T)
-  if hasproperty(T, :parameters)
-    d["params"] = T.parameters |> collect .|> decompose
-  else
-    d["params"] = []
+  params = typeparams(T)
+  if !isempty(params)
+    d["params"] = params .|> decompose
   end
   d
 end
@@ -481,8 +599,10 @@ Note that composition only works if all types and type parameters stored in
 """
 function compose(d :: Dict, T :: Type = Any)
   S = parsetypepath(d["path"])
-  params = map(x -> compose(x), d["params"])
-  S = isempty(params) ? S : S{params...}
+  if haskey(d, "params") && !isempty(d["params"])
+    params = map(x -> compose(x), d["params"])
+    S = S{params...}
+  end
   @assert S <: T "$S is not a subtype of $T"
   S
 end
