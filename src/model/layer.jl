@@ -21,7 +21,13 @@ Base.convert(:: Type{Activation}, f :: Function) = Activation(f)
 (f :: Activation{true})(args...) = f.f.(args...)
 (f :: Activation{false})(args...) = f.f(args...)
 
+"""
+    activationname(activation)
 
+Return the name of `activation`. If it is registered (see [`register!`](@ref)),
+the registered name is returned. Otherwise, `Base.nameof(activation.f)` is
+returned.
+"""
 function activationname(f :: Activation)
   if isregistered(Activation, f)
     lookupname(Activation, f)
@@ -244,7 +250,7 @@ end
 function (d :: Dense{T})(x :: T) where {T}
   @assert isvalidinput(d, x)
   tmp = d.w * reshape(x, :, size(x)[end])
-  res = d.f.(tmp .+ d.b)
+  res = d.f(tmp .+ d.b)
   releasememory!(tmp)
   res
 end
@@ -261,7 +267,7 @@ end
 #   out = reshape(out, outsz)
 
 #   mul!(out, d.w, x)
-#   out .= d.f.(out)
+#   out .= d.f(out)
 # end
 
 params(d :: Dense) = d.bias ? [d.w, d.b] : [d.w]
@@ -342,7 +348,7 @@ end
 function (c :: Conv{T})(x :: T) where {T}
   @assert isvalidinput(c, x)
   tmp = NNlib.conv(x, c.w, pad = c.p, stride = c.s)
-  res = c.f.(tmp .+ c.b)
+  res = c.f(tmp .+ c.b)
   releasememory!(tmp)
   res
 end
@@ -355,7 +361,7 @@ end
 #   resize!(out)
 #   # TODO: use NNlib.conv!
 #   tmp = NNlib.conv(x, c.w, pad = c.p, stride = c.s)
-#   res = c.a.f.(tmp .+ c.b)
+#   res = c.f(tmp .+ c.b)
 #   releasememory!(tmp)
 # end
 
@@ -452,7 +458,7 @@ function (b :: Batchnorm{T})(x :: T) where {T}
   bias = reshape(b.bias, sz)
   scale = reshape(b.scale, sz)
 
-  b.f.(((x .- mean) ./ sqrt.(eps .+ var)) .* scale .+ bias)
+  b.f(((x .- mean) ./ sqrt.(eps .+ var)) .* scale .+ bias)
 end
 
 isvalidinputsize(b :: Batchnorm, s) = length(b.mean) == prod(bnsize(s))
@@ -619,7 +625,7 @@ end
 function (r :: Residual{T})(x :: T) where {T}
   @assert isvalidinput(r, x)
   tmp = r.chain(x)
-  res = r.f.(tmp .+ x)
+  res = r.f(tmp .+ x)
   releasememory!(tmp)
   res
 end

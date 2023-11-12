@@ -1,6 +1,6 @@
 name = "Jtac"
 uuid = "ff1b8621-ed28-5f2d-82b1-1136b8fa4e8d"
-authors = "Rolf Kreibaum and Thomas Staudt <tscode@posteo.net>"
+authors = "Thomas Staudt <tscode@posteo.net> and Rolf Kreibaum"
 version = "0.2.0"
 
 [deps]
@@ -14,8 +14,15 @@ ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 MsgPack = "99f44e22-a591-53d1-9472-aa23ef4bd671"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 
+[weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
+
+[extensions]
+CudaExt = ["CUDA", "cuDNN"]
+
 [compat]
-julia = "^1.6"
+julia = "^1.9"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

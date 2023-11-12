@@ -179,7 +179,7 @@ function recordbranching( G :: Type{<: AbstractGame}
                         , branch = Game.branch(prob = 0, steps = 1) )
 
   # Extend the provided play function by random branching 
-  playbranching = _ -> begin
+  playbranching = () -> begin
     root = instance()
     @assert root isa G "Unexpected game instance type (expected $G)"
 
@@ -211,10 +211,10 @@ function recordbranching( G :: Type{<: AbstractGame}
 
   # Call playbranching n times, either serially or in parallel
   if ntasks == 1 || n == 1
-    ds = map(playbranching, 1:n)
+    ds = [playbranching() for _ in 1:n]
   else
-    ds = Vector{Dataset{G}}(undef, n)
-    parallelforloop(1:n; ntasks, threads) do index
+    ds = Vector{DataSet{G}}(undef, n)
+    parallelforeach(1:n; ntasks, threads) do index
       ds[index] = playbranching()
     end
   end
