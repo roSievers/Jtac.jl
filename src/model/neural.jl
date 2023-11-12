@@ -1,222 +1,303 @@
 
-# -------- Neural Network Head Creation -------------------------------------- #
+"""
+   createhead(head, insize, nout) 
 
-function prepare_head(head, s, l, gpu)
+Check if the neural layer `head` is compatible with the input size `insize` and
+number of output neurons `nout`. If `head = nothing`, return a single
+[`Dense`](@ref) layer.
+"""
+function createhead(head, insize, nout)
   if isnothing(head)
-    head = Dense(prod(s), l, "id", gpu = gpu)
-  else
-    @assert valid_insize(head, s) "Head incompatible with trunk."
-    @assert prod(outsize(head, s)) == l "Head incompatible with game."
-    head = (on_gpu(head) == gpu) ? head : swap(head)
+    head = Dense(prod(insize), nout, :id)
   end
-
+  @assert isvalidinputsize(head, insize) "Head is incompatible with trunk"
+  @assert prod(outputsize(head, insize)) == nout "Head is incompatible with target"
   head
 end
 
-# -------- Neural Model ------------------------------------------------------ #
 
 """
-Trainable model that uses a neural network to generate value and policy targets
-for a game state. Optionally, the network can also predict other targets.
+Neural network model. Depending on the layer backend, the neural model can be
+trained or only used for inference during selfplay.
 """
-struct NeuralModel{G <: AbstractGame, GPU} <: AbstractModel{G, GPU}
-  trunk :: Layer{GPU}                    # map tensorized game state to trunk features
-  heads :: Vector{Layer{GPU}}            # target heads
-  targets :: Vector{PredictionTarget{G}} # targets
+struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
+  trunk :: Layer{B}
+  targets :: Vector{AbstractTarget{G}}
+  target_names :: Vector{Symbol}
+  target_heads :: Vector{Layer{B}}
+  target_activations :: Vector{Activation}
 end
 
-Pack.freeze(m :: NeuralModel) = to_cpu(m)
+Pack.@typed NeuralModel
+Pack.freeze(model :: NeuralModel{<: DefaultBackend}) = adapt(:default, model)
+
 
 """
-    NeuralModel(G, trunk [; vhead, phead, value, policy, opt_targets, opt_heads])
+    NeuralModel(G, trunk; [targets, heads, activations, backend])
 
-Construct a model for gametype `G` based on the layer `trunk`,
-with optional targets `opt_targets` enabled. The heads `vhead`, `phead`, and
-`opt_heads` are neural network layers that produce the logits for target
-prediction. The activation functions of the targets are used to map the logits
-to the actual target estimates.
+Create a `NeuralModel` for games of type `G` with neural network trunk layer
+`trunk`.
+
+### Arguments
+* `targets`: Named tuple of [`AbstractTarget`] that the network should support.
+* `heads`: Named tuple of neural layer heads for the specified `targets`.
+* `activations`: Named tuple of activations for the specified `targets`. Falls
+  back to the activations returned by [`Target.defaultactivation`].
+* `backend`: The backend of the neural layers.
+
+Heads that are not specified default to single dense layers. Activations that
+are not specified default to `:identity`.
 """
 function NeuralModel( :: Type{G}
-                    , trunk :: Layer{GPU}
-                    ; vhead = nothing
-                    , phead = nothing
-                    , value :: ValueTarget{G} = ValueTarget(G)
-                    , policy :: PolicyTarget{G} = PolicyTarget(G)
-                    , opt_targets = []
-                    , opt_heads = nothing
-                    ) where {G, GPU}
+                    , trunk :: Layer{B}
+                    ; targets = (;)
+                    , heads = (;)
+                    , activations = (;)
+                    , backend = nothing
+                    ) where {G, B <: DefaultBackend{Array{Float32}}}
 
-  @assert valid_insize(trunk, size(G)) "Trunk incompatible with $G"
-  targets = PredictionTarget{G}[value, policy, (t for t in opt_targets)...]
+  @assert isvalidinputsize(trunk, size(G)) "Trunk incompatible with gametype $G"
 
-  if isnothing(opt_heads)
-    heads = [vhead, phead, (nothing for _ in targets[3:end])...]
+  targets = (;
+    value = DefaultValueTarget(G),
+    policy = DefaultPolicyTarget(G),
+    targets...
+  )
+
+  activations = (;
+    map(Target.defaultactivation, targets)...,
+    activations...
+  )
+  activations = map(a -> resolve(Activation, a), activations)
+
+  @assert length(targets.value) == 1 """
+    Target with name :value must have length 1.
+  """
+  @assert length(targets.policy) == policylength(G) """
+    Target with name :policy must have length `policylength($G)`.
+  """
+  @assert issubset(keys(activations), keys(targets)) """
+    Not all activation names correspond to targets.
+  """
+  @assert issubset(keys(heads), keys(targets)) """
+    Not all head names correspond to targets.
+  """
+
+  insize = outputsize(trunk, size(G))
+  heads = map(keys(targets)) do name
+    target = getproperty(targets, name)
+    head = get(heads, name, nothing)
+    createhead(head, insize, length(target))
   end
 
-  @assert length(targets) == length(heads) "Number of heads does not match number of headed targets"
-
-  # Check the provided heads or create linear heads if nothing is specified
-  os = outsize(trunk, size(G))
-  heads = Layer{GPU}[ prepare_head(h, os, length(t), GPU) for (h, t) in zip(heads, targets) ]
-
-  NeuralModel{G, GPU}(trunk, heads, targets) 
+  model = NeuralModel{G, B}(
+    trunk,
+    AbstractTarget{G}[values(targets)...],
+    Symbol[keys(targets)...],
+    Layer{B}[heads...],
+    Activation[activations...],
+  )
+  isnothing(backend) ? model : adapt(backend, model)
 end
 
-function add_target!( m :: NeuralModel{G, GPU}
-                    , t :: PredictionTarget
-                    , head :: Union{Nothing, Layer{GPU}} = nothing
-                    ) where {G, GPU}
+"""
+    model(data; targets = targetnames(model), activate = true)
+    model(games; targets = targetnames(model), activate = true)
 
-  os = outsize(m.trunk, size(G))
-  head = prepare_head(head, os, length(t), GPU)
-  push!(m.targets, t)
-  push!(m.heads, head)
+Apply a neural model `model` to a 4d array `data` or a vector `games`.
+
+By default, all supported targets are evaluated. If only a selection of the
+targets should be evaluated, this can be specified via passing an iterable of
+target names via `targets` (see [`Target.targetnames`](@ref) and
+[`Target.targets`](@ref) for all available targets). If `activate = false`, no
+target activation (like `tanh` or `softmax`) is applied to the network output.
+"""
+function (model :: NeuralModel{G, B})( data :: T
+                                     ; targets = targetnames(model)
+                                     , activate = true
+                                     ) where {G, T, B <: Backend{T}}
+  @assert isvalidinput(model.trunk, data)
+  @assert issubset(targets, targetnames(model))
+
+  batchsize = size(data)[end]
+  trunkout = model.trunk(data)
+  indices = [findfirst(isequal(name), targetnames(model)) for name in targets]
+
+  out = map(indices) do index
+    head = model.target_heads[index]
+    tmp = reshape(head(trunkout), :, batchsize)
+    if activate
+      f = model.target_activations[index]
+      res = f(tmp)
+      releasememory!(tmp)
+    else
+      res = tmp
+    end
+    res
+  end
+
+  releasememory!(trunkout)
+  out
+end
+
+function (model :: NeuralModel{G, B})( games :: Vector{G}
+                                     ; kwargs...
+                                     ) where {G, T, B <: Backend{T}} 
+  data = Game.array(games)
+  data = convert(T, data)
+  out = model(data; kwargs...)
+  releasememory!(data)
+  out
+end
+
+
+"""
+    apply(model, game; targets = targetnames(model), activate = true)  
+
+Evaluate a single game state `game` with the neural model `model`. In contrast
+to `model([game])`, a named tuple `(; name = output, ...)` is returned.
+
+This function is meant for use in forward mode only, so it may contain
+optimizations that the training backend cannot handle.
+"""
+function Model.apply( model :: NeuralModel{G, B}
+                    , game :: G
+                    ; targets = targetnames(model)
+                    , activate = true
+                    ) where {G, T, B <: Backend{T}}
+
+  outputs = model([game]; targets, activate)
+  outputs = map(outputs) do output
+    out = reshape(output, :)
+    length(out) == 1 ? out[1] : convert(Array{Float32}, out)
+  end
+  (; zip(targets, outputs)...)
+end
+
+
+"""
+    addtarget!(model, name, target; [head, activation])
+
+Add the target `target` to the neural model `model` under name `name`.
+If no explicit `head` is provided, a shallow dense head is used. If no
+`activation` is provided, it is set to `:identity`.
+"""
+function addtarget!( model :: NeuralModel{G, B}
+                   , name :: Symbol
+                   , target :: AbstractTarget{G}
+                   ; head :: Union{Nothing, Layer} = nothing
+                   , activation = Target.defaultactivation(target)
+                   ) where {G, B}
+
+  @assert !(name in model.target_names) "Target with name :$name already exists"
+
+  insz = outputsize(model.trunk, size(G))
+  head = createhead(head, insz, length(target))
+  head = adapt(B(), head)
+  activation = resolve(Activation, activation)
+
+  push!(model.targets, target)
+  push!(model.target_names, name)
+  push!(model.target_heads, head)
+  push!(model.target_activations, activation)
   nothing
 end
 
-function Target.adapt(m :: NeuralModel{G, GPU}, targets) where {G, GPU}
-  idx = Target.adapt(m.targets, targets)
-  NeuralModel{G, GPU}(m.trunk, m.heads[idx], m.targets[idx])
+"""
+     adapt(backend, model) 
+
+Switch the backend of a neural model `model` to `backend`.
+"""
+function adapt(backend :: B, model :: NeuralModel{G}) where {G, B <: Backend}
+  trunk = adapt(backend, model.trunk)
+  heads = adapt.(Ref(backend), model.target_heads)
+  NeuralModel{G, B}(
+    trunk,
+    model.targets,
+    model.target_names,
+    heads,
+    model.target_activations
+  )
 end
 
-# Low level access to neural model predictions
-function (m :: NeuralModel{G, GPU})( data
-                                   , opt_targets = false
-                                   ) where {G <: AbstractGame, GPU}
-
-  # Get the trunk output and batch size
-  tout = m.trunk(data)
-  bs = size(tout)[end]
-
-  ts = m.targets
-
-  # prepare iteration over targets
-  if opt_targets
-    ht = zip(m.heads, ts)
-  else
-    ht = zip(m.heads[1:2], ts[1:2])
-  end
-
-  # predict the desired targets
-  out = map(ht) do (head, target)
-
-    tmp = reshape(head(tout), length(target), bs)
-    res = Target.activate(target, tmp)
-    release_gpu_memory!(tmp)
-    res
-
-  end
-
-  release_gpu_memory!(tout)
-  out
-
+function adapt(name :: Union{Symbol, String}, model :: NeuralModel)
+  adapt(getbackend(name), model)
 end
 
-# Higher level access
-function (m :: NeuralModel{G, GPU})( games :: Vector{G}
-                                   , opt_targets = false
-                                   ) where {G <: AbstractGame, GPU} 
-
-  at = atype(GPU)
-  data = convert(at, Game.array(games))
-
-  results = m(data, opt_targets) 
-  release_gpu_memory!(data)
-
-  map(results) do result
-    convert(Array, result) :: Matrix{Float32}
-  end
-end
-
-function (m :: NeuralModel{G})( game :: G
-                              , opt_targets = false
-                              ) where {G <: AbstractGame}
-
-  m([game], opt_targets)
-
-end
-
-function apply(m :: NeuralModel{G}, game :: G, opt_targets = false) where {G <: AbstractGame}
-  if !opt_targets
-    v, p = m(game, false)
-    (value = v[1], policy = reshape(p |> to_cpu, :))
-  else
-    output = m(game, true)
-    ts = m.targets
-    names = (Target.name(t) for t in ts) 
-    vals = map(output) do val
-      if length(val) == 1
-        val[1]
-      else
-        to_cpu(reshape(val, :))
-      end
-    end
-    (; zip(names, vals)...)
-  end
-end
-
-function swap(m :: NeuralModel{G, GPU}) where {G, GPU}
-
-  NeuralModel{G, !GPU}( swap(m.trunk)
-                      , swap.(m.heads)
-                      , m.targets )
-
+function adapt(T, model :: NeuralModel{G, B}) where {G, B}
+  backend = adapt(T, B())
+  adapt(backend, model)
 end
 
 """
-    array_buffer(model, batchsize)
+     parameters(model) 
 
-Create a `model`-compatible buffer that can hold the array representation of up
-to `batchsize` games.
+Return an iterable of the (trainable) parameter arrays in the neural model
+`model`.
 """
-function Game.array_buffer(m :: NeuralModel{G, GPU}, batchsize) where {G, GPU}
-  buf = Game.array_buffer(G, batchsize)
-  GPU ? to_gpu(buf) : buf
+function parameters(model :: NeuralModel)
+  [parameters(model.trunk); mapreduce(parameters, vcat, model.target_heads)]
 end
 
-function Base.copy(m :: NeuralModel{G, GPU}) where {G, GPU}
-
-  NeuralModel{G, GPU}( copy(m.trunk)
-                     , copy.(m.heads)
-                     , m.targets )
-
+function Base.copy(model :: NeuralModel{G, B}) where {G, B}
+  NeuralModel{G, B}(
+    copy(model.trunk),
+    model.targets,
+    copy(model.target_names),
+    copy.(model.target_heads),
+    copy(model.target_activations),
+  )
 end
 
-Target.targets(m :: NeuralModel) = m.targets
+function Target.targets(model :: NeuralModel)
+  (; zip(model.target_names, model.targets)...)
+end
 
-training_model(m :: NeuralModel) = m
+Target.targetnames(model :: NeuralModel) = model.target_names
 
+"""
+    getbackend(model)
 
-function Base.show(io :: IO, m :: NeuralModel{G, GPU}) where {G, GPU}
-  at = GPU ? "GPU" : "CPU"
-  print(io, "NeuralModel{$(Game.name(G)), $at}(")
+Returns the backend of the neural model `model`.
+"""
+getbackend(:: NeuralModel{G, B}) where {G, B} = B()
+
+function Base.show(io :: IO, m :: NeuralModel{G, B}) where {G, B}
+  print(io, "NeuralModel(")
   show(io, m.trunk)
+  print(io, ", ")
+  show(io, B())
   print(io, ")")
 end
 
-function Base.show(io :: IO, :: MIME"text/plain", m :: NeuralModel{G, GPU}) where {G, GPU}
-  at = GPU ? "GPU" : "CPU"
-  println(io, "NeuralModel{$(Game.name(G)), $at}:")
-  print(io, "  trunk: "); show(io, m.trunk)
-  for (h, t) in zip(m.heads, m.targets)
-    name = Target.name(t)
-    println(io); print(io, "  $name: "); show(io, h)
+function Base.show(io :: IO, :: MIME"text/plain", m :: NeuralModel{G, B}) where {G, B}
+  println(io, "NeuralModel{$(Game.name(G)))")
+  print(io, " backend: "); show(io, B()); println(io)
+  print(io, " trunk: "); show(io, m.trunk); println(io)
+  print(io, " heads:")
+  for (name, head) in zip(m.target_names, m.target_heads)
+    println(io); print(io, "  $name: "); show(io, head)
   end
 end
 
-function tune( m :: NeuralModel{G, GPU}
-             ; gpu = GPU
-             , async = false
-             , cache = false
-             ) where {G, GPU}
+"""
+    aligndevice!(model)  
 
-  I = Union{Signed, Unsigned} # Grr, in julia, Bool <: Integer....
-  gpu != GPU && (m = swap(m))
-  async == true && (m = Async(m))
-  async isa I && async > 0 && (m = Async(m, batchsize = async))
-  cache == true && (m = Caching(m))
-  cache isa I && cache > 0 && (m = Caching(m, cachesize = cache))
-  m
+This function is called when `model` is to be used after context-switches (e.g.,
+in new tasks). Can be used by GPU-based backends to set consistent devices.
+"""
+aligndevice!(model) = nothing
+## TODO: implement this in the CUDA backend!
+
+"""
+     arraytype(model) 
+
+Returns the array type of the backend of the neural model `model`.
+"""
+arraytype(model :: NeuralModel) = arraytype(getbackend(model))
+
+function save(fname, model :: NeuralModel, :: DefaultFormat)
+  model = adapt(:default, model)
+  open(io -> Pack.pack(io, model), fname, "w")
 end
-
 

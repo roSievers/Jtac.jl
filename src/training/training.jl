@@ -52,7 +52,7 @@ function loss( model :: NeuralModel{G, GPU}
              ) where {G, GPU}
 
   pred_targets = Target.targets(model)
-  ds = Target.adapt(dataset, pred_targets)
+  ds = Target.adapttargets(dataset, pred_targets)
 
   batches = Batches(ds, maxbatch; gpu = GPU, store_on_gpu)
   losses = sum(batches) do cache
@@ -181,11 +181,11 @@ function train!( player  :: Union{AbstractPlayer, AbstractModel}
 
   @assert !isempty(trainsets) "Trainset vector is empty"
 
-  model = training_model(player)
+  model = trainingmodel(player)
   set_optimizer!(model, optimizer; kwargs...)
   gpu = on_gpu(model)
 
-  trainsets = [Target.adapt(ts, model) for ts in trainsets]
+  trainsets = [Target.adapttargets(ts, model) for ts in trainsets]
 
   targets = [Target.targets(model); reg_targets]
   !quiet && info_loss_header(targets)
@@ -262,7 +262,7 @@ function _train!( player :: AbstractPlayer{G}
 
   @assert matches > 0 "Number of matches for training must be positive"
 
-  model = training_model(player)
+  model = trainingmodel(player)
   set_optimizer!(model, optimizer; kwargs...)
   targets = [Target.targets(model); reg_targets]
 
@@ -287,7 +287,7 @@ function _train!( player :: AbstractPlayer{G}
     # Generate new datasets for this generation and make sure that
     # they fit the model
     datasets = gen_data(cb, matches)
-    datasets = [Target.adapt(ds, model) for ds in datasets]
+    datasets = [Target.adapttargets(ds, model) for ds in datasets]
 
     # Create the training set by merging with the last `matches` generations of
     # datasets that are stored in the replay_buffer
@@ -464,7 +464,7 @@ function train_contest!( player :: MCTSPlayer
 
   end
 
-  model = training_model(player)
+  model = trainingmodel(player)
   targets = [Target.targets(model); reg_targets]
 
   # List of all players that will compete in the contest
@@ -487,8 +487,8 @@ function train_contest!( player :: MCTSPlayer
 
     # Reorder players such that the active (i.e., learning) players come last
     # and passive ones first
-    active = filter(p -> training_model(p) == model, players)
-    passive = filter(p -> training_model(p) != model, players)
+    active = filter(p -> trainingmodel(p) == model, players)
+    passive = filter(p -> trainingmodel(p) != model, players)
     players = [passive; active]
 
     # Get the respective numbers of players

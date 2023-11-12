@@ -14,7 +14,7 @@
 
 mutable struct Nim2 <: AbstractGame
   remaining :: Int
-  current_player :: Int
+  active_player :: Int
   actions_left :: Int
   status :: Status
 end
@@ -24,7 +24,7 @@ Nim2() = Nim2(15, 1, 3, Status())
 function Base.copy(s :: Nim2) :: Nim2
     Nim2(
       s.remaining,
-      s.current_player,
+      s.active_player,
       s.actions_left,
       s.status,
     )
@@ -33,18 +33,18 @@ end
 
 function Base.:(==)(a::Nim2, b::Nim2)
   all([ a.remaining .== b.remaining
-      , a.current_player == b.current_player
+      , a.active_player == b.active_player
       , a.status == b.status
       , a.actions_left == b.actions_left ])
 end
 
-current_player(game :: Nim2) :: Int = game.current_player
+activeplayer(game :: Nim2) :: Int = game.active_player
 
 # Returns a list of the legal actions
 # 1: Take a token
 # 2: End turn
-function legal_actions(game :: Nim2) :: Vector{ActionIndex}
-  if is_over(game)
+function legalactions(game :: Nim2) :: Vector{ActionIndex}
+  if isover(game)
     ActionIndex[]
   elseif game.actions_left == 0
     [2]
@@ -57,7 +57,7 @@ end
 
 # You can take a piece (action=1), if you still have actions left.
 # You can end your turn if you have taken at least one piece
-function is_action_legal(game :: Nim2, action :: ActionIndex) :: Bool
+function isactionlegal(game :: Nim2, action :: ActionIndex) :: Bool
   if action == 1
     game.actions_left > 0
   elseif action == 2
@@ -67,27 +67,27 @@ function is_action_legal(game :: Nim2, action :: ActionIndex) :: Bool
   end
 end
 
-function apply_action!(game :: Nim2, index :: ActionIndex) :: Nim2
-  @assert is_action_legal(game, index) "Action $index is not allowed."
+function move!(game :: Nim2, index :: ActionIndex) :: Nim2
+  @assert isactionlegal(game, index) "Action $index is not allowed."
 
   if index == 2
-    game.current_player = -game.current_player
+    game.active_player = -game.active_player
     game.actions_left = 3
     game
   else
     game.remaining -= 1
     game.actions_left -= 1
     # Update the status cache
-    game.status = nim_status(game, game.current_player)
+    game.status = nim_status(game, game.active_player)
     game
   end
 end
 
 # execute this function after a player takes a token to decide the game status.
-function nim_status(game :: Nim2, current_player :: Int) :: Status
+function nim_status(game :: Nim2, active_player :: Int) :: Status
   # The player that takes the last tokes looses the game
   if game.remaining == 0
-    Status(-current_player)
+    Status(-active_player)
   else
     Status()
   end
@@ -95,7 +95,7 @@ end
 
 status(game :: Nim2) :: Status = game.status
 
-policy_length(:: Type{Nim2}) :: Int = 2
+policylength(:: Type{Nim2}) :: Int = 2
 
 # Size of the data representation of the game
 # T T T T T T T T T T T T T T T A A A
@@ -126,8 +126,8 @@ function represent_actions_left2(actions_left :: Int) :: Vector{Float32}
   end
 end
 
-hash(game :: Nim2) = Base.hash((game.remaining, game.current_player, game.actions_left))
+hash(game :: Nim2) = Base.hash((game.remaining, game.active_player, game.actions_left))
 
 function draw(game :: Nim2) :: Nothing
-  println(" Nim: $(game.remaining) remaining, $(game.actions_left) actions left, $(game.current_player) to play.")
+  println(" Nim: $(game.remaining) remaining, $(game.actions_left) actions left, $(game.active_player) to play.")
 end

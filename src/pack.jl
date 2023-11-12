@@ -1,17 +1,24 @@
 
-import MsgPack
+"""
+    pack(x)
 
-import TranscodingStreams: TOKEN_END
-import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
+Return the serialized value of `x` in the msgpack format.
 
-# -------- Derive basic pack / unpack functionality -------------------------- #
-
+See also [`pack_compressed`](@ref) and [`unpack`](@ref).
+"""
 function pack(x)
   buf = IOBuffer()
   pack(buf, x)
   take!(buf)
 end
 
+"""
+    unpack(data, T)
+
+Unpack the packed data `data` as value of type `T`.
+
+See also [`pack`](@ref).
+"""
 function unpack(bin :: Vector{UInt8}, T :: Type)
   unpack(IOBuffer(bin), T)
 end
@@ -19,12 +26,12 @@ end
 pack(args...) = MsgPack.pack(args...)
 unpack(args...) = MsgPack.unpack(args...)
 
-# -------- Compressed packing / unpacking ------------------------------------ #
-
 """
     pack_compressed([io, ] value)
 
-Pack `value` with Zstd compression.
+Serialize `value` with additional Zstd compression.
+
+See also [`pack`](@ref) and [`unpack_compressed`](@ref).
 """
 function pack_compressed(io :: IO, value)
   stream = ZstdCompressorStream(io)
@@ -42,7 +49,9 @@ end
 """
     unpack_compressed(io / data, value)
 
-Unpack a value that was packed via `pack_compressed`.
+Unpack a value that was packed via [`pack_compressed`](@ref).
+
+See also [`unpack`](@ref).
 """
 unpack_compressed(io :: IO, T) =
   unpack(ZstdDecompressorStream(io), T)
@@ -50,7 +59,6 @@ unpack_compressed(io :: IO, T) =
 unpack_compressed(data :: Vector{UInt8}, T) =
   unpack_compressed(IOBuffer(data), T)
 
-# -------- Freezing / unfreezing --------------------------------------------- #
 
 """
     freeze(x)
@@ -69,7 +77,6 @@ Undo `freeze(x)`. This function is called after custom unpacking.
 """
 unfreeze(x :: Any) = x
 
-# ---- Low-level msgpack methods --------------------------------------------- #
 
 """
     array_length(io)
@@ -164,8 +171,6 @@ function write_bin_format(io, n :: Int)
   end
 end
 
-# -------- Binary packing / unpacking ---------------------------------------- #
-
 """
 Auxiliary type that allows storing data structures in binary format. Relies on
 the `binary` format of the msgpack protocol.
@@ -232,13 +237,11 @@ function unpack(io :: IO, :: Type{BinArray{F}}) where {F}
 end
 
 
-# ------- Struct packing: field flexibility ---------------------------------- #
-
 """
     fieldnames(T)
 
 Get the field names of an instance of type `T` that are included in (typed or
-untyped) packing. See also the convenience macro `Pack.@onlyfields`.
+untyped) packing. See also the convenience macro `Pack.@only`.
 
 This function can be specialized (together with `Pack.fieldvalues` and
 `Pack.fieldytpes`) in order to provide custom packing / unpacking.
@@ -292,7 +295,7 @@ specializing `fieldnames`, `fieldtypes`, and `fieldvalues`.
 construct(T :: Type, args...) = T(args...)
 
 """
-    @onlyfields T fields
+    @only T fields
 
 When packing instances of type `T`, ignore fields other than the ones provided
 in `fields`. In this case, a constructor that accepts the respective fields as
@@ -301,7 +304,7 @@ positional arguments (in the order specified in `fields`) must be provided.
 Note that this macro must only be applied to (semi-)concrete subtypes of a
 type on which `@untyped` or `@typed` has been applied.
 """
-macro onlyfields(T, fields)
+macro only(T, fields)
   quote
     Pack.fieldnames(:: Type{<: $T}) = $fields
   end |> esc
@@ -361,7 +364,7 @@ macro nullable(T)
   S = Base.gensym(:S)
   quote
     Pack.unpack(io :: IO, :: Type{Union{Nothing, $S}}) where {$S <: $T} =
-    Pack.unpack_nullable(io, $S)
+      Pack.unpack_nullable(io, $S)
   end |> esc
 end
 
@@ -375,7 +378,28 @@ function unpack_nullable(io :: IO, S :: Type)
 end
 
 
-# ------- Struct packing: untyped -------------------------------------------- #
+"""
+    @named T
+
+Enable packing of named values with type `T` as their scope type.
+As a consequence, only values of type `T` that have previously been registered
+via [`Util.register!`](@ref) can be serialized / deserialized.
+"""
+macro named(T)
+  quote
+    Pack.@vector $T
+
+    function Pack.pack(io :: IO, val :: $T)
+      name = Util.lookupname($T, val)
+      Pack.pack(io, name)
+    end
+
+    function Pack.unpack(io :: IO, :: Type{<: $T})
+      name = Pack.unpack(io, Symbol)
+      Util.lookup($T, name)
+    end
+  end |> esc
+end
 
 """
     @untyped T
@@ -432,8 +456,6 @@ function unpack_untyped(io :: IO, T :: Type)
   Pack.unfreeze(val)
 end
 
-
-# -------- Struct packing: typed --------------------------------------------- #
 
 """
     @typed T
@@ -610,4 +632,3 @@ end
 compose(x :: Bool) = x
 compose(x :: Integer) = Int(x)
 compose(x :: String) = Symbol(x) # a packing / unpacking cycle converts symbols to strings
-

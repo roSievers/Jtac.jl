@@ -1,90 +1,96 @@
 
+# TODO: rewrite this
 """
-Julia module that implements the Alpha Zero learning design.
+Julia package that implements the Alpha Zero learning design in a modular
+manner.
 
-The module exports implementations of various two-player board games (like
+The package exports implementations of various two-player board games (like
 tic-tac-toe), functions for creating neural networks that evaluate the states of
 games, and functionality to generate datasets through selfplay via a Monte-Carlo
 Tree Search player assisted by a neural model.
 """
 module Jtac
 
-const _version = v"0.1"
+const _version = v"0.2"
 
-# -------- Packages ---------------------------------------------------------- #
+using Random,
+      Statistics,
+      LinearAlgebra
 
-using Random, Statistics, LinearAlgebra
+import NNlib
 
-import AutoGrad, Knet, CUDA
-import Knet: identity,
-             relu,
-             elu,
-             softmax,
-             tanh,
-             sigm
+"""
+Jtac serialization module.
 
-export Knet, CUDA, AutoGrad
+Provides fast serialization and deserialization of basic struct types via the
+msgpack format.
+"""
+module Pack
+  import MsgPack
+  import TranscodingStreams: TOKEN_END
+  import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
 
-export identity,
-       relu,
-       elu,
-       softmax,
-       tanh,
-       sigm
+  include("pack.jl")
+end
 
 
-# -------- Utilities --------------------------------------------------------- #
+"""
+Jtac utility module.
 
+Contains various utility functions for the rest of the library, ranging
+from symmetry operations and named values to benchmarking tools.
+"""
 module Util
-
-  using Distributed
+  # TODO: remove ProgressMeter!
   import ProgressMeter
-
+  import NNlib
   using ..Jtac
+  using ..Pack
 
   include("util/util.jl")
 
-
-  export apply_dihedral_group,
-         apply_klein_four_group,
+  export parallelforeach,
+         showindented,
          stepper
 
+  include("util/symmetry.jl")
+
+  export applygroup
+
+  export DihedralGroup,
+         KleinFourGroup
+
+  include("util/named.jl")
+
+  export register!,
+         isregistered,
+         lookup,
+         lookupname,
+         resolve
 
   module Bench
-
-    using Distributed
-    using Statistics
-    using Printf
-
+    using Statistics, Printf
     using ..Jtac
 
-    include("util/bench.jl")
-
+    # TODO: refactor / repair bench.jl
+    # include("util/bench.jl")
   end # module Bench
 
   export Bench
-
 end # module Util
 
-# -------- Serialization ----------------------------------------------------- #
 
-module Pack
+"""
+Jtac game module.
 
-  import MsgPack
-
-  using ..Jtac
-  import ..Util
-
-  include("pack.jl")
-
-end # module Pack
-
-# -------- Games ------------------------------------------------------------- #
-
+Defines the interface that any game type `G <: Game.AbstractGame` has
+to implement. Also provides proof-of-concept implementations of the game
+Tic-Tac-Toe ([`Game.TicTacToe`](@ref)), its generalization to general grids
+([`Game.MNKGame`](@ref)), as well as the (much more interesting) variant
+meta Tic-Tac-Toe ([`Game.MetaTac`](@ref)).
+"""
 module Game
-
   using Random, Statistics, LinearAlgebra
-  import MsgPack
 
   using ..Jtac
   using ..Util
@@ -97,24 +103,22 @@ module Game
          ActionIndex
 
   export status,
-         current_player,
-         legal_actions,
-         apply_action!, 
-         apply_actions!,
-         is_action_legal,
-         array,
-         policy_length,
-         random_playout, 
+         instance,
+         activeplayer,
+         isactionlegal,
+         isover,
+         isaugmentable,
+         legalactions,
+         move!, 
+         policylength,
          augment,
-         draw,
-         is_over,
-         is_augmentable,
-         random_turn!,
-         random_turns!,
-         instance
-
-
-  # -------- Game implementations ---------------------------------------------- #
+         randommove!,
+         randomturn!,
+         randommatch!, 
+         randommatch, 
+         array,
+         branch,
+         draw
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")
@@ -129,15 +133,18 @@ module Game
          Nim2,
          Morris
 
+end
 
-end #module Game
 
-# -------- Training targets -------------------------------------------------- #
+"""
+Jtac target module.    
 
+Defines prediction targets that Jtac models can be trained on (see
+[`Target.AbstractTarget`](@ref)).
+"""
 module Target
 
   using Random, Statistics, LinearAlgebra
-  using CUDA
 
   using ..Jtac
   using ..Util
@@ -147,26 +154,45 @@ module Target
   include("target.jl")
 
   export AbstractTarget,
-         PredictionTarget,
-         RegularizationTarget
+         DefaultValueTarget,
+         DefaultPolicyTarget,
+         DummyTarget
 
-  export ValueTarget,
-         PolicyTarget,
-         DummyTarget,
-         L1Reg,
-         L2Reg
+  export LabelContext
 
-  export targets,
-         adapt
+end
 
-end # module Target
+"""
+Jtac model module.
 
-# -------- CPU/GPU Elements and NN Models ------------------------------------ #
+In Jtac, models are responsible for game state evaluations. Given a game state,
+models predict a scalar value and a policy vector to assess the current state
+and the available options for action.
 
+Models are the driving engines behind players (see `Player.AbstractPlayer`),
+which live at a higher level of abstraction and which implement additional logic
+like Monte-Carlo-Tree search (see [`Player.MCTSPlayer`](@ref)).
+
+This module defines the interface for abstract Jtac models (see
+[`Model.AbstractModel`](@ref)) and provides the following concrete model
+implementations:
+- [`Model.RolloutModel`](@ref): A model that always proposes a uniform policy \
+  and a value obtained by simulating the game outcome via random actions. \
+  If plugged into an [`MCTSPlayer`](@ref), this model leads to the classical
+  rollout-based Monte-Carlo tree search algorithm.
+- [`Model.NeuralModel`](@ref): A neural network based model. This model type \
+  is special in at least two ways: First, it can be trained on recorded data \
+  (see the module `Training` for more information). Second, it can also learn \
+  to predict other targets than the value and policy for a game state.
+- [`Model.AsyncModel`](@ref): Wrapper model that makes batched evaluation
+  available to [`Model.NeuralModel`](@ref)s in asynchronous contexts.
+- [`Model.AssistedModel`](@ref): Wrapper model that equipps a given model with
+  an assistant (like an analytical solver for certain states of a game).
+"""
 module Model
 
   using Random, Statistics, LinearAlgebra
-  import Knet, CUDA
+  import NNlib
 
   using ..Jtac
   using ..Util
@@ -174,52 +200,76 @@ module Model
   using ..Target
   import ..Pack
 
-  include("model/element.jl")
-  include("model/layer.jl")
   include("model/model.jl")
 
-  export AbstractModel
+  export AbstractModel,
+         Format,
+         DefaultFormat
 
-  export targets,
-         opt_targets,
-         apply,
-         to_gpu,
-         to_cpu,
-         swap,
-         on_gpu,
-         tune,
-         is_async,
-         base_model,
-         playing_model,
-         training_model,
-         gametype
+  export apply,
+         assist,
+         gametype,
+         targets,
+         targetnames,
+         ntasks,
+         isasync,
+         basemodel,
+         childmodel,
+         trainingmodel,
+         playingmodel,
+         configure,
+         adapt,
+         save,
+         load
 
-  export valid_insize,
-         outsize,
+  include("model/layer.jl")
+
+  export Backend,
+         DefaultBackend,
+         Activation
+
+  export Dense,
+         Conv,
+         Batchnorm,
+         Chain,
+         Residual
+
+  export getbackend,
+         isvalidinputsize,
+         isvalidinput,
+         outputsize,
+         parameters,
+         parametercount,
          layers,
          @chain,
-         @stack,
          @residual
 
-  # -------- Fundamental model implementations ------------------------------- #
+  include("model/dummy.jl")
+  include("model/random.jl")
+  include("model/rollout.jl")
 
-  include("model/basic.jl")
+  export DummyModel,
+         RandomModel,
+         RolloutModel
+
   include("model/neural.jl")
   include("model/async.jl")
   include("model/threaded.jl")
   include("model/caching.jl")
   include("model/assisted.jl")
 
-  export AbstractModel,
-         DummyModel,
-         RandomModel,
-         RolloutModel,
-         NeuralModel,
-         Async,
-         Caching
+  export NeuralModel,
+         AsyncModel,
+         CachingModel,
+         AssistedModel
 
-  # -------- Predefined NeuralModel architectures ---------------------------- #
+  """
+  Predefined neural model architectures.
 
+  Most relevant are [`Zoo.ZeroConv`](@ref) and [`Zoo.ZeroRes`](@ref), which
+  are modeled after the convolutional and residual architectures of the Alpha
+  Zero publications.
+  """
   module Zoo
 
     using ...Jtac
@@ -238,56 +288,24 @@ module Model
 
 end # module Model
 
-# -------- Datasets ---------------------------------------------------------- #
-
-module Data
-
-  using Random, Statistics, LinearAlgebra, Distributed
-  import MsgPack, TranscodingStreams, CodecZstd
-
-  using ..Jtac
-  using ..Util
-  using ..Game
-  using ..Model
-  using ..Target
-  import ..Pack
-
-  include("data/dataset.jl")
-  include("data/cache.jl")
-  include("data/batch.jl")
-  include("data/pool.jl")
-
-  export DataSet, Cache, Batches, Pool
-
-  export save,
-         load,
-         augment
-
-end # Data
-
-
-# -------- MCTS, Player, and ML ELO rankings -------------------------------- #
-
+"""
+TODO: document this module    
+"""
 module Player
 
   using Random, Statistics, LinearAlgebra
-  using Printf, Distributed
-  import CUDA
-  import ThreadPools # employ background threads
+  using Printf
+  import NNlib: softmax
 
   using ..Jtac
   using ..Util
   using ..Game
   using ..Target
   using ..Model
-  using ..Data
   import ..Pack
 
   include("player/mcts.jl")
   include("player/player.jl")
-  include("player/elo.jl")    # outsource to Util or rank.jl?
-  include("player/rank.jl")
-  include("player/record.jl")
 
   export AbstractPlayer,
          RandomPlayer,
@@ -301,28 +319,46 @@ module Player
          decide,
          turn!,
          compete,
-         switch_model,
-         record
+         switchmodel
 
-end # module Player
+  include("player/elo.jl")    # outsource to Util or rank.jl?
+  include("player/rank.jl")
+
+  export Ranking
+  export rank
+
+end
 
 
-# -------- Training ---------------------------------------------------------- #
-
+"""
+TODO: document this module 
+"""
 module Training
 
   using Random, Statistics, LinearAlgebra
-  using Printf, Distributed
+  using Printf
 
   using ..Jtac
   using ..Util
+  using ..Pack
   using ..Game
+  using ..Target
   using ..Model
   using ..Player
-  using ..Data
-  using ..Target
 
-  include("training.jl")
+  include("training/dataset.jl")
+
+  export save, load
+
+  export DataSet, DataCache, DataBatches
+
+  include("training/record.jl")
+
+  export record
+
+  include("training/learn.jl")
+
+  export LossFunction, LossContext
 
   export loss,
          set_optimizer!,
@@ -332,85 +368,35 @@ module Training
 
 end # module Training
 
-# -------- Server ------------------------------------------------------------ #
-
-module Server
-
-  module Config
-
-    import Printf, TOML, Sockets 
-
-    include("server/config.jl")
-
-  end # module Config
-
-  module Events
-
-    import ...Pack
-    import ...Player: Ranking
-
-    include("server/events.jl")
-
-  end # module Events
-
-  module Api
-
-    import ...Pack
-    import ...Data: DataSet
-    import ...Model: AbstractModel
-    import ...Player: MCTSPlayer, Ranking
-
-    import ..Events: Event
-
-    include("server/api.jl")
-
-  end # module Api
-
-  module Log
-
-    export log, @log, @logwarn, @logerror, @logdebug
-
-    include("server/log.jl")
-  
-  end # module Log
-
-  module Program
-
-    using Statistics
-    import Knet, CUDA
-
-    import ...Game
-    import ...Data
-    import ...Model
-    import ...Player
-    import ...Target
-    import ...Training
-
-    import ...Game: AbstractGame
-    import ...Data: DataSet, Pool, Batches
-    import ...Model: AbstractModel, NeuralModel, Async
-    import ...Player: AbstractPlayer, MCTSPlayer
-
-    using ..Log
-    import ..Config
-
-    include("server/program.jl")
-    include("server/selfplay.jl")
-    include("server/training.jl")
-    include("server/compete.jl")
-    
-  end # module Program
-
-end
 
 export Util,
        Pack,
        Game,
        Model,
        Player,
-       Data,
        Target,
-       Training,
-       Server
+       Training
+
+using .Util, .Model, .Training
+
+function __init__()
+  register!(Activation, identity, :id, :identity)
+  register!(Activation, NNlib.relu, :relu)
+  register!(Activation, NNlib.selu, :selu)
+  register!(Activation, NNlib.elu, :elu)
+  register!(Activation, NNlib.tanh, :tanh)
+  register!(Activation, NNlib.sigmoid, :sigmoid)
+  register!(Activation, Activation(NNlib.softmax, broadcast = false), :softmax)
+
+  register!(Backend, DefaultBackend{Array{Float32}}(), :default, :default32)
+  register!(Backend, DefaultBackend{Array{Float64}}(), :default64)
+
+  register!(Format, DefaultFormat(), :jtm)
+
+  register!(LossFunction, (x, y) -> sum(abs, x .- y), :sumabs)
+  register!(LossFunction, (x, y) -> sum(abs2, x .- y), :sumabs2)
+  register!(LossFunction, (x, y) -> -sum(y .* log.(x .+ 1f-7)), :crossentropy)
+end
+
 
 end # module Jtac

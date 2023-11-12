@@ -2,10 +2,10 @@
 
 """
 Model wrapper that enables game state caching. This wrapper is intended for
-accelerating MCTS playouts, since previously evaluated game states might be
-queried repeatedly.
+accelerating MCTS playouts where previously evaluated game states are queried
+repeatedly.
 """
-mutable struct Caching{G <: AbstractGame} <: AbstractModel{G, false}
+mutable struct CachingModel{G <: AbstractGame} <: AbstractModel{G}
   model :: AbstractModel{G}
   cachesize :: Int
 
@@ -15,32 +15,34 @@ mutable struct Caching{G <: AbstractGame} <: AbstractModel{G, false}
   calls_uncached :: Int
 end
 
-Pack.@onlyfields Caching [:model, :cachesize]
+Pack.freeze(m :: CachingModel) = switchmodel(m, Pack.freeze(m.model))
+Pack.@only CachingModel [:model, :cachesize]
 
-Caching{G}(model, cachesize) where {G} =
-  Caching(model; cachesize) :: Caching{G}
+CachingModel{G}(model, cachesize) where {G} = CachingModel(model; cachesize)
 
-Pack.freeze(m :: Caching) = switch_model(m, Pack.freeze(m.model))
 
 """
-    Caching(model; cachesize)
+    CachingModel(model; cachesize)
 
 Wraps `model` in a caching layer that checks if a game to be evaluated has
 already been cached. If so, the cached result is reused. If it has not been
-cached before, and if fewer game states that `cachesize` are currently
+cached before, and if fewer game states than `cachesize` are currently
 stored, it is added to the cache.
 """
-function Caching(model :: AbstractModel; cachesize = 100000)
-
+function CachingModel(model :: AbstractModel; cachesize = 100000)
   # It does not make sense to wrap Caching models
-  @assert !(model isa Caching) "Cannot wrap Caching model in Caching"
+  @assert !(model isa CachingModel) "Cannot wrap CachingModel model in CachingModel"
 
   cache = Dict{UInt64, Tuple{Float32, Vector{Float32}}}()
   sizehint!(cache, cachesize)
-  Caching(model, cachesize, cache, 0, 0)
+  CachingModel(model, cachesize, cache, 0, 0)
 end
 
-function apply(m :: Caching{G}, game :: G) where {G <: AbstractGame}
+function apply( m :: CachingModel{G}
+              , game :: G
+              ; targets = [:value, :policy]
+              ) where {G <: AbstractGame}
+  @assert issubset(targets, targetnames(m))
   m.calls_cached += 1
   (v, p) = get(m.cache, Game.hash(game)) do
     m.calls_cached -= 1
@@ -54,8 +56,7 @@ function apply(m :: Caching{G}, game :: G) where {G <: AbstractGame}
   (value = v, policy = p)
 end
 
-
-function clear_cache!(m :: Caching{G}) where {G <: AbstractGame}
+function clear_cache!(m :: CachingModel{G}) where {G <: AbstractGame}
   m.cache = Dict{UInt64, Tuple{Float32, Vector{Float32}}}()
   sizehint!(m.cache, m.cachesize)
   m.calls_cached = 0
@@ -63,34 +64,27 @@ function clear_cache!(m :: Caching{G}) where {G <: AbstractGame}
   nothing
 end
 
-function switch_model(m :: Caching{G}, model :: AbstractModel{G}) where {G <: AbstractGame}
-  Caching(model; cachesize = m.cachesize)
+function switchmodel(m :: CachingModel{G}, model :: AbstractModel{G}) where {G <: AbstractGame}
+  CachingModel(model; cachesize = m.cachesize)
 end
 
-swap(m :: Caching) = @warn "Caching models cannot be swapped"
-Base.copy(m :: Caching) = switch_model(m, copy(m.model))
+adapt(backend, m :: CachingModel) = switchmodel(m, adapt(backend, m.model))
 
-ntasks(m :: Caching) = ntasks(m.model)
-base_model(m :: Caching) = base_model(m.model)
-training_model(m :: Caching) = training_model(m.model)
+isasync(m :: CachingModel) = isasync(m.model)
+ntasks(m :: CachingModel) = ntasks(m.model)
+childmodel(m :: CachingModel) = m.model
+basemodel(m :: CachingModel) = basemodel(m.model)
+trainingmodel(m :: CachingModel) = trainingmodel(m.model)
 
-is_async(m :: Caching) = is_async(m.model)
+Base.copy(m :: CachingModel) = switchmodel(m, copy(m.model))
 
-function tune( m :: Caching
-             ; gpu = on_gpu(base_model(m))
-             , async = is_async(m) ? m.model.batchsize : false
-             , cache = m.cachesize )
-
-  tune(m.model; gpu, async, cache)
-end
-
-function Base.show(io :: IO, m :: Caching{G}) where {G <: AbstractGame}
+function Base.show(io :: IO, m :: CachingModel{G}) where {G <: AbstractGame}
   print(io, "Caching($(length(m.cache)), $(m.cachesize), ")
   show(io, m.model)
   print(io, ")")
 end
 
-function Base.show(io :: IO, mime :: MIME"text/plain", m :: Caching{G}) where {G <: AbstractGame}
+function Base.show(io :: IO, mime :: MIME"text/plain", m :: CachingModel{G}) where {G <: AbstractGame}
   print(io, "Caching($(length(m.cache)), $(m.cachesize)) ")
   show(io, mime, m.model)
 end

@@ -1,11 +1,11 @@
 
 """
-    plan_matches(n, nplayers, active)
+    planmatches(n, nplayers, active)
 
 Returns `n` evenly distributed tuples `(i, j)`, where `1 <= i, j <= nplayers`,
 such that at least one of `i` or `j` is in `active`.
 """
-function plan_matches(nmatches, nplayers, active)
+function planmatches(nmatches, nplayers, active)
   stop = false
   matches = []
   while !stop
@@ -57,27 +57,34 @@ outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
 `[i, j, :]` are `0` in this case.
 
 # Arguments
-- `instance`: Function that returns an initial game state. Inferred automatically if possible.
+- `instance`: Initial game state provider. Defaults to `() -> Game.instance(G)` \
+if the game type `G` can be inferred automatically.
 - `callback`: Function called after each of the `n` matches.
 - `threads`: Whether to use threading.
-- `draw_after`: Number of moves after which the game is stopped and counted as a draw.
+- `draw_after`: Number of moves after which the game is stopped and counted as \
+a draw.
 - `verbose`: Print current ranking after each match.
 """
 function compete( players
                 , n :: Int
                 , active = 1:length(players)
-                ; instance = derive_gametype(players...)
+                ; instance = gametype(players...)
                 , callback = () -> nothing
                 , verbose = false
                 , threads = false
                 , draw_after = typemax(Int) )
+
+  if instance isa Type{<: AbstractGame}
+    G = instance
+    instance = () -> Game.instance(G)
+  end
 
   # Using only a single BLAS thread was beneficial for performance in tests
   t = BLAS.get_num_threads()
   BLAS.set_num_threads(1)
 
   lk = ReentrantLock()
-  matches = plan_matches(n, length(players), active)
+  matches = planmatches(n, length(players), active)
   results = zeros(Int, length(players), length(players), 3)
 
   count = 0
@@ -107,14 +114,15 @@ end
 
 
 """
-Structure that contains the ranking information of a group of competing players.
+Structure that contains ranking information of a group of competing players.
+
 Based on the results of a competition, elo values (and guesses for their
-standard deviation) as well as the start advantage and a draw bandwidth is
-determined.
+standard deviation via the observed Fisher information) as well as the start
+advantage and a draw bandwidth is determined.
 """
 struct Ranking
   players :: Vector{String}
-  results :: Vector{Int}
+  results :: Array{Int, 3}
 
   elo  :: Vector{Float64}
   sadv :: Float64
@@ -125,12 +133,8 @@ struct Ranking
   drawstd :: Float64
 end
 
-# Since msgpack can not handle Arrays of higher dimension than 1 without
-# customization (and forgets the size), we offer this additional constructor
-Ranking(ps :: Vector{String}, r :: Array{Int, 3}, args...) =
-  Ranking(ps, reshape(r, :), args...)
-
 Pack.@untyped Ranking
+Pack.@binarray Ranking [:results]
 
 """
     rank(players, results; steps = 100)
@@ -197,7 +201,7 @@ function Base.string(rk :: Ranking, matrix = false)
 
   if matrix
 
-    res = reshape(rk.results, length(rk.players), length(rk.players), 3)
+    res = rk.results
     mat = res[perm, perm, 3] - res[perm, perm, 1]
     nm = maximum(ndigits, mat)
 

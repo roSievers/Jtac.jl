@@ -38,6 +38,8 @@ Node(parent, index, action) = Node(
     isroot(node)
 
 Whether the given node is a root node (i.e., has no parent).
+
+See also [`isleaf`](@ref).
 """
 isroot(node :: Node) :: Bool = isnothing(node.parent)
 
@@ -45,6 +47,8 @@ isroot(node :: Node) :: Bool = isnothing(node.parent)
     isleaf(node)
 
 Whether the given node is a leaf node (i.e., has not been expanded).
+
+See also [`isroot`](@ref).
 """
 isleaf(node :: Node) :: Bool = isempty(node.children)
 
@@ -100,7 +104,7 @@ Structure with the capacity to cache a fixed number of nodes.
 `NodeCache`s can be used in successive calls to `mcts` in order to reduce the
 number of node allocations. Since they do not grow dynamically, they must be
 constructed with a sufficiently large capacity. A pessimistic upper bound
-for a game of type `G` is `policy_length(G) * power`, where `power` is the
+for a game of type `G` is `policylength(G) * power`, where `power` is the
 MCTS power.
 """
 struct NodeCache{G <: AbstractGame} 
@@ -114,7 +118,7 @@ end
 Create a `NodeCache` for game type `G` that stores `capacity` nodes.
 """
 function NodeCache(G, capacity)
-  n = Game.policy_length(G)
+  n = Game.policylength(G)
   free = map(1:capacity) do id
     children = Vector{Node}()
     data = [
@@ -197,6 +201,7 @@ Pack.@typed MCTSPolicy
     getpolicy!(buffer, policy, node)
 
 Let `policy` determine an MCTS policy from `node` and write it into `buffer`.
+
 See also [`getpolicy`](@ref).
 """
 function getpolicy!( buffer :: Vector{Float32}
@@ -210,6 +215,7 @@ end
     getpolicy(policy, node)
 
 Let `policy` determine an MCTS policy from `node`.
+
 See also [`getpolicy!`](@ref).
 """
 function getpolicy(policy :: MCTSPolicy, node :: Node) 
@@ -354,11 +360,13 @@ Base.copy(policy :: Anneal) = Anneal(copy(policy.policy), policy.temperature)
     anneal(weights, temperature)
 
 Sharpen or broaden the probability distribution `weights` by applying
-the operation `weights.^temperature` (plus re-normalization) to it.
+the operation `weights.^temperature` (plus normalization) to it.
 """
 function anneal(values :: Vector{Float32}, temp :: Float32)
   if temp == 0f0
-    one_hot(length(values), findmax(values)[2])
+    vals = zeros(Float32, length(values))
+    vals[findmax(values)[2]] = 1
+    vals
   elseif temp == 1f0
     values / sum(values)
   else
@@ -398,7 +406,7 @@ struct Lognormal <: MCTSPolicy
   noise :: Vector{Float32}
 end
 
-Pack.@onlyfields Lognormal [:policy, :dilution]
+Pack.@only Lognormal [:policy, :dilution]
 
 """
     Lognormal(policy, dilution)
@@ -452,7 +460,7 @@ struct Gumbel <: MCTSPolicy
   noise :: Vector{Float32}
 end
 
-Pack.@onlyfields Gumbel [:policy]
+Pack.@only Gumbel [:policy]
 
 """
     Gumbel(policy = ImprovedPolicy())
@@ -736,7 +744,7 @@ end
 """
 Sequential halving root selector.
 
-This selector can not be applied to non-root nodes.
+This selector cannot be applied to non-root nodes.
 """
 struct SequentialHalving <: ActionSelector
   policy :: MCTSPolicy
@@ -805,7 +813,7 @@ in `node`.
 First, `selector` is used to find a node that is still unexpanded. This leaf
 node is expanded and initialized via `model`. The value estimated by `model` is
 then backpropagated towards the root of `node`. The argument `cache` can be
-a `NodeCache` whose buffered nodes are then used for the expansion of nodes.
+a [`NodeCache`](@ref) whose buffered nodes are then used for the expansion of nodes.
 """
 function mctsstep!( node :: Node
                   , game :: G
@@ -821,18 +829,18 @@ function mctsstep!( node :: Node
   while !isleaf(node)
     index = select(selector, node; buffer)
     child = node.children[index]
-    Game.apply_action!(game, child.action)
+    Game.move!(game, child.action)
     node = child
   end
 
   # Expand leaf
-  node.player = Game.current_player(game)
-  if Game.is_over(game)
+  node.player = Game.activeplayer(game)
+  if Game.isover(game)
     node.value = Game.status(game) * node.player
   else
-    actions = Game.legal_actions(game)
+    actions = Game.legalactions(game)
     expandnode!(node, actions, cache)
-    prior = Model.apply(model, game)
+    prior = Model.apply(model, game, targets = [:value, :policy])
     node.value = prior.value
     policy = @view prior.policy[actions]
     node.policy .= policy ./ (sum(policy) + 1f-6)
@@ -871,8 +879,8 @@ derived from `model`. Returns the root node at `game`.
 simulations may be reused.
 * `selector = PUCT()`: The action selector at non-root nodes.
 * `rootselector = selector`: The action selector at the root node.
-* `cache = nothing`: An optional `NodeCache` to reduce node allocations in case \
-of repeated calls.
+* `cache = nothing`: An optional [`NodeCache`](@ref) to reduce node \
+allocations in case of repeated calls.
 """
 function mcts( game :: G
              , model
@@ -889,7 +897,7 @@ function mcts( game :: G
 
   # If the game is already over, there are no legal actions left. Thus,
   # set the node size to 0 and insert the game result as value.
-  if Game.is_over(game)
+  if Game.isover(game)
     resize!(root, 0)
     root.value = status(game)
     return root
@@ -908,7 +916,7 @@ function mcts( game :: G
   # selector
   explore = ((index, visits),) -> begin
     child = root.children[index]
-    childgame = Game.apply_action!(copy(game), child.action)
+    childgame = Game.move!(copy(game), child.action)
     for _ in 1:visits
       mctsstep!(child, childgame, model, selector; cache, buffer)
     end
@@ -929,4 +937,3 @@ function mcts( game :: G
 
   root
 end
-

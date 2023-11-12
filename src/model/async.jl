@@ -3,10 +3,9 @@
 
 """
 Asynchronous model wrapper that allows a model to be called on a batch of games
-in parallel when the single calls take place in an async context. Note that an
-`Async` model always returns CPU arrays, even if the worker model acts on the GPU.
+in parallel when the single calls take place in an async context.
 """
-mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
+mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   model      :: NeuralModel{G}
   ch         :: Channel
   task       :: Task
@@ -17,62 +16,57 @@ mutable struct Async{G <: AbstractGame} <: AbstractModel{G, false}
   spawn      :: Bool
   dynamic    :: Bool
 
-  ch_dynamic :: Channel{Bool}
+  cdynamic :: Channel{Bool}
   profile
 end
 
-Pack.@onlyfields Async [:model, :batchsize, :buffersize, :spawn, :dynamic]
+Pack.freeze(m :: AsyncModel) = switchmodel(m, Pack.freeze(m.model))
+Pack.@only AsyncModel [:model, :batchsize, :buffersize, :spawn, :dynamic]
 
-Async{G}(models, batchsize, buffersize, spawn, dynamic) where {G} =
-  Async(models; batchsize, buffersize, spawn, dynamic)
-
-Pack.freeze(m :: Async) = switch_model(m, Pack.freeze(m.model))
+AsyncModel{G}(model, batchsize, buffersize, spawn, dynamic) where {G} =
+  AsyncModel(model; batchsize, buffersize, spawn, dynamic)
 
 """
-    Async(model; kwargs...)
+    AsyncModel(model; kwargs...)
 
-Wraps `model` to become an asynchronous model with maximal batchsize
-`batchsize` for evaluation in parallel and a buffer of size `buffersize` for
-queuing.
+Wrap `model` into an `AsyncModel` model.
 
-## Keyword Arguments
-* `batchsize = 50`: Maximal number of games evaluated in parallel.
-* `buffersize = 10batchsize`: Size of the channel that buffers games to be \
+## Arguments
+- `batchsize = 64`: Maximal number of games evaluated in parallel.
+- `buffersize = 10batchsize`: Size of the channel that buffers games to be \
 evaluated.
-* `spawn = false`: If true, the worker is spawned in its own thread.
-* `dynamic = true`: If true, the model does not have to wait until `batchsize` \
+- `spawn = false`: If true, the worker is spawned in its own thread.
+- `dynamic = true`: If true, the model is not forced to wait until `batchsize` \
 games are buffered before evaluation. This can prevent blocking (if games stop \
 being evaluated) but may lead to situations where the effective batchsize is \
 systematically smaller than `batchsize`, especially if `spawn = true`.
 """
-function Async( model :: NeuralModel{G}
-              ; batchsize = 50
-              , buffersize = 10batchsize
-              , spawn = false
-              , dynamic = true
-              ) where {G <: AbstractGame}
+function AsyncModel( model :: NeuralModel{G}
+                   ; batchsize = 64
+                   , buffersize = 10batchsize
+                   , spawn = false
+                   , dynamic = true
+                   ) where {G <: AbstractGame}
 
-  # Make sure that the buffer is larger than the maximal allowed batchsize
   @assert buffersize >= batchsize "buffersize must be larger than batchsize"
 
-  # Open the channel in which the inputs are dumped
   ch = Channel(buffersize)
-  ch_dynamic = Channel{Bool}(1)
-  put!(ch_dynamic, dynamic)
+  cdynamic = Channel{Bool}(1)
+  put!(cdynamic, dynamic)
 
   # For debugging and profiling, record some information
   profile = (batchsize = Int[], delay = Float64[], latency = Float64[])
 
   # Start the worker task in the background
   if spawn
-    task = Threads.@spawn worker(ch, model, batchsize, ch_dynamic, profile)
+    task = Threads.@spawn worker(model, ch, batchsize, cdynamic, profile)
   else
-    task = @async worker(ch, model, batchsize, ch_dynamic, profile)
+    task = @async worker(model, ch, batchsize, cdynamic, profile)
   end
 
   # Create the instance
-  amodel = Async{G}( model, ch, task, batchsize, buffersize
-                   , spawn, dynamic, ch_dynamic, profile )
+  amodel = AsyncModel{G}( model, ch, task, batchsize, buffersize
+                   , spawn, dynamic, cdynamic, profile )
 
   # Register finalizer
   finalizer(m -> close(m.ch), amodel)
@@ -82,63 +76,63 @@ function Async( model :: NeuralModel{G}
 end
 
 
-function apply(m :: Async{G}, game :: G) where {G <: AbstractGame}
+function apply( m :: AsyncModel{G}
+              , game :: G
+              ; targets = [:value, :policy]
+              ) where {G <: AbstractGame}
+
+  @assert issubset(targets, targetnames(m))
+  @assert !istaskdone(m.task) "Worker task of async model has stopped"
   c = Threads.Condition()
   put!(m.ch, (copy(game), c))
-  lock(c) do
-    wait(c) # notify(ticket) in the worker will provide the value
-  end
+  # notify(ticket) in the worker will provide the value
+  lock(() -> wait(c), c)
 end
 
-dynamic_mode!(m :: AbstractModel, :: Bool) = nothing
+dynamicmode!(m :: AbstractModel, :: Bool) = nothing
 
-function dynamic_mode!(m :: Async{G}, dynamic :: Bool) where {G}
-  take!(m.ch_dynamic)
-  put!(m.ch_dynamic, dynamic)
+function dynamicmode!(m :: AsyncModel{G}, dynamic :: Bool) where {G}
+  take!(m.cdynamic)
+  put!(m.cdynamic, dynamic)
   m.dynamic = dynamic
-  try Model.apply(m, G()) catch _ end # this prevents blocking
+  try apply(m, G()) catch _ end # prevent blocking
   nothing
 end
 
-#Base.close(m :: Async) = close(m.ch)
-
-function switch_model(m :: Async{G}, model :: NeuralModel{G}) where {G <: AbstractGame}
-  Async( model
-       , batchsize = m.batchsize
-       , buffersize = m.buffersize )
+function switchmodel( m :: AsyncModel{G}
+                    , model :: NeuralModel{G}
+                    ) where {G <: AbstractGame}
+  AsyncModel(model; m.batchsize, m.buffersize, m.spawn, m.dynamic)
 end
 
-swap(m :: Async) = @warn "Async cannot be swapped."
-Base.copy(m :: Async) = switch_model(m, copy(m.model))
+adapt(backend, m :: AsyncModel) = switchmodel(m, adapt(backend, m.model))
+getbackend(m :: AsyncModel) = getbackend(m.model)
 
-ntasks(m :: Async) = m.buffersize
-base_model(m :: Async) = base_model(m.model)
-training_model(m :: Async) = training_model(m.model)
+isasync(m :: AsyncModel) = true
+ntasks(m :: AsyncModel) = 2 * m.batchsize
+basemodel(m :: AsyncModel) = basemodel(m.model)
+childmodel(m :: AsyncModel) = m.model
+trainingmodel(m :: AsyncModel) = trainingmodel(m.model)
 
-is_async(m :: Async) = true
+Base.copy(m :: AsyncModel) = switchmodel(m, copy(m.model))
 
-function tune( m :: Async
-             ; gpu = on_gpu(base_model(m))
-             , async = m.batchsize
-             , cache = false )
-
-  tune(m.model; gpu, async, cache)
-end
-
-function Base.show(io :: IO, m :: Async{G}) where {G <: AbstractGame}
+function Base.show(io :: IO, m :: AsyncModel{G}) where {G <: AbstractGame}
   print(io, "Async($(m.batchsize), $(m.buffersize), ")
   show(io, m.model)
   print(io, ")")
 end
 
-function Base.show(io :: IO, mime :: MIME"text/plain", m :: Async{G}) where {G <: AbstractGame}
-  print(io, "Async($(m.batchsize), $(m.buffersize)) ")
+function Base.show( io :: IO
+                  , mime :: MIME"text/plain"
+                  , m :: AsyncModel{G}
+                  ) where {G <: AbstractGame}
+  print(io, "Async($(m.batchsize), $(m.dynamic ? "dynamic" : "static")) ")
   show(io, mime, m.model)
 end
 
 # -------- Async Worker ------------------------------------------------------ #
 
-function closed_and_empty(ch, profile)
+function closedandempty(ch, profile)
   try
     push!(profile.delay, @elapsed fetch(ch))
     false
@@ -147,7 +141,7 @@ function closed_and_empty(ch, profile)
   end
 end
 
-function notify_error(conds, msg)
+function notifyerror(conds, msg)
   for c in conds
     lock(c) do
       notify(c, InvalidStateException(msg), error = true)
@@ -155,19 +149,25 @@ function notify_error(conds, msg)
   end
 end
 
-function worker(ch, model, max_batchsize, ch_dynamic, profile)
+function worker( model :: NeuralModel{G, B}
+               , ch
+               , max_batchsize
+               , cdynamic
+               , profile ) where {G, B}
 
-  @debug "Async worker started"
+  @debug "Worker of AsyncModel started"
 
-  buf = Game.array_buffer(model, max_batchsize)
-  G = Model.gametype(model)
-
-  # worker task has to run under the same CUDA device that the model has been
+  # Worker task should run on the same device that the model has been
   # created in
-  adapt_gpu_device!(model)
+  aligndevice!(model)
 
-  expect_more_games = games -> begin
-    if fetch(ch_dynamic)
+  # Prepare buffer to make game array creation more efficient
+  buf = Game.arraybuffer(G, max_batchsize)
+  buf = convert(arraytype(B()), buf)
+
+
+  expectmore = games -> begin
+    if fetch(cdynamic)
       isready(ch) && length(games) < max_batchsize
     else
       length(games) < max_batchsize
@@ -175,30 +175,34 @@ function worker(ch, model, max_batchsize, ch_dynamic, profile)
   end
 
   try
-    while !closed_and_empty(ch, profile)
+    while !closedandempty(ch, profile)
 
       games = Vector{G}()
       conds = Vector{Threads.Condition}()
 
       dt = @elapsed begin
 
-        while expect_more_games(games)
+        while expectmore(games)
           game, c = try take!(ch) catch _ break end
           push!(games, game)
           push!(conds, c)
           yield()
         end
 
-        # Actual batchsize
+        # Actual size of the batch to evaluate
         batchsize = length(games)
         push!(profile.batchsize, batchsize)
 
+        # TODO: Benchmark buf[:,:,:,1:batchsize] ! Could be worse than resizing
+        # the buffer such that no temp copies are created. Alternatively, work
+        # with views?
         v, p = try
           Game.array!(buf, games)
-          v, p = model(buf[:, :, :, 1:batchsize])
-          to_cpu(v), to_cpu(p)
+          vp = model(buf[:, :, :, 1:batchsize])
+          vp = convert.(Array{Float32}, vp)
+          vp
         catch err
-          notify_error(conds, "Async worker error: $err")
+          notifyerror(conds, "Worker of AsyncModel erred: $err")
           close(ch)
           rethrow()
         end
@@ -219,6 +223,6 @@ function worker(ch, model, max_batchsize, ch_dynamic, profile)
     throw(err)
   end
 
-  @debug "Async worker shutted down"
+  @debug "Worker of AsyncModel exited"
 end
 

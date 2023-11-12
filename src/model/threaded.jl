@@ -1,13 +1,11 @@
 
-# -------- Threaded Wrapper -------------------------------------------------- #
-
 """
 Asynchronous model wrapper that allows a model to be called on a batch of games
 in parallel when the single calls take place in an async context. Note that an
 `Threaded` model always returns CPU arrays, even if the worker model acts on the
 GPU.
 """
-mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G, false}
+mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G}
   model :: NeuralModel{G}
 
   inout :: Task
@@ -26,12 +24,12 @@ mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G, false}
   profile
 end
 
-Pack.@onlyfields Threaded [:model, :max_batchsize, :buffersize]
+Pack.@only Threaded [:model, :max_batchsize, :buffersize]
 
 Threaded{G}(models, max_batchsize, buffersize) where {G} =
   Threaded(models; max_batchsize, buffersize) :: Threaded{G}
 
-Pack.freeze(m :: Threaded) = switch_model(m, Pack.freeze(m.model))
+Pack.freeze(m :: Threaded) = switchmodel(m, Pack.freeze(m.model))
 
 """
     Threaded(model; max_batchsize, buffersize)
@@ -47,7 +45,7 @@ function Threaded( model :: NeuralModel{G};
   # Make sure that the buffer is larger than the maximal allowed batchsize
   @assert buffersize >= max_batchsize "buffersize must be larger than max_batchsize"
 
-  l = policy_length(G)
+  l = policylength(G)
 
   inout_ch = Channel(buffersize)
   calc_ch = Channel{Tuple{Int, Int}}(2)
@@ -93,25 +91,19 @@ function apply(m :: Threaded{G}, game :: G) where {G <: AbstractGame}
 end
 
 
-switch_model(m :: Threaded{G}, model :: AbstractModel{G}) where {G} =
+function switchmodel(m :: Threaded{G}, model :: AbstractModel{G}) where {G}
   Threaded(model, max_batchsize = m.max_batchsize, buffersize = m.buffersize)
+end
 
-swap(m :: Threaded) = @warn "Threaded cannot be swapped."
-Base.copy(m :: Threaded) = switch_model(m, copy(m.model))
+adapt(backend, m :: Threaded) = switchmodel(m, adapt(backend, m.model))
 
+isasync(m :: Threaded) = true
 ntasks(m :: Threaded) = m.buffersize
-base_model(m :: Threaded) = base_model(m.model)
-training_model(m :: Threaded) = training_model(m.model)
+childmodel(m :: Threaded) = m.model
+basemodel(m :: Threaded) = basemodel(m.model)
+trainingmodel(m :: Threaded) = trainingmodel(m.model)
 
-is_async(m :: Threaded) = true
-
-#function tune( m :: Threaded
-#             ; gpu = on_gpu(base_model(m))
-#             , async = m.max_batchsize
-#             , cache = false )
-#
-#  tune(m.model; gpu, async, cache)
-#end
+Base.copy(m :: Threaded) = switchmodel(m, copy(m.model))
 
 function Base.show(io :: IO, m :: Threaded{G}) where {G <: AbstractGame}
   print(io, "Threaded($(m.max_batchsize), $(m.buffersize), ")
@@ -139,11 +131,11 @@ function calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
     Base.lock(lock[idx]) do
       try
         games = buf_in[idx][1:n]
-        v, p = model(games)
-        buf_out[idx].v[1:n] .= reshape(Model.to_cpu(v), :)
-        buf_out[idx].p[:, 1:n] .= Model.to_cpu(p)
-        release_gpu_memory!(v)
-        release_gpu_memory!(p)
+        vp = model(games)
+        v, p = convert.(Array{Float32}, vp)
+        buf_out[idx].v[1:n] .= reshape(v, :)
+        buf_out[idx].p[:, 1:n] .= p
+        releasememory!.(vp)
 
         notify(lock[idx])
 

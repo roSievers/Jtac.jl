@@ -6,7 +6,7 @@
 
 mutable struct MNKGame{M, N, K} <: AbstractGame
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
-  current_player :: Int
+  active_player :: Int
   status :: Status
   move_count :: Int
 end
@@ -19,26 +19,26 @@ MNKGame{M, N, K}() where {M, N, K} =
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
     copy(s.board), 
-    s.current_player,
+    s.active_player,
     s.status,
     s.move_count,
   )
 end
 
-is_augmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
+isaugmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
 
 function Base.:(==)(a::MNKGame{M, N, K}, b::MNKGame{M, N, K}) where {M, N, K}
   all([ all(a.board .== b.board)
-      , a.current_player == b.current_player
+      , a.active_player == b.active_player
       , a.status == b.status
       , a.move_count == b.move_count])
 end
 
-current_player(game :: MNKGame) :: Int = game.current_player
+activeplayer(game :: MNKGame) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
-function legal_actions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N}
-  if is_over(game)
+function legalactions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N}
+  if isover(game)
     ActionIndex[]
   else
     result = Vector{ActionIndex}(undef, M*N - game.move_count)
@@ -57,20 +57,19 @@ function legal_actions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N
 end
 
 # A action is legal, if the board position is still empty
-function is_action_legal( game :: MNKGame{M, N}
-                        , index :: ActionIndex
-                        ) :: Bool where {M, N}
-  game.board[index] == 0 && !is_over(game)
+function isactionlegal( game :: MNKGame{M, N}
+                      , index :: ActionIndex ) :: Bool where {M, N}
+  game.board[index] == 0 && !isover(game)
 end
 
-function apply_action!( game :: MNKGame{M, N, K}
-                      , index :: ActionIndex
-                      ) :: MNKGame{M, N, K} where {M, N, K}
+function move!( game :: MNKGame{M, N, K}
+              , index :: ActionIndex
+              ) :: MNKGame{M, N, K} where {M, N, K}
 
-  @assert is_action_legal(game, index) "Action $index is not allowed."
+  @assert isactionlegal(game, index) "Action $index is not allowed."
   # Update the board state
-  game.board[index] = game.current_player
-  game.current_player = -game.current_player
+  game.board[index] = game.active_player
+  game.active_player = -game.active_player
   
   # Update the status cache
   game.move_count += 1
@@ -126,7 +125,7 @@ end
 
 status(game :: MNKGame) :: Status = game.status
 
-function policy_length(:: Type{<:MNKGame{M, N}}) :: Int where {M, N}
+function policylength(:: Type{<:MNKGame{M, N}}) :: Int where {M, N}
   M * N
 end
 
@@ -137,26 +136,26 @@ end
 
 # Data representation of the game as layered 2d image
 function array(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
-  reshape(game.current_player .* game.board, (M, N, 1))
+  reshape(game.active_player .* game.board, (M, N, 1))
 end
 
 # Augment single games
 function augment(game :: MNKGame{M, N, K}) where {M, N, K}
 
   if M == N
-    boards = apply_dihedral_group(reshape(game.board, (M, N))) 
+    boards = applygroup(DihedralGroup(), reshape(game.board, (M, N))) 
     map(boards) do b
       MNKGame{M, N, K}( reshape(b, (M * N,))
-                      , game.current_player
+                      , game.active_player
                       , game.status
                       , game.move_count )
     end
 
   else
-    boards = apply_klein_four_group(reshape(game.board, (M, N))) 
+    boards = applygroup(KleinFourGroup(), reshape(game.board, (M, N))) 
     map(boards) do b
       MNKGame{M, N, K}( reshape(b, (M * N,))
-                      , game.current_player
+                      , game.active_player
                       , game.status
                       , game.move_count )
     end
@@ -172,13 +171,13 @@ function augment( game :: MNKGame{M, N, K}
   if M == N
 
     matpol = reshape(policy, (M, N))
-    matpols = apply_dihedral_group(matpol)
+    matpols = applygroup(DihedralGroup(), matpol)
     policies = [ vcat(reshape(mp, (M * N,))) for mp in matpols ]
 
   else
 
     matpol = reshape(policy, (M, N))
-    matpols = apply_klein_four_group(matpol)
+    matpols = applygroup(KleinFourGroup(), matpol)
     policies = [ vcat(reshape(mp, (M * N,))) for mp in matpols ]
 
   end
@@ -212,10 +211,10 @@ draw(game :: MNKGame) = draw(stdout, game)
 function Base.show(io :: IO, game :: MNKGame{M, N, K}) where {M, N, K}
   moves = count(!isequal(0), game.board)
   m = moves == 1 ? "1 move" : "$moves moves"
-  if is_over(game)
+  if isover(game)
     print(io, "MNKGame{$M, $N, $K}($m, $(status(game)) won)")
   else
-    print(io, "MNKGame{$M, $N, $K}($m, $(current_player(game)) moving)")
+    print(io, "MNKGame{$M, $N, $K}($m, $(activeplayer(game)) moving)")
   end
 end
 
@@ -223,10 +222,10 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MNKGame{M, N, K}) wher
   moves = count(!isequal(0), game.board)
   m = moves == 1 ? "1 move" : "$moves moves"
   s = "MNKGame{$M, $N, $K} with $m and "
-  if is_over(game)
+  if isover(game)
     println(io, s, "result $(status(game)):")
   else
-    println(io, s, "player $(current_player(game)) moving:")
+    println(io, s, "player $(activeplayer(game)) moving:")
   end
   draw(io, game)
 end

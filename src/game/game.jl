@@ -1,7 +1,8 @@
 
 # -------- Status ------------------------------------------------------------ #
 
-const Status = Int # for code readability
+# TODO: MAKE STATUS AN ENUM !!
+const Status = Int
 
 """
     Status()
@@ -15,20 +16,47 @@ second player, or a draw.
 Status(value :: Int) = value
 Status() = 42
 
-is_over(s :: Status) = (s != 42)
-with_default(s :: Status, default :: Int) = is_over(s) ? s : default
-
-
-# -------- Game -------------------------------------------------------------- #
+isover(s :: Status) = (s != 42)
 
 const ActionIndex = Int # for code readability
 
-"""
-A Game with two competing players that play alternately.
 
-The game can only end by victory of the first or second player, or by draw.
-Concrete subtypes of `Game` must implement a number of functions that allow
-to find out the current player, the game status, or the legal actions.
+"""
+Abstract type for board games with two competing players that play in turns.
+
+In order to guarantee basic functionality, the following minimal interface
+should be implemented by any concrete subtype `G` of `AbstractGame`:
+- `status(game :: G)`: Return the game status. See [`Status`](@ref).
+- `activeplayer(game :: G)`: Return the active player indicator (-1 or 1).
+- `legalactions(game :: G)`: Return a vector of legal action indices.
+- `move!(game :: G, action)`: Apply the action defined by action index \
+`action` to `game`.
+- `instance(G)`: Return an (empty) instance of `G`. Defaults to `G()`.
+- `Base.copy(game :: G)`: Return a copy of `game`.
+
+For neural network support, the following methods must additionally be
+implemented:
+- `policylength(:: Type{G})`: Length of the game policy vector. Equals the \
+maximal possible action index.
+- `array(game :: G)`: Return a 3d array representation of `game`. Used as \
+input for neural networks (see [`Model.NeuralModel`](@ref)).
+- `Base.size(:: Type{G})`: The size of the array representation of games of \
+type `G`.
+
+Further methods may be specialized to improve performance or functionality.
+- `array!(buffer, games :: Vector{G})`: In-place mutating version of `array` for
+vectors of games. 
+- `randominstance(:: Type{G})`: Return a random instance of game type `G`.
+- `isaugmentable(:: Type{G}) / augment(game :: G)`: Support for data \
+augmentation by exploiting game symmetries.
+- `isover(game :: G)`: Check whether the game is over or not. May be faster \
+than calculating the game status via `status(game)`.
+- `hash(game :: G)`: A hash function that is used for [`Model.CachingModel`](@ref) \
+models.
+- `moves(game :: G)`: Count the number of moves that have been applied to \
+`game`.
+- `Pack.freeze(game :: G) / Pack.unfreeze(game :: G)`: Prepare `game` for \
+serialization / reconstruct `game` after deserialization.
 """
 abstract type AbstractGame end
 
@@ -36,204 +64,230 @@ Pack.@untyped AbstractGame
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
  
-Base.copy(:: AbstractGame) = error("unimplemented") 
-Base.size(:: Type{AbstractGame}) = error("unimplemented") # must be a 3-tuple
+Base.copy(:: AbstractGame) = error("not implemented") 
+Base.size(:: Type{<: AbstractGame}) = error("not implemented")
 Base.size(:: G) where {G <: AbstractGame} = size(G)
 
 """
     status(game)
 
-Status of `game`.
+Status of the game `game`.
 """
-status(game :: AbstractGame) = error("unimplemented")
+status(game :: AbstractGame) = error("not implemented")
 
 """
-    current_player(game)
+    activeplayer(game)
 
-Current player of `game`. 1 stands for the first player and -1 for
-the second.
+Active player indicator for the game state `game`. The values 1 / -1 correspond
+to the first / second player.
 """
-current_player(game :: AbstractGame) = error("unimplemented")
-
-"""
-    legal_actions(game)
-
-Vector of legal actions of `game`.
-"""
-legal_actions(:: AbstractGame) :: Vector{ActionIndex} = error("unimplemented")
+activeplayer(game :: AbstractGame) = error("not implemented")
 
 """
-    apply_action!(game, action)
+    legalactions(game)
 
-Modify `game` by applying `action`. Returns `game`.
+Vector of actions that are legal at the game state `game`.
 """
-apply_action!(:: AbstractGame, :: ActionIndex) :: AbstractGame = error("unimplemented")
+legalactions(:: AbstractGame) :: Vector{ActionIndex} = error("not implemented")
 
 """
-    apply_actions!(game, actions)
+    move!(game, action)
+    move!(game, actions)
 
-Modify `game` by applying all actions in the iterable `actions`. Returns `game`.
+Modify `game` by applying `action`, or all actions in the iterable `actions`.
+Returns `game`.
+
+See also [`randommove!(game)`](@ref).
 """
-function apply_actions!(game :: AbstractGame, actions)
-  for action in actions apply_action!(game, action) end
+function move!(:: AbstractGame, :: ActionIndex) :: AbstractGame
+  error("not implemented")
+end
+
+function move!(game :: AbstractGame, actions)
+  foreach(action -> move!(game, action), actions)
   game
 end
 
 """
-    is_over(game)
+    isover(game)
 
-Returns whether a game is finished or not.
+Returns `true` if the game `game` is finished and `false` otherwise.
 """
-is_over(game :: AbstractGame) = is_over(status(game))
+isover(game :: AbstractGame) = isover(status(game))
 
 """
-    is_augmentable(game)
+    isaugmentable(game)
+    isaugmentable(G)
 
-Whether a game or gametype is augmentable or not.
+Returns `true` if the game `game` or gametype `G` is augmentable and `false` \
+otherwise.
 """
-is_augmentable(g :: AbstractGame) = is_augmentable(typeof(g))
-is_augmentable(:: Type{<: AbstractGame}) = false
+isaugmentable(g :: AbstractGame) = isaugmentable(typeof(g))
+isaugmentable(:: Type{<: AbstractGame}) = false
 
-# Data representation of the game as layered 2d image from the perspective of
-# the active player (active player plays with 1, other with -1)
 """
     array(game)
     array(games)
 
-Data representation of `game` as three-dimensional array. If a vector
-of `games` is given, a four-dimensional array is returned. See also `Game.array!`
+Data representation of `game` as three-dimensional `Array{Float32}`. If a vector
+`games` is passed, a four-dimensional array is returned.
+
+See also [`array!`](@ref) and [`arraybuffer`](@ref).
 """
-array(:: AbstractGame) = error("unimplemented")
+array(:: AbstractGame) = error("not implemented")
 
 function array(games :: Vector{G}) where G <: AbstractGame
   @assert !isempty(games) "Cannot produce representation of empty game vector"
-  buf = array_buffer(G, length(games))
+  buf = arraybuffer(G, length(games))
   for i in 1:length(games)
-    buf[:,:,:,i] = array(games[i])
+    buf[:,:,:,i] .= array(games[i])
   end
   buf
 end
 
+"""
+    array!(buffer, games)
+
+Fill the array `buffer` with the array representation of `games`. Amounts to
+`buffer[:,:,:,1:length(games)] .= array(games)`, but can be implemented more
+efficiently.
+
+The buffer array must satisfy `size(buffer)[1:3] .== size(games[1])` as well
+as `size(buffer, 4) >= length(games)`. To create suitably sized buffers, see
+[`arraybuffer`](@ref).
+"""
 function array!(buf, games :: Vector{<: AbstractGame})
   @assert !isempty(games) "Cannot produce representation of empty game vector"
   @assert size(buf)[1:3] == size(games[1])
   @assert size(buf, 4) >= length(games)
   repr = array(games)
-  repr = Model.adapt_atype(buf, repr)
+  repr = convert(typeof(buf), repr)
   buf[:, :, :, 1:length(games)] .= repr
   nothing
 end
 
 """
-    array_buffer(G, batchsize)
+    arraybuffer(G, batchsize)
 
 Create an uninitialized `Float32` array that can hold the array representation
 of up to `batchsize` games of type `G`.
 """
-function array_buffer(G ::Type{<: AbstractGame}, batchsize)
+function arraybuffer(G :: Type{<: AbstractGame}, batchsize)
   zeros(Float32, size(G)..., batchsize)
 end
 
+"""
+    policylength(G)
+    policylength(game)
+
+Maximal length of `legalactions(game)`, which is a static function of games of
+type `G`.
+"""
+policylength(:: Type{AbstractGame}) :: Int = error("not implemented")
+policylength(:: G) where {G <: AbstractGame} = policylength(G)
 
 """
-    policy_length(game)
-    policy_length(gametype)
+    randomaction(game)
 
-Maximal number of legal actions.
+Returns a random legal action for `game`.
+
+See also [`randommove!`](@ref).
 """
-policy_length(:: Type{AbstractGame}) :: Int = error("unimplemented")
-policy_length(:: G) where {G <: AbstractGame} = policy_length(G)
-
-
-"""
-    random_action(game)
-
-Random legal action for `game`.
-"""
-random_action(game :: AbstractGame) = rand(legal_actions(game))
+randomaction(game :: AbstractGame) = rand(legalactions(game))
 
 """
-    random_turn!(game)
+    randommove!(game)
 
-Modify `game` by taking a single random action if the game is not finished yet.
+Modify `game` by taking a single random action (if the game is not finished).
+
+See also [`move!`](@ref), [`randomaction`](@ref), [`randomturn!`](@ref), and
+[`randommatch!`](@ref).
 """
-function random_turn!(game :: AbstractGame)
-  is_over(game) ? game : apply_action!(game, random_action(game))
+function randommove!(game :: AbstractGame)
+  isover(game) ? game : move!(game, randomaction(game))
 end
 
 """
-    random_turns!(game, steps)
-    random_turns!(game, steprange)
+    randommove!(game, steps)
+    randommove!(game, steprange)
 
-Modify `game` by taking several random actions.
+Modify `game` by taking several random actions. Returns `game`.
+
+If an integer `steps` is passed, `steps` random actions are applied. If a range
+`steprange` is passed, a random number `rand(steprange)` of actions are applied.
 """
-function random_turns!(game :: AbstractGame, steps :: Int)
+function randommove!(game :: AbstractGame, steps :: Integer)
   for _ in 1:steps
-    random_turn!(game)
+    randommove!(game)
   end
   game
 end
 
-function random_turns!(game :: AbstractGame, range)
-  steps = rand(range) :: Int
-  random_turns!(game, steps)
+function randommove!(game :: AbstractGame, range)
+  steps = rand(range)
+  @assert steps isa Integer "Random range must be of type Integer"
+  randommove!(game, steps)
 end
 
+"""
+    randomturn!(game)
+
+Modify `game` by taking random actions until the active player changes. Returns
+`game`.
+
+See also [`Player.turn!`](@ref), [`randomaction!`](@ref), and
+[`randommatch!`](@ref).
+"""
+function randomturn!(game :: AbstractGame)
+  active = activeplayer(game)
+  while active == activeplayer(game)
+    randommove!(game)
+  end
+  game
+end
 
 """
-    random_playout!(game)
+    randommatch!(game)
 
-Play off `game` with random actions by both players.
+Play a match with random actions that starts at state `game`. Modifies `game`.
+
+See [`randommatch`](@ref) for a non-mutating version. See also
+[`randommove!`](@ref) and [`randomturn!`](@ref).
 """
-function random_playout!(game :: AbstractGame, callback :: Function = _ -> nothing )
-
-  while !is_over(game)
-    random_turn!(game)
+function randommatch!(game :: AbstractGame, callback :: Function = _ -> nothing)
+  while !isover(game)
+    randommove!(game)
     callback(game)
   end
-
   game
-
 end
 
 """
-    random_playout_count_moves(game)
+    randommatch(game)
 
-Random playout that counts the moves that happened and returns this.
+Return the final game of a random match started at initial state `game`.
+
+See [`randommatch!`](@ref) for a mutating version. See also
+[`randommove!`](@ref) and [`randomturn!`](@ref).
 """
-function random_playout_count_moves(game :: AbstractGame)::Int64
-  counter = 0
-  random_playout!(copy(game), _ -> counter = counter + 1)
-  counter
+function randommatch(game :: AbstractGame, callback :: Function = _ -> nothing)
+  randommatch!(copy(game), callback)
 end
 
 """
-    random_playout(game)
-
-Random playout with initial state `game` without modifying it.
-"""
-function random_playout(game :: AbstractGame, callback :: Function = _ -> nothing )
-
-  random_playout!(copy(game), callback)
-
-end
-
-"""
-    is_action_legal(game, action)
+    isactionlegal(game, action)
 
 Check if `action` is a legal action for `game`.
 """
-function is_action_legal(game :: AbstractGame, action :: ActionIndex)
-
-  action in legal_actions(game)
-
+function isactionlegal(game :: AbstractGame, action :: ActionIndex)
+  action in legalactions(game)
 end
 
 """
     augment(game, label)
 
-Returns a tuple `(games, labels)` that are augmented versions of `game` and
-`label` via the game's symmetry group.
+Returns a tuple `(games, labels)` with augmented versions of `game` and
+`label`. Exploits the game's symmetry group, if any.
 """
 function augment(game :: AbstractGame, label :: Array{Float32}) 
   @warn "Augmentation not implemented for type $(typeof(game))" maxlog = 1
@@ -246,75 +300,79 @@ end
 
 Draw a unicode representation of `game`.
 """
-draw(io :: IO, game :: AbstractGame) :: Nothing = error("drawing $(typeof(game)) not implemented.")
+function draw(io :: IO, game :: AbstractGame)
+  error("drawing $(typeof(game)) not implemented.")
+end
+
 draw(game) = draw(stdout, game)
 
 """
     name(G)
     name(game)
 
-Pretty printable name of the game.
+String representation of the game name of `game` or game type `G`.
 """
 name(G :: Type{<: AbstractGame}) = split(string(G), ".")[end]
 name(game :: AbstractGame) = name(typeof(game))
 
 """
+    instance(G)
     instance(game)
-    instance(G [, random])
 
-Obtain a game instance. Acts as identity on arguments `game` of type
-`AbstractGame`. If a game type `G` is provided, a new instance is created.
+Obtain a game instance. Defaults to `G()` for a given game type `G`. Returns
+`game` if `game` is of type `AbstractGame`.
 
-The optional keyword argument `random` can be used to stochastically randomize
-the created instance. For example, if `random = 0.7`, then with probability
-`0.3` the default instance `G()` and with probability `0.7` a randomized
-instance `random_instance(G)` is returned.
+See also [`randominstance`](@ref).
 """
 instance(game :: AbstractGame) = game
+instance(G :: Type{<: AbstractGame}) = G()
 
-function instance(G :: Type{<: AbstractGame}; randomize = false)
-   @assert isconcretetype(G) "Cannot instantiate abstract game $G"
-   if rand() < randomize
-     random_instance(G)
-   else
-     G()
-   end
+"""
+    randominstance(G)
+
+Return a randomized instance of game type `G`.
+
+See also [`instance`](@ref).
+"""
+randominstance(G :: Type{<: AbstractGame}) = randommove!(G(), 1:5)
+
+"""
+    branch(game; steps = 1)
+
+Randomly branch `game` by applying `steps` random actions. Returns a branched
+copy of `game`.
+"""
+function branch(game; steps = 1)
+  randommove!(copy(game), steps)
 end
 
 """
-    random_instance(G)
-
-Return a randomized instance of game `G`.
-"""
-random_instance(G :: Type{<: AbstractGame}) = random_turns!(G(), 1:5)
-
-"""
-    branch(game; prob, steps = 1)
     branch(; prob, steps = 1)
 
-Randomly branch `game` with probability `prob` by applying `steps` random
-actions. If the game is not branched `nothing` is returned. Otherwise,
-the branched game is returned.
-
-The second method returns a branching function `game -> branch(game, ...)`.
+Return a branching function that branches `game` via `steps` random steps with
+a probability of `prob`. If the game is not branched, the branching function
+returns [`nothing`](@ref). Otherwise, the branched game is returned.
 """
-function branch(game; prob, steps = 1)
-  if rand() < prob
-    random_turns!(copy(game), steps)
-  else
-    nothing
+function branch(; prob, steps = 1)
+  game -> begin
+    if rand() < prob
+      randommove!(copy(game), steps)
+    else
+      nothing
+    end
   end
 end
-
-branch(; prob, steps = 1) = game -> branch(game; prob, steps)
 
 """
     hash(game)
 
-`UInt64` hash value of a game. Games that lead to the same data representation
-(see `Game.array`) with the same current player should have same hash value.
+Return a `UInt64` hash value of a game. Games that lead to the same data
+representation (see `Game.array`) with the same active player should have the
+same hash value.
 """
-hash(game :: AbstractGame) = error("hashing for game $(typeof(game)) not implemented")
+function hash(game :: AbstractGame)
+  error("hashing for game $(typeof(game)) not implemented")
+end
 
 """
    moves(game)

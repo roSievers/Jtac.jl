@@ -15,7 +15,7 @@ differ depending on the game state. It can have three meanings:
 """
 mutable struct Morris <: AbstractGame
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
-  current_player :: Int
+  active_player :: Int
   lifted :: Int # A number in 1:9 indicates a lifted piece, 0 indicates no lifted piece.
   status :: Status
   placements_left :: Int # Number of pieces that must still be placed
@@ -27,7 +27,7 @@ Morris() = Morris(zeros(Int, 9), 1, 0, Status(), 6, 100)
 function Base.copy(s :: Morris) :: Morris
   Morris(
     copy(s.board), 
-    s.current_player,
+    s.active_player,
     s.lifted,
     s.status,
     s.placements_left,
@@ -37,7 +37,7 @@ end
 
 function Base.:(==)(a::Morris, b::Morris)
   all([ all(a.board .== b.board)
-      , a.current_player == b.current_player
+      , a.active_player == b.active_player
       , a.lifted == b.lifted
       , a.status == b.status
       , a.placements_left == b.placements_left
@@ -45,7 +45,7 @@ function Base.:(==)(a::Morris, b::Morris)
 end
 
 
-current_player(game :: Morris) :: Int = game.current_player
+activeplayer(game :: Morris) :: Int = game.active_player
 
 const adjacency = [
   [2, 4, 5], [1, 3, 5], [2, 5, 6], [1, 5, 7], [1, 2, 3, 4, 6, 7, 8, 9],
@@ -53,7 +53,7 @@ const adjacency = [
   ]
 
 # Returns a list of the Indices of all legal actions
-function legal_actions(game :: Morris) :: Vector{ActionIndex}
+function legalactions(game :: Morris) :: Vector{ActionIndex}
   if game.actions_left <= 0
     []
   # Are we in the "place new piece" phase?
@@ -74,7 +74,7 @@ function legal_actions(game :: Morris) :: Vector{ActionIndex}
     # a loss.
     i = 1
     for j in 1:9
-      if game.board[j] == game.current_player
+      if game.board[j] == game.active_player
         if i > 3
           draw(game)
         end
@@ -90,7 +90,7 @@ function legal_actions(game :: Morris) :: Vector{ActionIndex}
 end
 
 # Legality of an action depends on the current game phase
-function is_action_legal(game :: Morris, index :: ActionIndex) :: Bool
+function isactionlegal(game :: Morris, index :: ActionIndex) :: Bool
   if game.actions_left <= 0
     # The game is already be over
     false
@@ -98,41 +98,41 @@ function is_action_legal(game :: Morris, index :: ActionIndex) :: Bool
     # All empty positions are legal placement targets.
     # The game can already be over if the first player has placed all their
     # tokens in a row.
-    game.board[index] == 0 && !is_over(game)
+    game.board[index] == 0 && !isover(game)
   elseif game.lifted == 0
     # The player wants to lift a piece
     # They are allowed to lift any piece of their own color.
-    game.board[index] == game.current_player
+    game.board[index] == game.active_player
   else
-    # The current player has lifted a piece at game.lifted. They can place it
+    # The active player has lifted a piece at game. They can place it
     # on any empty adjacent position.
-    index in adjacency[game.lifted] && game.board[index] == 0 && !is_over(game)
+    index in adjacency[game.lifted] && game.board[index] == 0 && !isover(game)
   end
 end
 
-function apply_action!(game :: Morris, index :: ActionIndex) :: Morris
-  @assert is_action_legal(game, index) "Action $index is not allowed."
+function move!(game :: Morris, index :: ActionIndex) :: Morris
+  @assert isactionlegal(game, index) "Action $index is not allowed."
 
   # Update the board state
   if game.placements_left > 0
-    game.board[index] = game.current_player
+    game.board[index] = game.active_player
     # update victory condition
     game.status = morris_status(game, index)
-    game.current_player = -game.current_player
+    game.active_player = -game.active_player
     game.placements_left -= 1
   elseif game.lifted == 0
     game.lifted = index
     game.board[index] = 0
     if !lift_is_legal(game, index)
-      game.status = Status(-game.current_player)
+      game.status = Status(-game.active_player)
     end
   else
-    game.board[index] = game.current_player
+    game.board[index] = game.active_player
     game.lifted = 0
     game.actions_left -= 1
     # update victory condition
     game.status = morris_status(game, index)
-    game.current_player = -game.current_player
+    game.active_player = -game.active_player
   end
   game
 end
@@ -152,48 +152,48 @@ function morris_status(game :: Morris, changed_index :: ActionIndex) :: Status
     return Status(0)
   end
 
-  current = game.current_player
+  active = game.active_player
 
   # This is essentially a manually unrolled nested loop
   isWon = if changed_index == 1
-    (game.board[2] == current && game.board[3] == current) ||
-    (game.board[5] == current && game.board[9] == current) ||
-    (game.board[4] == current && game.board[7] == current)
+    (game.board[2] == active && game.board[3] == active) ||
+    (game.board[5] == active && game.board[9] == active) ||
+    (game.board[4] == active && game.board[7] == active)
   elseif changed_index == 2
-    (game.board[1] == current && game.board[3] == current) ||
-    (game.board[5] == current && game.board[8] == current)
+    (game.board[1] == active && game.board[3] == active) ||
+    (game.board[5] == active && game.board[8] == active)
   elseif changed_index == 3
-    (game.board[1] == current && game.board[2] == current) ||
-    (game.board[5] == current && game.board[7] == current) ||
-    (game.board[6] == current && game.board[9] == current)
+    (game.board[1] == active && game.board[2] == active) ||
+    (game.board[5] == active && game.board[7] == active) ||
+    (game.board[6] == active && game.board[9] == active)
   elseif changed_index == 4
-    (game.board[1] == current && game.board[7] == current) ||
-    (game.board[5] == current && game.board[6] == current)
+    (game.board[1] == active && game.board[7] == active) ||
+    (game.board[5] == active && game.board[6] == active)
   elseif changed_index == 5
-    (game.board[1] == current && game.board[9] == current) ||
-    (game.board[2] == current && game.board[8] == current) ||
-    (game.board[3] == current && game.board[7] == current) ||
-    (game.board[4] == current && game.board[6] == current)
+    (game.board[1] == active && game.board[9] == active) ||
+    (game.board[2] == active && game.board[8] == active) ||
+    (game.board[3] == active && game.board[7] == active) ||
+    (game.board[4] == active && game.board[6] == active)
   elseif changed_index == 6
-    (game.board[3] == current && game.board[9] == current) ||
-    (game.board[4] == current && game.board[5] == current)
+    (game.board[3] == active && game.board[9] == active) ||
+    (game.board[4] == active && game.board[5] == active)
   elseif changed_index == 7
-    (game.board[1] == current && game.board[4] == current) ||
-    (game.board[3] == current && game.board[5] == current) ||
-    (game.board[8] == current && game.board[9] == current)
+    (game.board[1] == active && game.board[4] == active) ||
+    (game.board[3] == active && game.board[5] == active) ||
+    (game.board[8] == active && game.board[9] == active)
   elseif changed_index == 8
-    (game.board[2] == current && game.board[5] == current) ||
-    (game.board[7] == current && game.board[9] == current)
+    (game.board[2] == active && game.board[5] == active) ||
+    (game.board[7] == active && game.board[9] == active)
   elseif changed_index == 9
-    (game.board[1] == current && game.board[5] == current) ||
-    (game.board[3] == current && game.board[6] == current) ||
-    (game.board[7] == current && game.board[8] == current)
+    (game.board[1] == active && game.board[5] == active) ||
+    (game.board[3] == active && game.board[6] == active) ||
+    (game.board[7] == active && game.board[8] == active)
   else
     throw("changed_index is $(changed_index), which is out of bounds.")
   end
 
   if isWon
-    Status(game.current_player)
+    Status(game.active_player)
   else
     Status()
   end
@@ -201,7 +201,7 @@ end
 
 status(game :: Morris) :: Status = game.status
 
-policy_length(:: Type{Morris}) :: Int = 9
+policylength(:: Type{Morris}) :: Int = 9
 
 """
 Size of the data representation of the game
@@ -212,7 +212,7 @@ Base.size(:: Type{Morris}) :: Tuple{Int, Int, Int} = (3, 3, 2)
 # Data representation of the game as layered 2d image
 function array(game :: Morris) :: Array{Float32, 3}
   # first layer
-  firstLayer = reshape(game.current_player .* game.board, (3, 3, 1))
+  firstLayer = reshape(game.active_player .* game.board, (3, 3, 1))
   # countdown layer
   countdown = game.actions_left
   secondLayer = Vector{Float32}(undef, 9)
@@ -229,7 +229,7 @@ end
 # function augment(game :: MNKGame{M, N, K}, label :: Vector{Float32}) where {M, N, K}
 #   if M == N
 #     boards = apply_dihedral_group(reshape(game.board, (M, N))) 
-#     games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status, game.move_count) for b in boards ]
+#     games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.active_player, game.status, game.move_count) for b in boards ]
   
 #     matpol = reshape(label[2:end], (M, N))
 #     matpols = apply_dihedral_group(matpol)
@@ -238,7 +238,7 @@ end
 #     games, labels
 #   else
 #     boards = apply_klein_four_group(reshape(game.board, (M, N))) 
-#     games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.current_player, game.status) for b in boards ]
+#     games = [ MNKGame{M, N, K}(reshape(b, (M * N,)), game.active_player, game.status) for b in boards ]
   
 #     matpol = reshape(label[2:end], (M, N))
 #     matpols = apply_klein_four_group(matpol)

@@ -1,7 +1,7 @@
 # The total board is made up of 9 single boards
 mutable struct MetaTac <: AbstractGame
   board :: Vector{Int}
-  current_player :: Int
+  active_player :: Int
   # The focus is either 0 (no focus) or indicates the allowed board
   focus :: Int
   # Stores the Status for the whole game
@@ -12,12 +12,12 @@ end
 
 MetaTac() = MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
 
-is_augmentable(:: Type{MetaTac}) = true
+isaugmentable(:: Type{MetaTac}) = true
 
 function Base.copy(s :: MetaTac) :: MetaTac
   MetaTac(
     copy(s.board), 
-    s.current_player, 
+    s.active_player, 
     s.focus, 
     s.status_cache,
     copy(s.region_status_cache)
@@ -26,32 +26,32 @@ end
 
 function Base.:(==)(a::MetaTac, b::MetaTac)
   all([ all(a.board .== b.board)
-      , a.current_player == b.current_player
+      , a.active_player == b.active_player
       , a.focus == b.focus
       , a.status_cache == b.status_cache
       , all(a.region_status_cache .== b.region_status_cache) ])
 end
 
-current_player(game :: MetaTac) :: Int = game.current_player
+activeplayer(game :: MetaTac) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
-function legal_actions(game :: MetaTac) :: Vector{ActionIndex}
-  ActionIndex[ index for index in 1:81 if is_action_legal(game, index) ]
+function legalactions(game :: MetaTac) :: Vector{ActionIndex}
+  ActionIndex[ index for index in 1:81 if isactionlegal(game, index) ]
 end
 
 # A action is legal, if the following conditions hold:
 #   - The game is still active
 #   - The region is available
 #   - The board position is still empty
-function is_action_legal(game :: MetaTac, index :: ActionIndex) :: Bool
+function isactionlegal(game :: MetaTac, index :: ActionIndex) :: Bool
   game.board[index] == 0 &&
   is_region_allowed(game, region(index)) &&
-  !is_over(game)
+  !isover(game)
 end
 
 # Determines, whether a given region can be played in.
 function is_region_allowed(game, r) :: Bool
-  (game.focus == 0 || game.focus == r) && !is_over(game.region_status_cache[r])
+  (game.focus == 0 || game.focus == r) && !isover(game.region_status_cache[r])
 end
 
 # Finds the region 1d index for a given cell 1d index, value is in 1:9
@@ -75,11 +75,11 @@ function region_view(game, r)
   reshape(game.board, (9, 9))[row:row + 2, col:col + 2]
 end
 
-function apply_action!(game :: MetaTac, index :: ActionIndex) :: MetaTac
-  @assert is_action_legal(game, index) "Action $index is not allowed."
+function move!(game :: MetaTac, index :: ActionIndex) :: MetaTac
+  @assert isactionlegal(game, index) "Action $index is not allowed."
   # Update the board state
-  game.board[index] = game.current_player
-  game.current_player = -game.current_player
+  game.board[index] = game.active_player
+  game.active_player = -game.active_player
   
   # Update the status cache
   r = region(index)
@@ -88,7 +88,7 @@ function apply_action!(game :: MetaTac, index :: ActionIndex) :: MetaTac
 
   # Update the focus. This must be done AFTER the status cache is refreshed.
   game.focus = local_index(index)
-  if is_over(game.region_status_cache[game.focus])
+  if isover(game.region_status_cache[game.focus])
     game.focus = 0
   end
   game
@@ -107,11 +107,14 @@ end
 # Implements the win condition for the large board
 # We need to additionaly verify, that there are legal actions left
 function tic_tac_toc_status(board :: Vector{Status}) :: Status
-  matrix = reshape(with_default.(board, 0), (3, 3))
+  matrix = map(board) do s
+    isover(s) ? s : 0
+  end
+  matrix = reshape(matrix, (3, 3))
   s = tic_tac_toc_status(matrix)
-  if is_over(s)
+  if isover(s)
     s
-  elseif all(is_over, board) #all(is_over.(board))
+  elseif all(isover, board) #all(isover.(board))
     Status(0)
   else
     Status()
@@ -140,7 +143,7 @@ function tic_tac_toc_status(board :: Matrix{Int}) :: Status
   end
 end
 
-policy_length(:: Type{MetaTac}) :: Int = 81
+policylength(:: Type{MetaTac}) :: Int = 81
 
 # Size of the data representation of the game
 Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 3)
@@ -148,28 +151,28 @@ Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 3)
 # Data representation of the game as layered 2d image
 function array(game :: MetaTac) :: Array{Float32, 3}
   data = zeros(Float32, 81, 3)
-  board = game.current_player .* game.board
+  board = game.active_player .* game.board
   data[board .== 1, 1] .= 1
   data[board .== -1, 2] .= 1
-  data[legal_actions(game), 3] .= 1
+  data[legalactions(game), 3] .= 1
   reshape(data, (9, 9, 3))
 end
 
 function augment(game :: MetaTac)
 
-  boards = apply_dihedral_group(reshape(game.board, (9,9))) 
-  caches = apply_dihedral_group(reshape(game.region_status_cache, (3,3)))
+  boards = applygroup(DihedralGroup(), reshape(game.board, (9,9))) 
+  caches = applygroup(DihedralGroup(), reshape(game.region_status_cache, (3,3)))
 
   if game.focus == 0
     focii = fill(0, length(boards))
   else
-    focii = apply_dihedral_group(game.focus, (3,3))
+    focii = applygroup(DihedralGroup(), game.focus, (3,3))
   end
 
   map(boards, caches, focii) do board, cache, focus
     board = reshape(board, (81,))
     cache = reshape(cache, (9,))
-    MetaTac(board, game.current_player, focus, game.status_cache, cache)
+    MetaTac(board, game.active_player, focus, game.status_cache, cache)
   end
 
 end
@@ -177,14 +180,14 @@ end
 function augment(game :: MetaTac, label :: Vector{Float32})
 
   matpol = reshape(label, (9, 9))
-  matpols = apply_dihedral_group(matpol)
+  matpols = applygroup(DihedralGroup(), matpol)
   labels = [ reshape(mp, (81,)) for mp in matpols ]
 
   augment(game), labels
 end
 
 function hash(game :: MetaTac)
-  Base.hash((game.board, game.current_player, game.focus))
+  Base.hash((game.board, game.active_player, game.focus))
 end
 
 function draw(io :: IO, game :: MetaTac) :: Nothing
@@ -211,10 +214,10 @@ end
 function Base.show(io :: IO, game :: MetaTac)
   moves = count(!isequal(0), game.board)
   m = moves == 1 ? "1 move" : "$moves moves"
-  if is_over(game)
+  if isover(game)
     print(io, "MetaTac($m, $(status(game)) won)")
   else
-    print(io, "MetaTac($m, $(current_player(game)) moving)")
+    print(io, "MetaTac($m, $(activeplayer(game)) moving)")
   end
 end
 
@@ -222,10 +225,10 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MetaTac)
   moves = count(!isequal(0), game.board)
   m = moves == 1 ? "1 move" : "$moves moves"
   s = "MetaTac game with $m and "
-  if is_over(game)
+  if isover(game)
     println(io, s, "result $(status(game)):")
   else
-    println(io, s, "player $(current_player(game)) moving:")
+    println(io, s, "player $(activeplayer(game)) moving:")
   end
   draw(io, game)
 end

@@ -1,143 +1,163 @@
 
-
-# -------- Players ----------------------------------------------------------- #
-
 """
-Players are named entities that can evaluate game states via the `think`
-function to yield policies.
+Abstract type for agents in a two-player board game.
+
+Players act at a higher level of abstraction than models, and their
+implementations will usually build upon them (like the
+[`IntuitionPlayer`](@ref) or [`MCTSPlayer`](@ref)).
+
+To implement a player, at least the functions [`name`](@ref) and [`think`](@ref)
+have to be extended.
 """
 abstract type AbstractPlayer{G <: AbstractGame} end
 
 Pack.@typed AbstractPlayer
 
 """
+    name(player)
+
+The name of a player.
+"""
+name(:: AbstractPlayer) = error("Not implemented")
+
+"""
     think(player, game)
 
-Let `player` think about `game` and return a policy.
+Let `player` think about `game` and return a policy proposal.
 """
-think(p :: AbstractPlayer, game :: AbstractGame) :: Vector{Float32} = error("Not implemented")
+think(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
 
 """
     apply(player, game)
 
 Let `player` evaluate `game` and return a named `(value, policy)` tuple.
-Only implemented for `IntuitionPlayer` and `MCTSPlayer`.
-"""
-Model.apply(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
+Only implemented for certain players, like [`IntuitionPlayer`](@ref) and
+[`MCTSPlayer`](@ref).
 
-# TODO: Deprecated in MCTS-Update
+See also [`think`](@ref).
 """
-    choose_index(probs)
+apply(args...; kwargs...) = Model.apply(args...; kwargs...)
 
-Auxiliary function that chooses an index from a probability vector `probs`.
-"""
-function choose_index(probs :: Vector{Float32}) :: Int
-  @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
-  r = rand(Float32)
-  index = findfirst(x -> r <= x, cumsum(probs))
-  isnothing(index) ? length(probs) : index
+function Model.apply(p :: AbstractPlayer, game :: AbstractGame)
+  error("Not implemented")
 end
 
 """
     decide(player, game)
 
-Let `player` make an action decision about `game`, based on the policy
-`think(player, game)`.
+Let `player` sample an action after evaluating `think(player, game)`.
+
+See also [`think`](@ref) and [`decidechain`](@ref).
 """
 function decide(p :: AbstractPlayer, game :: AbstractGame)
-  @assert !Game.is_over(game) "Cannot decide action on a finished game"
-  choose_index(think(p, game))
+  @assert !Game.isover(game) "Cannot decide on an action in a finished game"
+  sample(think(p, game))
 end
 
 """
-    decide_chain(player, game)
+    decidechain(player, game)
 
-Let `player` make a chain of action decisions until the active player changes.
+Let `player` sample a chain of actions until the active player changes.
+
+See also [`think`](@ref) and [`decide`](@ref).
 """
-function decide_chain(p :: AbstractPlayer, game :: AbstractGame)
-  actions = []
+function decidechain(p :: AbstractPlayer, game :: AbstractGame)
+  actions = ActionIndex[]
   game = copy(game)
-  current = Game.current_player(game)
-  while Game.current_player(game) == current && !Game.is_over(game)
+  active = Game.activeplayer(game)
+  while Game.activeplayer(game) == active && !Game.isover(game)
     action = decide(p, game)
-    apply_action!(game, action)
+    move!(game, action)
     push!(actions, action)
   end
   actions
 end
 
 """
-    turn!(game, player)
+    move!(game, player)
 
-Modify `game` by letting `player` take one turn.
-"""
-turn!(game :: AbstractGame, p :: AbstractPlayer) = apply_action!(game, decide(p, game))
+Modify `game` by letting `player` take one action.
 
+See also [`turn!`](@ref), [`decide`](@ref), and [`decidechain`](@ref).
 """
-    turn_chain!(game, player)
+move!(args...; kwargs...) = Game.move!(args...; kwargs...)
 
-Modify `game` by letting `player` finish one chain.
-"""
-function turn_chain!(game :: AbstractGame, p :: AbstractPlayer)
-  for action in decide_chain(p, game)
-    apply_action!(game, action)
-  end
+function Game.move!(game :: AbstractGame, p :: AbstractPlayer)
+  Game.move!(game, decide(p, game))
 end
 
-"""
-    name(player)
 
-The name of a player.
 """
-name(:: AbstractPlayer) :: String = error("Not implemented")
+    turn!(game, player)
+
+Modify `game` by letting `player` play actions until the active player changes.
+
+See also [`move!`](@ref), [`decide`](@ref), and [`decidechain`](@ref).
+"""
+function turn!(game :: AbstractGame, p :: AbstractPlayer)
+  for action in decidechain(p, game)
+    move!(game, action)
+  end
+  game
+end
 
 """
     ntasks(player)
 
 How many tasks the player wants to handle via asyncmap.
 """
+ntasks(args...; kwargs...) = Model.ntasks(args...; kwargs...)
+
 Model.ntasks(:: AbstractPlayer) = 1
 
-# For automatic game interference
+"""
+    gametype(player)
+
+Returns the game type `G <: AbstractGame` that `player` can be applied to.
+"""
+gametype(args...; kwargs...) = Model.gametype(args...; kwargs...)
+
 Model.gametype(:: AbstractPlayer{G}) where {G <: AbstractGame} = G
 
-# Players with potentially trainable models can be asked to return them
-Model.base_model(p :: AbstractPlayer)   = nothing
-Model.playing_model(:: AbstractPlayer)  = nothing
-Model.training_model(:: AbstractPlayer) = nothing
+childmodel(args...; kwargs...) = Model.childmodel(args...; kwargs...)
+basemodel(args...; kwargs...) = Model.basemodel(args...; kwargs...)
+playingmodel(args...; kwargs...) = Model.playingmodel(args...; kwargs...)
+trainingmodel(args...; kwargs...) = Model.trainingmodel(args...; kwargs...)
 
-Target.targets(:: AbstractPlayer{G}) where {G} = Target.defaults(G)
+Model.basemodel(p :: AbstractPlayer) = nothing
+Model.childmodel(p :: AbstractPlayer) = nothing
+Model.playingmodel(:: AbstractPlayer) = nothing
+Model.trainingmodel(:: AbstractPlayer) = nothing
 
-Data.DataSet(p :: AbstractPlayer) = Data.DataSet(Model.base_model(p))
+createid(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
 
-
-# Player ids to get more unique default names
-get_id(args...) = Int(div(hash(tuple(args...)), Int(1e14)))
-
-
-# -------- Random Player ----------------------------------------------------- #
 
 """
-A player with name "random" that always chooses a random (but allowed) action.
+A player with fixed name "random" that considers each legal action as equally
+good.
 """
-struct RandomPlayer <: AbstractPlayer{AbstractGame} end
+struct RandomPlayer{G} <: AbstractPlayer{G} end
+
+RandomPlayer(G) = RandomPlayer{G}()
 
 function think(:: RandomPlayer, game :: AbstractGame)
-  actions = legal_actions(game)
-  policy = zeros(Float32, policy_length(game))
+  actions = legalactions(game)
+  policy = zeros(Float32, policylength(game))
   policy[actions] .= 1f0 / length(actions)
   policy
 end
 
 name(p :: RandomPlayer) = "random"
+
 Base.copy(p :: RandomPlayer) = p
 
-Base.show(io :: IO, p :: RandomPlayer) = print(io, "RandomPlayer(random)")
+function Base.show(io :: IO, p :: RandomPlayer{G}) where {G}
+  print(io, "RandomPlayer($G)")
+end
 
-# -------- Intuition Player -------------------------------------------------- #
 
 """
-A player that relies on the policy returned by a model.
+A player that returns the policy proposed by a model (with possible annealing).
 """
 struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
@@ -146,24 +166,23 @@ struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
 end
 
 """
-    IntuitionPlayer(model [; temperature, name])
-    IntuitionPlayer(player [; temperature, name])
+    IntuitionPlayer(model; [temperature, name])
+    IntuitionPlayer(player; [temperature, name])
 
-Intuition player that uses `model` to generate policies which are cooled/heated
-by `temperature` before making a decision. If provided a `player`, the
-IntuitionPlayer shares this player's model and temperature.
+Intuition player that uses `model` to generate policies which are annealed by
+`temperature` before making a decision. If a player `player` is passed, the
+intuition player shares this player's model.
 """
 function IntuitionPlayer( model :: AbstractModel{G}
                         ; temperature = 1.
                         , name = nothing
                         ) where {G <: AbstractGame}
   if isnothing(name)
-    id = get_id(model, temperature) 
-    name = "intuition-$id"
+    id = createid(model, temperature) 
+    name = "int-$id"
   end
 
   IntuitionPlayer{G}(model, temperature, name)
-
 end
 
 function IntuitionPlayer( player :: AbstractPlayer{G}
@@ -171,21 +190,21 @@ function IntuitionPlayer( player :: AbstractPlayer{G}
                         , name = nothing
                         ) where {G <: AbstractGame}
 
-  IntuitionPlayer( playing_model(player)
-                 , temperature = temperature
-                 , name = name )
-
+  IntuitionPlayer(playingmodel(player); temperature, name)
 end
+
+name(p :: IntuitionPlayer) = p.name
 
 function think( p :: IntuitionPlayer{G}
               , game :: G
-              ) :: Vector{Float32} where {G <: AbstractGame} 
+              ) where {G <: AbstractGame} 
 
   # Get all legal actions and their model policy values
-  actions = legal_actions(game)
-  policy = zeros(Float32, policy_length(game))
+  actions = legalactions(game)
+  policy = zeros(Float32, policylength(game))
 
-  policy[actions] = apply(p.model, game).policy[actions]
+  r = apply(p.model, game, targets = [:policy])
+  policy[actions] = r.policy[actions]
 
   # Return the policy after applying temperature
   anneal(policy, p.temperature)
@@ -193,54 +212,60 @@ end
 
 function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
 
-  actions = legal_actions(game)
-  policy = zeros(Float32, policy_length(game))
+  actions = legalactions(game)
+  policy = zeros(Float32, policylength(game))
 
-  res = apply(p.model, game)
-  policy[actions] = res.policy[actions]
+  r = apply(p.model, game, targets = [:value, :policy])
+  policy[actions] = r.policy[actions]
 
-  (value = res.value, policy = anneal(policy, p.temperature))
+  (value = r.value, policy = anneal(policy, p.temperature))
 end
 
-name(p :: IntuitionPlayer) = p.name
+# TODO: introduce Model.childmodel -> takes direct child, while
+# Model.basemodel traverses to the final child
 
-# For convenience, extend some parts of the model interface to players
 Model.ntasks(p :: IntuitionPlayer) = Model.ntasks(p.model)
-Model.base_model(p :: IntuitionPlayer) = base_model(p.model)
-Model.playing_model(p :: IntuitionPlayer) = p.model
-Model.training_model(p :: IntuitionPlayer) = training_model(p.model)
+Model.basemodel(p :: IntuitionPlayer) = basemodel(p.model)
+Model.childmodel(p :: IntuitionPlayer) = childmodel(p.model)
+Model.playingmodel(p :: IntuitionPlayer) = p.model
+Model.trainingmodel(p :: IntuitionPlayer) = trainingmodel(p.model)
 
 function Target.targets(p :: IntuitionPlayer{G}) where {G}
-  tm = training_model(p)
-  isnothing(tm) ? Target.defaults(G) : Target.targets(tm)
+  tm = playingmodel(p)
+  isnothing(tm) ? Target.defaulttargets(G) : Target.targets(tm)
 end
 
-function switch_model( p :: IntuitionPlayer{G}
-                     , m :: AbstractModel{H}
-                     ) where {H <: AbstractGame, G <: H} 
+function switchmodel( p :: IntuitionPlayer{G}
+                    , m :: AbstractModel{H}
+                    ) where {H <: AbstractGame, G <: H} 
   IntuitionPlayer{G}(m, p.temperature, p.name)
 end
 
-Base.copy(p :: IntuitionPlayer) = switch_model(p, copy(p.model))
-swap(p :: IntuitionPlayer) = switch_model(p, swap(p.model))
+function Model.adapt(backend, p :: IntuitionPlayer)
+  switchmodel(p, adapt(backend, p.model))
+end
+
+Base.copy(p :: IntuitionPlayer) = switchmodel(p, copy(p.model))
 
 function Base.show(io :: IO, p :: IntuitionPlayer{G}) where {G <: AbstractGame}
   print(io, "IntuitionPlayer{$(Game.name(G))}($(p.name), $(p.temperature))")
 end
 
-function Base.show(io :: IO, :: MIME"text/plain", p :: IntuitionPlayer{G}) where {G <: AbstractGame}
+function Base.show( io :: IO
+                  , mime :: MIME"text/plain"
+                  , p :: IntuitionPlayer{G}
+                  ) where {G <: AbstractGame}
   println(io, "IntuitionPlayer{$(Game.name(G))}:")
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
-  print(io, " model: "); show(io, MIME"text/plain"(), p.model)
+  print(io, " model: ")
+  showindented(io, mime, p.model, indent = 1, indentfirst = false)
 end
 
 
-# -------- MCTS Player ------------------------------------------------------- #
-
 """
-A player that relies on Markov chain tree search policies that are constructed
-with the support of a model.
+A player that relies on Markov chain tree search (MCTS) results that are
+constructed with the help of a model.
 """
 struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
@@ -254,22 +279,25 @@ struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
 end
 
 """
-    MCTSPlayer([model]; kwargs...)
-    MCTSPlayer(player [; power, policy, selector, rootselector, name])
+    MCTSPlayer(model = RolloutModel(); kwargs...)
+    MCTSPlayer(player; kwargs...)
 
-MCTS Player powered by `model`, which defaults to `RolloutModel`. The model can
-also be derived from `player`. Note: this does not create a copy of the model.
+MCTS player powered by a model `model`, which can also be derived from `player`.
 
-By default, a classical PUCT-based player is created. For an MCTSPlayer with
-Gumbel Alpha Zero inspired presets, see [`MCTSPlayerGumbel`](@ref).
+By default, a classical PUCT-based MCTS player is created. For an `MCTSPlayer`
+constructor with Gumbel Alpha Zero inspired presets, see
+[`MCTSPlayerGumbel`](@ref).
 
-## Keyword arguments
-* `power = 100`: The number of model queries the player can use per move.
-* `policy = VisitCount()`: The final policy extracted from the root node.
-* `selector = PUCT()`: The action selector during the mcts run at non-root nodes.
-* `rootselector = selector`: The action selector at root nodes.
-* `temperature`: Convenience option that replaces `policy` by `Anneal(policy, temperature)` if provided.
-* `name = nothing`: The name of the player. If `nothing`, a random name is generated.
+## Arguments
+- `power = 100`: The number of model queries the player can use per move.
+- `policy = VisitCount()`: The final policy extracted from the root node.
+- `selector = PUCT()`: The action selector during the mcts run at non-root \
+nodes.
+- `rootselector = selector`: The action selector at root nodes.
+- `temperature`: Convenience option that replaces `policy` by \
+`Anneal(policy, temperature)` if provided.
+- `name = nothing`: The name of the player. If `nothing`, a random name is \
+generated.
 """
 function MCTSPlayer( model :: AbstractModel{G}
                    ; power = 100
@@ -281,7 +309,7 @@ function MCTSPlayer( model :: AbstractModel{G}
                    ) where {G <: AbstractGame}
 
   if isnothing(name)
-    id = get_id(model, policy, selector, rootselector)
+    id = createid(model, policy, selector, rootselector)
     name = "mcts$(power)-$id"
   end
 
@@ -310,7 +338,7 @@ MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
 function MCTSPlayer( player :: IntuitionPlayer{G}
                    , kwargs...
                    ) where {G <: AbstractGame}
-  MCTSPlayer(playing_model(player); kwargs...)
+  MCTSPlayer(playingmodel(player); kwargs...)
 end
 
 function MCTSPlayer( player :: MCTSPlayer
@@ -330,7 +358,7 @@ function MCTSPlayer( player :: MCTSPlayer
   end
   
   MCTSPlayer(
-    playing_model(player);
+    playingmodel(player);
     power,
     temperature,
     policy,
@@ -344,12 +372,12 @@ end
 """
     MCTSPlayerGumbel(model/player; [nactions, selector, policy, kwargs...])
 
-Create an `MCTSPlayer` with Gumbel presets. By default, `nactions = 16`,
+Create an [`MCTSPlayer`](@ref) with Gumbel presets. By default, `nactions = 16`,
 `selector = VisitPropTo()`, and `policy = ImprovedPolicy()`.
 
 The argument `rootselector = SequentialHalving(nactions)` is passed to
-`MCTSPlayer` implicitly. The remaining arguments and defaults are shared with
-[`MCTSPlayer`](@ref).
+[`MCTSPlayer`](@ref) implicitly. The remaining arguments and defaults are shared
+with [`MCTSPlayer`](@ref).
 """
 function MCTSPlayerGumbel( args...
                          ; power = 100
@@ -369,44 +397,55 @@ function MCTSPlayerGumbel( args...
   )
 end
 
+name(p :: MCTSPlayer) = p.name
 
 function think( p :: MCTSPlayer{G}
               , game :: G
               , policy = p.policy
-              ) :: Vector{Float32} where {G <: AbstractGame}
+              ) where {G <: AbstractGame}
 
   root = mcts(game, p.model, p.power; p.selector, p.rootselector)
 
-  actions = legal_actions(game)
-  buffer = zeros(Float32, policy_length(game))
+  actions = legalactions(game)
+  buffer = zeros(Float32, policylength(game))
   buffer[actions] .= getpolicy(policy, root)
 
   buffer
 end
 
 function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
-
   root = mcts(game, p.model, p.power; p.selector, p.rootselector)
   pol = getpolicy(p.policy, root)
   value = sum(pol .* root.qvalues) # TODO: this can be done better by completing the q-values?
 
-  actions = legal_actions(game)
-  buffer = zeros(Float32, policy_length(game))
+  actions = legalactions(game)
+  buffer = zeros(Float32, policylength(game))
   buffer[actions] .= pol
 
   (value = value, policy = policy)
 end
 
-function decide_chain( p :: MCTSPlayer{G}
-                     , game :: G
-                     ; cap_power = false ) where {G <: AbstractGame}
-  actions = []
+"""
+    decidechain(mcts_player, game; cap_power = false)
+
+Let an MCTS player `mcts_player` decide an action chain at `game`.
+
+If the chain consists of several moves, the player reuses the mcts expansions
+of the previous decision. Passing `cap_power = true` causes the player to always
+use a total power of `mcts_player.power`, even when previous expansions are
+available.
+"""
+function decidechain( p :: MCTSPlayer{G}
+                    , game :: G
+                    ; cap_power = false ) where {G <: AbstractGame}
+  # TODO: make infinite loops impossible!
+  actions = ActionIndex[]
   game = copy(game)
   root = rootnode()
-  current = Game.current_player(game)
+  active = Game.activeplayer(game)
 
   # act as long as the game is not finished and it is our turn
-  while !Game.is_over(game) && Game.current_player(game) == current
+  while !Game.isover(game) && Game.activeplayer(game) == active
     remaining_power = round(Int, sum(root.visits))
     power = cap_power ? p.power - remaining_power : p.power
 
@@ -414,34 +453,35 @@ function decide_chain( p :: MCTSPlayer{G}
     pol = getpolicy(p.policy, root)
     
     # select a child index that performed well
-    index = choose_index(pol)
+    index = sample(pol)
 
     # move the root to the chosen child and forget the past
     root = root.children[index]
     root.parent = nothing
 
     # apply and record the action
-    action = legal_actions(game)[index]
-    apply_action!(game, action)
+    action = legalactions(game)[index]
+    move!(game, action)
     push!(actions, action)
   end
 
   actions
 end
 
-name(p :: MCTSPlayer) = p.name
 Model.ntasks(p :: MCTSPlayer) = Model.ntasks(p.model)
-Model.playing_model(p :: MCTSPlayer) = p.model
-Model.base_model(p :: MCTSPlayer) = base_model(p.model)
-Model.training_model(p :: MCTSPlayer) = training_model(p.model)
+Model.basemodel(p :: MCTSPlayer) = basemodel(p.model)
+Model.childmodel(p :: MCTSPlayer) = childmodel(p.model)
+Model.playingmodel(p :: MCTSPlayer) = p.model
+Model.trainingmodel(p :: MCTSPlayer) = trainingmodel(p.model)
 
 function Target.targets(p :: MCTSPlayer{G}) where {G}
-  tm = training_model(p)
-  isnothing(tm) ? Target.defaults(G) : Target.targets(tm)
+  tm = playingmodel(p)
+  isnothing(tm) ? Target.defaulttargets(G) : Target.targets(tm)
 end
 
-function switch_model( p :: MCTSPlayer{G}
-                     , m :: AbstractModel{H}) where {H <: AbstractGame, G <: H} 
+function switchmodel( p :: MCTSPlayer{G}
+                    , m :: AbstractModel{H}
+                    ) where {H <: AbstractGame, G <: H} 
 
   MCTSPlayer{G}( m
                , p.power
@@ -451,30 +491,35 @@ function switch_model( p :: MCTSPlayer{G}
                , p.name )
 end
 
-Base.copy(p :: MCTSPlayer) = switch_model(p, copy(p.model))
-swap(p :: MCTSPlayer) = switch_model(p, swap(p.model))
+Model.adapt(backend, p :: MCTSPlayer) = switchmodel(p, adapt(backend, p.model))
 
+
+Base.copy(p :: MCTSPlayer) = switchmodel(p, copy(p.model))
 
 function Base.show(io :: IO, p :: MCTSPlayer{G}) where {G <: AbstractGame}
   print(io, "MCTSPlayer{$(Game.name(G))}")
   print(io, "($(p.name), $(p.power))")
 end
 
-function Base.show(io :: IO, :: MIME"text/plain", p :: MCTSPlayer{G}) where {G <: AbstractGame}
+function Base.show( io :: IO
+                  , mime :: MIME"text/plain"
+                  , p :: MCTSPlayer{G}
+                  ) where {G <: AbstractGame}
   println(io, "MCTSPlayer{$(Game.name(G))}")
   print(io, " name: $(p.name)\n")
   print(io, " power: $(p.power)\n")
   print(io, " policy: $(p.policy)\n")
   print(io, " selector: $(p.selector)\n")
   print(io, " rootselector: $(p.rootselector)\n")
-  print(io, " model: "); show(io, MIME"text/plain"(), p.model)
+  print(io, " model: ");
+  showindented(io, mime, p.model, indent = 1, indentfirst = false)
 end
 
 
-# -------- Human Player ------------------------------------------------------ #
 
 """
-A player that queries for interaction before making a decision.
+A player that queries for interaction (via the command line) before making
+a decision.
 """
 struct HumanPlayer <: AbstractPlayer{AbstractGame}
   name :: String
@@ -486,6 +531,8 @@ end
 Human player with name `name`, defaulting to "you".
 """
 HumanPlayer(; name = "you") = HumanPlayer(name)
+
+name(p :: HumanPlayer) = p.name
 
 function think(p :: HumanPlayer, game :: AbstractGame)
 
@@ -500,10 +547,10 @@ function think(p :: HumanPlayer, game :: AbstractGame)
     input = readline()
     try 
       action = parse(Int, input)
-      if !is_action_legal(game, action)
+      if !isactionlegal(game, action)
         println("Action $input is illegal ($error)")
       else
-        policy = zeros(Float32, policy_length(game))
+        policy = zeros(Float32, policylength(game))
         policy[action] = 1f0
         return policy
       end
@@ -513,53 +560,61 @@ function think(p :: HumanPlayer, game :: AbstractGame)
       else
         println("An unknown error occured: $error")
       end
-
     end
   end
-
 end
 
-name(p :: HumanPlayer) = p.name
-
 Base.copy(p :: HumanPlayer) = p
-
 Base.show(io :: IO, p :: HumanPlayer) = print(io, "HumanPlayer($(p.name))")
 
 
-# -------- PvP --------------------------------------------------------------- #
+"""
+    gametype(players...)
 
-function derive_gametype(players...)
-
+Derive the most general common gametype of the players `players`.
+"""
+function Model.gametype(p1 :: AbstractPlayer, p2 :: AbstractPlayer, players...)
+  players = [p1, p2, players...]
   gt = mapreduce(gametype, typeintersect, players, init = AbstractGame)
-
   @assert gt != Union{} "Players do not play compatible games"
   @assert !isabstracttype(gt) "Cannot infere concrete game from abstract type"
-
   gt
 end
 
-"""
-    pvp(player1, player2 [; game, callback])
 
-Conduct one match between `player1` and `player2`. The `game` that
-`player1` starts with is infered automatically if possible.
-`callback(current_game)` is called after each turn. The game outcome from
-perspective of `player1` (-1, 0, 1) is returned.
+"""
+    pvp(player1, player2 [; instance, callback, draw_after])
+
+Conduct a match between `player1` and `player2` and return the outcome from the
+perspective of the starting player `player1`.
+
+The game that `player1` starts with is created via `instance()`. If
+`G = gametype(player1, player2)` is a concrete type, `instance = () ->
+Game.instance(G)` is passed by default. The call `callback(current_game)` is
+issued after each turn. If the game has not ended after `draw_after` moves, a
+draw is declared.
+
+See also [`pvpgames`](@ref).
 """
 function pvp( p1 :: AbstractPlayer
             , p2 :: AbstractPlayer
-            ; instance = derive_gametype(p1, p2)
+            ; instance = gametype(p1, p2)
             , callback = (_) -> nothing
             , draw_after = typemax(Int) )
+
+  if instance isa Type{<: AbstractGame}
+    G = instance
+    instance = () -> Game.instance(G)
+  end
 
   game = copy(instance())
   moves = 0
 
-  while !is_over(game)
+  while !isover(game)
     # After draw_after moves, the game ends with a draw
     moves > draw_after && return 0
 
-    if current_player(game) == 1
+    if activeplayer(game) == 1
       turn!(game, p1)
     else
       turn!(game, p2)
@@ -572,27 +627,29 @@ function pvp( p1 :: AbstractPlayer
 end
 
 """
-    pvp_games(player1, player2 [; game, callback])
+    pvpgames(player1, player2 [; instance, callback, draw_after])
 
-Conduct one match between `player1` and `player2`. The `game` that
-`player1` starts with is infered automatically if possible.
-`callback(current_game)` is called after each turn. The vector of played game
-states is returned.
+Like [`pvp`](@ref), but the vector of game states is returned.
 """
-function pvp_games( p1 :: AbstractPlayer
-                  , p2 :: AbstractPlayer
-                  ; instance = derive_gametype(p1, p2)
-                  , callback = (_) -> nothing
-                  , draw_after = typemax(Int) )
+function pvpgames( p1 :: AbstractPlayer
+                 , p2 :: AbstractPlayer
+                 ; instance = gametype(p1, p2)
+                 , callback = (_) -> nothing
+                 , draw_after = typemax(Int) )
+
+  if instance isa Type{<: AbstractGame}
+    G = instance
+    instance = () -> Game.instance(G)
+  end
 
   game  = copy(instance())
   games = [copy(game)]
   moves = 0
 
-  while !is_over(game)
+  while !isover(game)
     moves > draw_after && return games
 
-    if current_player(game) == 1
+    if activeplayer(game) == 1
       turn!(game, p1)
     else
       turn!(game, p2)
@@ -605,17 +662,28 @@ function pvp_games( p1 :: AbstractPlayer
   games
 end
 
-# TODO: this is a nice-to have function for distributed computing and for the
-# daemon
 """
-    tune(player; gpu, async, caching)
+    configure(player; kwargs...)
 
-Tune the model that `player` is based on. See `Model.tune` for details.
+Configure the model that `player` is based on and return a new player with this
+model.
 """
-function Model.tune(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
-  switch_model(player, tune(player.model; kwargs...))
+configure(args...; kwargs...) = Model.configure(args...; kwargs...)
+
+function Model.configure(player :: Union{MCTSPlayer, IntuitionPlayer}; kwargs...)
+  switchmodel(player, configure(player.model; kwargs...))
 end
 
-function Model.is_async(player :: Union{MCTSPlayer, IntuitionPlayer})
-  is_async(Model.playing_model(player))
+"""
+    isasync(player)
+
+Whether `player` can batch calls to [`think`](@ref) or [`apply`](@ref) in
+asynchronous contexts.
+"""
+isasync(args...; kwargs...) = Model.isasync(args...; kwargs...)
+
+function Model.isasync(player :: Union{MCTSPlayer, IntuitionPlayer})
+  isasync(Model.playingmodel(player))
 end
+
+

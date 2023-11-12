@@ -1,17 +1,24 @@
 
-mutable struct Assisted{G <: AbstractGame} <: AbstractModel{G, false}
+struct AssistedModel{G <: AbstractGame} <: AbstractModel{G}
   model :: AbstractModel
-  assistent :: AbstractModel
+  assistant :: AbstractModel
 end
 
-function Assisted(model :: AbstractModel{H}, assistent :: AbstractModel{F}) where {H, F}
-  @assert F <: H || H <: F "Assistent and model cannot be applied to the same game types"
+function AssistedModel( model :: AbstractModel{H}
+                      , assistant :: AbstractModel{F}
+                      ) where {H , F}
+  @assert F <: H || H <: F "Assistant cannot be applied to the correct game type"
   G = typeintersect(F, H)
-  Assisted{G}(model, assistent)
+  AssistedModel{G}(model, assistant)
 end
 
-function apply(m :: Assisted{G}, game :: G) where {G}
-  hint = assist(m.assistent, game)
+function apply( m :: AssistedModel{G}
+              , game :: G
+              ; targets = [:value, :policy]
+              ) where {G <: AbstractGame}
+
+  @assert issubset(targets, targetnames(m))
+  hint = assist(m.assistant, game)
   if !haskey(hint, :value) || !haskey(hint, :policy)
     r = apply(m.model, game)
     (value = get(hint, :value, r.value), policy = get(hint, :policy, r.policy))
@@ -20,23 +27,32 @@ function apply(m :: Assisted{G}, game :: G) where {G}
   end
 end
 
-assist(m :: Assisted{G}, game :: G) where {G} = assist(m.assistent, game)
-
-swap(m :: Assisted) = @warn "Assisted cannot be swapped"
-Base.copy(m :: Assisted) = Assisted(copy(m.model), copy(m.assistent))
-
-ntasks(m :: Assisted) = ntasks(m.model)
-base_model(m :: Assisted) = base_model(m.model)
-training_model(m :: Assisted) = training_model(m.model)
-
-is_async(m :: Assisted) = is_async(m.model)
-
-function Base.show(io :: IO, m :: Assisted)
-  print(io, "Assisted("); show(io, m.model); print(io, ", ")
-  show(io, m.assistent); print(io, ")")
+function switchmodel( m :: AssistedModel{G}
+                    , model :: AbstractModel{G}
+                    ) where {G <: AbstractGame}
+  AssistedModel(model, m.assistant)
 end
 
-function Base.show(io :: IO, mime :: MIME"text/plain", m :: Assisted)
-  print(io, "Assisted("); show(io, m.assistent); print(io, ")")
+assist(m :: AssistedModel{G}, game :: G) where {G} = assist(m.assistant, game)
+
+function adapt(backend :: Backend, m :: AssistedModel)
+  switchmodel(m, adapt(backend, m.model))
+end
+
+isasync(m :: AssistedModel) = isasync(m.model)
+ntasks(m :: AssistedModel) = ntasks(m.model)
+basemodel(m :: AssistedModel) = basemodel(m.model)
+childmodel(m :: AssistedModel) = m.model
+trainingmodel(m :: AssistedModel) = trainingmodel(m.model)
+
+Base.copy(m :: AssistedModel) = AssistedModel(copy(m.model), copy(m.assistant))
+
+function Base.show(io :: IO, m :: AssistedModel)
+  print(io, "Assisted("); show(io, m.model); print(io, ", ")
+  show(io, m.assistant); print(io, ")")
+end
+
+function Base.show(io :: IO, mime :: MIME"text/plain", m :: AssistedModel)
+  print(io, "Assisted("); show(io, m.assistant); print(io, ")")
   show(io, mime, m.model)
 end

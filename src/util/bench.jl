@@ -1,7 +1,6 @@
 
 using LinearAlgebra
 
-import ThreadPools
 import CUDA
 
 function timeit(f, trials)
@@ -46,6 +45,7 @@ function layer_cpu(sz = 256; batchsize = sz, trials = 100)
   end
 end
 
+# TODO: Restructure this! Make it dependent on backend instead of cpu/gpu split?
 function layer_gpu(sz = 256; batchsize = sz, trials = 100)
   @assert CUDA.functional() "No CUDA support detected"
   layers = layer_data(sz, batchsize)
@@ -109,7 +109,7 @@ function model_gpu(model; trials = 1000, batchsizes = [16, 32, 64, 128, 256, 512
   @printf "     mode (backend)  bsize     games/s  moves/s (@power 250)\n"
   println(" ", repeat("-", 60))
   for batchsize in batchsizes
-    games = [Game.random_instance(G) for _ in 1:batchsize]
+    games = [Game.randominstance(G) for _ in 1:batchsize]
 
     for at in ["cuda", "knet"]
       # set gpu backend
@@ -272,7 +272,7 @@ function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn =
       catch err
         display(err)
       finally
-        Model.dynamic_mode!(amodel, true) # prevents async model blocking
+        Model.dynamicmode!(amodel, true) # prevents async model blocking
         close(data_ch)
         close(move_ch)
       end
@@ -300,7 +300,7 @@ function throughput(model, trials = 1000)
   @assert model isa Model.NeuralModel
   G = Model.gametype(model)
   for batchsize in [16, 32, 64, 128, 256, 512]
-    games = [Game.random_instance(G) for _ in 1:batchsize]
+    games = [Game.randominstance(G) for _ in 1:batchsize]
     data = Game.array(games)
     if Model.on_gpu(model)
       data = Model.to_gpu(data)
@@ -398,7 +398,6 @@ function async_like(trials, model, games)
   for _ in 1:trials
     i = 1
     res = Vector(undef, n)
-#    @show res
     @sync begin
       map(gamesets) do games
         @async begin
@@ -432,8 +431,8 @@ function record(player, n; augment = false, kwargs...)
   # dataset variable
   dss = nothing
 
-  move_ch = RemoteChannel(() -> Channel{Bool}(1000))
-  game_ch = RemoteChannel(() -> Channel{Bool}(1000))
+  move_ch = Channel{Bool}(1000)
+  game_ch = Channel{Bool}(1000)
   
   move_cb = _ -> (put!(move_ch, true); yield())
   game_cb = () -> (put!(game_ch, true); yield())
@@ -486,7 +485,7 @@ end
 # the threaded version is only marginally faster than the non-threaded version,
 # since most time is (probably) spent in the GPU anyway.
 function record_threaded(player, n; copy_model = false, augment = false, kwargs...)
-  @assert Model.is_async(Model.playing_model(player)) "Threaded self plays only work with Async models"
+  @assert Model.isasync(Model.playingmodel(player)) "Threaded self plays only work with Async models"
   @assert Threads.nthreads() > 1 "record_threaded requires at least two threads"
   @assert Threads.threadid() == 1 "record_threaded can only be called from the master thread"
 
@@ -518,7 +517,7 @@ function record_threaded(player, n; copy_model = false, augment = false, kwargs.
   @sync begin
     # map to background threads
     @async begin
-      dss = ThreadPools.bmap(tickets) do ticket
+      dss = Threads.@threads for ticket in tickets
         p = copy_model ? copy(player) : player
         Player.record( p, ticket
                      , callback = game_cb, callback_move = move_cb
@@ -552,12 +551,12 @@ function train(player, ds = nothing; batchsize = 512, epochs = 20, kwargs...)
     print("generating dummy dataset...")
     G = Model.gametype(player)
     p = Player.MCTSPlayer(Model.RandomModel(), power = 10)
-    ds = Player.record(p, 200, instance = G)
+    ds = Player.record(p, 200, instance = () -> Game.instance(G))
     println(" done")
   end
   println("dataset size ", length(ds))
 
-  model = Model.training_model(player)
+  model = Model.trainingmodel(player)
   Training.set_optimizer!(model)
   gpu = Model.on_gpu(model)
 
@@ -594,7 +593,7 @@ function benchmark_cpu(; threads = false, async = 25)
   println("\nMetaTac (very simple):")
   println("-- recording --")
   model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 1, filters = 64)
-  model = Model.tune(model, async = async)
+  model = Model.configure(model, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
     ds = record_threaded(player, 100, copy_model = true)
@@ -608,7 +607,7 @@ function benchmark_cpu(; threads = false, async = 25)
   println("\nMetaTac (simple):")
   println("-- recording --")
   model = Model.Zoo.ZeroConv(Game.MetaTac, blocks = 2, filters = 64)
-  model = Model.tune(model, async = async)
+  model = Model.configure(model, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
     ds = record_threaded(player, 100, copy_model = true)
@@ -629,7 +628,7 @@ function benchmark_gpu(G = Game.MetaTac; threads = false, async = 64, matches = 
   println("\nMetaTac (simple):")
   println("-- recording --")
   model = Model.Zoo.ZeroConv(G, blocks = 2, filters = 64)
-  model = Model.tune(model, gpu = true, async = async)
+  model = Model.configure(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
     ds = record_threaded(player, matches)
@@ -643,7 +642,7 @@ function benchmark_gpu(G = Game.MetaTac; threads = false, async = 64, matches = 
   println("\nMetaTac (medium):")
   println("-- recording --")
   model = Model.Zoo.ZeroConv(G, blocks = 6, filters = 128)
-  model = Model.tune(model, gpu = true, async = async)
+  model = Model.configure(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
     ds = record_threaded(player, matches)
@@ -657,7 +656,7 @@ function benchmark_gpu(G = Game.MetaTac; threads = false, async = 64, matches = 
   println("\nMetaTac (large):")
   println("-- recording --")
   model = Model.Zoo.ZeroConv(G, blocks = 8, filters = 256)
-  model = Model.tune(model, gpu = true, async = async)
+  model = Model.configure(model, gpu = true, async = async)
   player = Player.MCTSPlayer(model, power = 250)
   if threads && Threads.nthreads() > 1
     ds = record_threaded(player, matches)

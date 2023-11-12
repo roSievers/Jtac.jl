@@ -1,693 +1,680 @@
 
-# -------- Layer ------------------------------------------------------------- # 
-
 """
-Layers are the computational units of `NeuralModel`s. They come in primitive
-(`PrimitiveLayer`, like `Dense` or `Conv`) and composite (`CompositeLayer`, like
-`Chain`) forms. See the macros `@chain`, `@stack`, and `@residual` for the
-convenient creation of composite layers.
+Activation function that is applied to the output of a neural network layer.
 """
-abstract type Layer{GPU} <: Element{GPU} end
-
-Pack.@typed Model.Layer
-Pack.freeze(l :: Model.Layer) = to_cpu(l)
-
-valid_insize(:: Layer, _) = error("Not implemented")
-outsize(:: Layer, _) = error("Not implemented")
-
-
-# -------- Primitive / Composite --------------------------------------------- # 
-
-"""
-An atomic neural network operation.
-"""
-abstract type PrimitiveLayer{GPU} <: Layer{GPU} end
-
-"""
-A composed neural network operation
-"""
-abstract type CompositeLayer{GPU} <: Layer{GPU} end
-
-"""
-    layers(clayer)
-
-Get all neural network layers of an the composite layer `clayer`.
-"""
-layers( :: CompositeLayer) = error("Not implemented")
-
-"""
-    count_params(layer)
-
-Count the number of free parameters in `layer`.
-"""
-count_params(layer :: Layer) = sum(length, Knet.params(layer))
-
-
-# -------- Auxiliary Functions ----------------------------------------------- # 
-
-# Convert (gpu :: Bool) to the underlying representing array type
-
-const ATYPE = Ref{Any}(CUDA.CuArray{Float32})
- 
-function atype_gpu!(s)
-  s = lowercase(string(s))
-  if s in ["cu", "cuda"]
-    ATYPE[] = CUDA.CuArray{Float32}
-  elseif s in ["knet"]
-    ATYPE[] = Knet.KnetArray{Float32}
-  end
-end
-
-atype_gpu() = ATYPE[] #Knet.KnetArray{Float32} # alternative: CUDA.CuArray{Float32}
-atype(gpu :: Bool) = gpu ? atype_gpu() : Array{Float32}
-
-adapt_atype(:: Array, v) = convert(Array, v)
-adapt_atype(:: Knet.KnetArray, v) = convert(Knet.KnetArray, v)
-adapt_atype(:: CUDA.CuArray, v) = convert(CUDA.CuArray, v)
-
-# Found slight performance advantages if temporary gpu variables
-# are immediately released
-
-release_gpu_memory!(x) = nothing
-
-release_gpu_memory!(x :: CUDA.CuArray{Float32}) =
-  CUDA.unsafe_free!(x)
-
-release_gpu_memory!(x :: Knet.KnetArray{Float32}) =
-  Knet.KnetArrays.freeKnetPtr(x.ptr)
-
-#Knet.Ops20_gpu.maxWorkspaceSize(w, x, y) = 0
-
-function adapt_gpu_device!(obj)
-  params = Knet.params(obj) 
-  @assert length(params) > 0
-  val = Knet.value(params[1])
-  if val isa Knet.KnetArray
-    dev = CUDA.device(val.ptr.parent)
-    CUDA.device!(dev)
-  elseif val isa CUDA.CuArray
-    dev = CUDA.device(val)
-    CUDA.device!(dev)
-  end
-end
-
-# Check if something is an AutoGrad param or not
- 
-is_param(p) = isa(p, Knet.Param)
-
-# Function to copy (and convert) objects of type Knet.Param
-# For convenience, we allow this function to be applied to other objects as well
-
-function copy_param(p :: Knet.Param; at = nothing)
-
-  if at == nothing || isa(Knet.value(p), at)
-    val = copy(Knet.value(p))
-  else
-    val = convert(at, Knet.value(p))
-  end
-
-  param = Knet.Param(val)
-  param.opt = p.opt
-  param
-
-end
-
-function copy_param(p; at = nothing)
-  if at == nothing || isa(p, at)
-    copy(p)
-  else
-    convert(at, p)
-  end
-end
-
-# Auxiliary function used for the constructor of some layers
-
-expand_to_pair(t :: NTuple{2, Int}) = t
-expand_to_pair(t :: Int) = (t, t)
-
-
-# -------- Layer Weights ----------------------------------------------------- #
-
-mutable struct Weight
-  data
-end
-
-Pack.@untyped Weight
-
-Pack.fieldnames(:: Type{Weight}) = [:param, :dims, :bytes]
-Pack.fieldtypes(:: Type{Weight}) = [Bool, Vector{Int}, Pack.Bytes]
-Pack.fieldvalues(w :: Weight) =
-  [is_param(w.data), size(w.data), Pack.Bytes(Knet.value(w.data))]
-
-function Pack.construct(:: Type{Weight}, param, dims, bytes)
-  data = reinterpret(Float32, bytes.data)
-  data = collect(reshape(data, dims...))
-  param ? Weight(Knet.Param(data)) : Weight(data)
-end
-
-Base.convert(:: Type{Weight}, data) = Weight(data)
-Base.convert(:: Type{Weight}, w :: Weight) = w
-
-
-# -------- Layer Activation -------------------------------------------------- #
-
-const F = Dict{String, Function}(
-    "id" => Knet.identity
-  , "elu" => Knet.elu
-  , "relu" => Knet.relu
-  , "selu" => Knet.selu
-  , "sigm" => Knet.sigm
-  , "tanh" => Knet.tanh
-  , "softmax" => Knet.softmax
-)
-
-struct NamedFunction
-  name :: String
+struct Activation{BC}
   f :: Function
 end
 
-Pack.@untyped NamedFunction
-Pack.@onlyfields NamedFunction [:name]
-
-NamedFunction(name :: String) = NamedFunction(name, F[name])
-NamedFunction(sym :: Symbol) = NamedFunction(String(sym))
-
-Base.convert(:: Type{NamedFunction}, name :: String) = NamedFunction(name)
-Base.convert(:: Type{NamedFunction}, name :: Symbol) = NamedFunction(name)
-
-
-# -------- Pointwise --------------------------------------------------------- # 
+Pack.@named Activation
 
 """
-Neural network layer that applies a function pointwisely.
+    Activation(f, broadcast = true)
+
+Wrap the function `f` as an activation function that does or does not support
+broadcasting.
 """
-struct Pointwise{GPU} <: PrimitiveLayer{GPU}
-  a :: NamedFunction
+Activation(f :: Function; broadcast = true) = Activation{broadcast}(f)
+
+Base.convert(:: Type{Activation}, f :: Function) = Activation(f)
+
+(f :: Activation{true})(args...) = f.f.(args...)
+(f :: Activation{false})(args...) = f.f(args...)
+
+
+function activationname(f :: Activation)
+  if isregistered(Activation, f)
+    lookupname(Activation, f)
+  else
+    Base.nameof(f.f)
+  end
 end
 
-Pointwise(f = "id"; gpu = false) = Pointwise{gpu}(f)
+"""
+Backend for neural network layers and models.
 
-(p :: Pointwise)(x) = p.a.f.(x)
+A backend implements forward and (optionally) backward passes of basic deep
+learning operations. The underlying array type that the backend operators on,
+like `Array{Float32}` or `CuArray{Float32}`, is indicated as type parameter.
+"""
+abstract type Backend{T} end
 
-swap(p :: Pointwise{GPU}) where {GPU} = Pointwise{!GPU}(p.a)
-Base.copy(p :: Pointwise) = p
+Pack.@named Backend
 
-valid_insize(:: Pointwise, _) = true
-outsize(p :: Pointwise, s) = s
+"""
+    istrainable(backend)
 
-function Base.show(io :: IO, l :: Pointwise)
-  print(io, "Pointwise($(l.a.name))")
+Check whether `backend` can be used for training or for inference only.
+"""
+istrainable(:: Backend) = false
+
+"""
+    arraytype(backend)
+
+Returns the array type that the backend operates on.
+"""
+arraytype(:: Backend{T}) where {T} = T
+
+"""
+Default backend implementation. Relies on NNlib.jl and supports forward passes
+only.
+
+This backend is used for saving / loading models. Other backends have to
+implement conversions from / to `DefaultBackend`.
+"""
+struct DefaultBackend{T} <: Backend{T} end
+
+function Base.show(io :: IO, :: DefaultBackend{T}) where {T}
+  print(io, "DefaultBackend{$T}()")
 end
 
-function Base.show(io :: IO, ::MIME"text/plain", l :: Pointwise{GPU}) where {GPU}
-  at = GPU ? "GPU" : "CPU"
-  print(io, "Pointwise{$at} $(l.a.name) layer")
+"""
+    getbackend(name)
+
+Returns the neural network backend that has been registered under `name`.
+"""
+getbackend(name) = resolve(Backend, name)
+
+"""
+    getbackends()
+
+Return a dictionary of all registered backends.
+"""
+getbackends() = lookup(Backend)
+
+"""
+    adapt(T, backend)
+
+Change the array type of the neural layer backend `backend` to `T`.
+"""
+adapt(T, :: Backend) = error("Not implemented")
+adapt(T, :: DefaultBackend) = DefaultBackend{T}()
+
+
+"""
+    io_neurons(dims...)
+
+Returns the effective input and output lengths of a layer with size `dims`.
+Used for parameter initialization.
+"""
+io_neurons(n_out :: Integer, n_in :: Integer) = n_in, n_out
+io_neurons(dims :: Integer...) = prod(dims[1:end-2]) .* (dims[end-1], dims[end])
+
+"""
+    kaiming([rng], dims...)
+
+Create a `Float32` parameter array of size `dims` with kaiming initialization.
+"""
+function kaiming(rng, dims :: Integer...)
+  std = Float32(sqrt(2 / first(io_neurons(dims...))))
+  randn(rng, Float32, dims...) .* std
 end
 
+kaiming(dims :: Integer...) = kaiming(Random.default_rng(), dims...)
 
-# -------- Dense ------------------------------------------------------------- # 
+"""
+Neural network layer.
+"""
+abstract type Layer{B <: Backend} end
+
+Pack.@typed Layer
+
+"""
+Elementary neural network layer that is not composed of other layers.
+"""
+abstract type PrimitiveLayer{B <: Backend} <: Layer{B} end
+
+"""
+Composite neural network layer that is composed of other layers.
+"""
+abstract type CompositeLayer{B <: Backend} <: Layer{B} end
+
+"""
+    getbackend(layer)
+
+Returns the backend of the neural layer `layer`.
+"""
+getbackend(:: Layer{B}) where {B} = B()
+
+"""
+    layers(layer)
+
+Returns the layers that a composite layer `layer` is built upon.
+"""
+layers(:: CompositeLayer) = error("To be implemented")
+
+"""
+    isvalidinputsize(layer, insize)
+
+Checks whether the tuple `insize` is a valid input size for the neural layer
+`layer`.
+"""
+isvalidinputsize(:: Layer, :: Any) = error("Not implemented")
+
+"""
+    isvalidinput(layer, input)
+
+Checks whether the size of `input` is valid via `isvalidinputsize`.
+"""
+isvalidinput(l :: Layer, x) = isvalidinputsize(l, size(x)[1:end-1]) # remove batch dim
+
+"""
+    outputsize(layer, insize)
+
+Calculates the output size of `layer` if supplied with input of size `insize`.
+"""
+outputsize(:: Layer, :: Any) = error("Not implemented")
+
+"""
+    parameters(layer)
+
+Return an iterable of (trainable) parameter arrays in layer.
+"""
+parameters(:: Layer) = error("Not implemented")
+
+"""
+    parametercount(layer)
+
+Return the number of (trainable) parameters in `layer`.
+"""
+parametercount(layer) = sum(length, parameters(layer))
+
+
+"""
+    adapt(backend, layer)
+    adapt(T, layer)
+
+Adapt the neural layer `layer` to the backend `backend`. If an array type `T`
+is passed, the backend of layer is adapted to `T`. Depending on the backend
+implementation, this may change the type of layer.
+"""
+adapt(:: Backend, l :: Layer{<: Backend}) = error("Not implemented")
+adapt(:: B, l :: Layer{B}) where {B <: Backend} = l
+
+adapt(name :: Union{Symbol, AbstractString}, l) = adapt(getbackend(name), l)
+
+function adapt(T :: Type{<: AbstractArray}, l :: Layer{B}) where {B}
+  backend = adapt(T, B())
+  adapt(backend, l)
+end
+
+"""
+    releasememory!(array)
+
+Mark the memory occupied by `array` as reusable.
+"""
+releasememory!(_) = nothing
+
 
 """
 Dense neural network layer.
 """
-struct Dense{GPU} <: PrimitiveLayer{GPU}
-  w :: Weight     # Weight matrix 
-  b :: Weight     # Bias vector
-  a :: NamedFunction # Activation function
+struct Dense{T} <: PrimitiveLayer{DefaultBackend{T}}
+  w :: T
+  b :: T
+  f :: Activation
+
+  bias :: Bool # (trainable) bias?
 end
 
-function Dense( i :: Int, o :: Int, f = "id"; bias = true, gpu = false )
-  at = atype(gpu)
-  w = Knet.param(o, i, atype = at)
-  b = bias ? Knet.param0(o, atype = at) : convert(at, zeros(Float32, o))
-  Dense{gpu}(w, b, f)
+Pack.@binarray Dense [:w, :b]
+
+"""
+    Dense(ni, no, f = identity; [bias, rng])
+
+Create a `Dense` layer that accepts input from `ni` neurons and has `no`
+output neurons, activated by `f`.
+
+If `bias = true` (default), a bias vector is added before activation and can
+be trained. A custom random number generator for weight initialization can be
+passed via `rng`.
+"""
+function Dense( ni :: Int
+              , no :: Int
+              , f = identity
+              ; bias = true
+              , rng = Random.default_rng() )
+
+  w = kaiming(rng, no, ni)
+  b = zeros(Float32, no)
+  f = resolve(Activation, f)
+  Dense{Array{Float32}}(w, b, f, bias)
 end
 
-function (d :: Dense)(x)
-  tmp = d.w.data * Knet.mat(x)
-  res = d.a.f.(tmp .+ d.b.data)
-  release_gpu_memory!(tmp)
+function (d :: Dense{T})(x :: T) where {T}
+  @assert isvalidinput(d, x)
+  tmp = d.w * reshape(x, :, size(x)[end])
+  res = d.f.(tmp .+ d.b)
+  releasememory!(tmp)
   res
 end
 
-function swap(d :: Dense{GPU}) where {GPU}
-  at = atype(!GPU)
-  w = copy_param(d.w.data; at)
-  b = copy_param(d.b.data; at)
-  Dense{!GPU}(w, b, d.a)
+# Mutating interface
+# function (d :: Dense{T})(out :: T, x :: T) where {T}
+#   @assert isvalidinput(d, x)
+#   insz = size(x)
+#   outsz = (size(d.w, 1), insz[end])
+
+#   x = reshape(x, :, insz[end])
+#   out = reshape(out, :)
+#   resize!(out, prod(outsz))
+#   out = reshape(out, outsz)
+
+#   mul!(out, d.w, x)
+#   out .= d.f.(out)
+# end
+
+params(d :: Dense) = d.bias ? [d.w, d.b] : [d.w]
+
+isvalidinputsize(d :: Dense, s) = (prod(s) == size(d.w, 2))
+
+function outputsize(d :: Dense, s)
+  @assert isvalidinputsize(d, s) "Dense layer does not accept input of size $s"
+  (size(d.w, 1),)
 end
 
-function Base.copy(d :: Dense{GPU}) where {GPU}
-  Dense{GPU}(copy_param(d.w.data), copy_param(d.b.data), d.a)
+parameters(d :: Dense) = d.bias ? [d.w, d.b] : [d.w]
+
+function adapt(:: DefaultBackend{T}, d :: Dense) where {T}
+  Dense{T}(convert(T, d.w), convert(T, d.b), d.f, d.bias)
 end
 
-# Check if some input of a given size s can be processed by the layer
-# Note that the batchsize is not part of s, so s will usually have
-# Dimension 1 (after dense layers) or 3 (before/after convolution layers)
-valid_insize(d :: Dense, s) = (prod(s) == size(d.w.data, 2))
-
-# Get the correct output size for a respective input size
-function outsize(d :: Dense, s)
-  @assert valid_insize(d, s) "Dense layer cannot be applied to input of size $s"
-  size(d.w.data, 1)
+function Base.copy(d :: Dense{T}) where {T}
+  Dense{T}(copy(d.w), copy(d.b), d.f, d.bias)
 end
 
 function Base.show(io :: IO, d :: Dense)
-  print(io, "Dense($(size(d.w.data, 1)), $(d.a.name))")
+  print(io, "Dense($(size(d.w, 1)), $(activationname(d.f)))")
 end
 
-function Base.show(io :: IO, ::MIME"text/plain", d :: Dense{GPU}) where {GPU}
-  n = size(d.w.data, 1)
-  at = GPU ? "GPU" : "CPU"
-  ac = d.a.name
-  print(io, "Dense{$at} layer with $n neurons and $ac activation")
+function Base.show(io :: IO, ::MIME"text/plain", d :: Dense{T}) where {T}
+  n = size(d.w, 1)
+  name = activationname(d.f)
+  print(io, "Dense{$T} layer with $n neurons and $name activation")
 end
 
-
-# ------- Convolution -------------------------------------------------------- # 
 
 """
 Convolutional neural network layer.
 """
-struct Conv{GPU} <: PrimitiveLayer{GPU}
-  w :: Weight     # Convolutional kernel
-  b :: Weight     # Bias vector
-  a :: NamedFunction # Activation function
+struct Conv{T} <: PrimitiveLayer{DefaultBackend{T}}
+  w :: T
+  b :: T
+  f :: Activation
 
-  p :: Tuple{Int, Int} # Padding for the convolution
-  s :: Tuple{Int, Int} # Stride for the convolution
+  bias :: Bool          # (trainable) bias?
+  p :: Tuple{Int, Int}  # padding
+  s :: Tuple{Int, Int}  # stride
 end
 
-function Conv( ci :: Int, co :: Int, f = "id";
-               window = 3, padding = 0, 
-               stride = 1, bias = true, gpu = false )
+Pack.@binarray Conv [:w, :b]
 
-  k = expand_to_pair(window)
-  p = expand_to_pair(padding)
-  s = expand_to_pair(stride)
+"""
+    Conv(ci, co, f = identity; window = 3, padding = 0, stride = 1, [bias, rng])
 
-  at = atype(gpu)
-  w = Knet.param(k[1], k[2], ci, co, atype = at)
+Create a `Conv` layer with `ci` input and `co` output channels, activated by
+`f`.
 
-  if bias
-    b = Knet.param0(1, 1, co, 1, atype = at) 
-  else
-    b = convert(at, zeros(Float32, 1, 1, co, 1))
-  end
+If `bias = true` (default), a bias vector (along the output channel dimension)
+is added before activation and can be trained. A custom random number generator
+for weight initialization can be passed via `rng`.
+"""
+function Conv( ci :: Int
+             , co :: Int
+             , f = identity
+             ; window = 3
+             , padding = 0
+             , stride = 1
+             , bias = true
+             , rng = Random.default_rng() )
 
-  Conv{gpu}(w, b, f, p, s)
+  k = isa(window, Int) ? (window, window) : window
+  p = isa(padding, Int) ? (padding, padding) : padding
+  s = isa(stride, Int) ? (stride, stride) : stride
 
+  w = kaiming(rng, k[1], k[2], ci, co)
+  b = zeros(Float32, 1, 1, co, 1)
+  f = resolve(Activation, f)
+
+  Conv{Array{Float32}}(w, b, f, bias, p, s)
 end
 
-function (c :: Conv)(x)
-  tmp = Knet.conv4(c.w.data, x, padding = c.p, stride = c.s)
-  res = c.a.f.(tmp .+ c.b.data)
-  release_gpu_memory!(tmp)
+function (c :: Conv{T})(x :: T) where {T}
+  @assert isvalidinput(c, x)
+  tmp = NNlib.conv(x, c.w, pad = c.p, stride = c.s)
+  res = c.f.(tmp .+ c.b)
+  releasememory!(tmp)
   res
 end
 
-function swap(c :: Conv{GPU}) where {GPU}
-  at = atype(!GPU)
-  w = copy_param(c.w.data, at = at)
-  b = copy_param(c.b.data, at = at)
-  Conv{!GPU}(w, b, c.a, c.p, c.s)
+# Mutating interface
+# function (c :: Conv{T})(out :: T, x :: T) where {T}
+#   @assert isvalidinput(d, x)
+#   insz = size(x)
+#   outsz = (outputsize(c, insz[1:end-1])..., insz[end])
+#   resize!(out)
+#   # TODO: use NNlib.conv!
+#   tmp = NNlib.conv(x, c.w, pad = c.p, stride = c.s)
+#   res = c.a.f.(tmp .+ c.b)
+#   releasememory!(tmp)
+# end
+
+parameters(d :: Conv) = d.bias ? [d.w, d.b] : [d.w]
+
+function isvalidinputsize(c :: Conv, s)
+  all([
+    length(s) == 3,
+    s[1] >= size(c.w, 1) - c.p[1],
+    s[2] >= size(c.w, 2) - c.p[2],
+    s[3] == size(c.w, 3),
+  ])
 end
 
-function Base.copy(c :: Conv{GPU}) where {GPU}
-  Conv{GPU}(copy_param(c.w.data), copy_param(c.b.data), c.a, c.p, c.s)
-end
-
-function valid_insize(c :: Conv, s)
-  all(( length(s) == 3,
-        s[1] >= size(c.w.data, 1) - c.p[1],
-        s[2] >= size(c.w.data, 2) - c.p[2],
-        s[3] == size(c.w.data, 3) ))
-end
-
-function outsize(c :: Conv, s)
-  @assert valid_insize(c, s) "Conv layer cannot be applied to input of size $s"
-  ( 1 + (div(s[1] + 2c.p[1] - size(c.w.data, 1), c.s[1]) |> floor),
-    1 + (div(s[2] + 2c.p[2] - size(c.w.data, 2), c.s[2]) |> floor),
-    size(c.w.data, 4)
+function outputsize(c :: Conv, s)
+  @assert isvalidinputsize(c, s) "Conv layer does not accept input of size $s"
+  ( 1 + (div(s[1] + 2c.p[1] - size(c.w, 1), c.s[1]) |> floor),
+    1 + (div(s[2] + 2c.p[2] - size(c.w, 2), c.s[2]) |> floor),
+    size(c.w, 4),
   )
 end
 
-function Base.show(io :: IO, c :: Conv)
-  window = size(c.w.data)[1:2]
-  channels = size(c.w.data, 4)
-  print(io, "Conv($channels, $window, $(c.a.name))")
+function adapt(:: DefaultBackend{T}, c :: Conv) where {T}
+  Conv{T}(convert(T, c.w), convert(T, c.b), c.f, c.bias, c.p, c.s)
 end
 
-function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{GPU}) where {GPU}
-  at = GPU ? "GPU" : "CPU"
-  ac = c.a.name
-  println(io, "Conv{$at} layer with $(size(c.w.data)[4]) out-channels and $ac activation:")
-  println(io, " window:  $(size(c.w.data)[1:2])")
+function Base.copy(c :: Conv{T}) where {T}
+  Conv{T}(copy(c.w), copy(c.b), c.f, c.bias, c.p, c.s)
+end
+
+function Base.show(io :: IO, c :: Conv)
+  window = size(c.w)[1:2]
+  channels = size(c.w, 4)
+  print(io, "Conv($channels, $window, $(activationname(c.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{T}) where {T}
+  name = activationname(c.f)
+  oc = size(c.w)[4]
+  window = size(c.w)[1:2]
+  println(io, "Conv{$T} layer with $oc out-channels and $name activation:")
+  println(io, " window:  $window")
   println(io, " padding: $(c.p)")
   print(io, " stride:  $(c.s)")
 end
 
 
-# -------- Batch Normalization ----------------------------------------------- #
-
-const BNMoments = Knet.Ops20.BNMoments
-
-Pack.@untyped Knet.Ops20.BNMoments
-
-Pack.fieldnames(:: Type{BNMoments}) = [:momentum, :mean, :var]
-Pack.fieldtypes(:: Type{BNMoments}) =
-  [Float32, Union{Nothing, Weight}, Union{Nothing, Weight}]
-
-function Pack.fieldvalues(bn :: BNMoments)
-  mean = isnothing(bn.mean) ? nothing : Weight(bn.mean)
-  var = isnothing(bn.var) ? nothing : Weight(bn.var)
-  [bn.momentum, mean, var]
-end
-
-function Pack.construct(:: Type{BNMoments}, momentum, mean, var)
-  mean = isnothing(mean) ? nothing : mean.data
-  var = isnothing(var) ? nothing : var.data
-  Knet.bnmoments(; momentum, mean, var)
-end
-
 """
 Batch normalization layer.
 """
-struct Batchnorm{GPU} <: PrimitiveLayer{GPU}
-  moments :: Knet.Ops20.BNMoments
-  params :: Weight
-  a :: NamedFunction
+struct Batchnorm{T} <: PrimitiveLayer{DefaultBackend{T}}
+  mean :: T
+  var :: T
+  bias :: T
+  scale :: T
+  f :: Activation
 end
 
-
-function Batchnorm(channels, f = "id"; gpu = false)
-  b = Batchnorm{false}( Knet.bnmoments()
-                      , Knet.bnparams(Float32, channels)
-                      , f )
-  gpu ? swap(b) : b
-end
-
-function (b :: Batchnorm)(x)
-  tmp = Knet.batchnorm(x, b.moments, b.params.data)
-  res = b.a.f.(tmp)
-  # Freeing tmp caused errors... why?
-  res
-end
-
-function swap(b :: Batchnorm{GPU}) where {GPU}
-  at = atype(!GPU)
-  mean = (b.moments.mean != nothing) ? convert(at, b.moments.mean) : nothing
-  var  = (b.moments.var != nothing) ? convert(at, b.moments.var) : nothing
-  moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{!GPU}(moments, copy_param(b.params.data, at = at), b.a)
-end
-
-function Base.copy(b :: Batchnorm{GPU}) where {GPU}
-  mean = (b.moments.mean != nothing) ? copy(b.moments.mean) : nothing
-  var  = (b.moments.var  != nothing) ? copy(b.moments.var)  : nothing
-  moments = Knet.bnmoments(momentum = b.moments.momentum, mean = mean, var = var)
-  Batchnorm{GPU}(moments, copy_param(b.params.data), b.a)
-end
-
-valid_insize(:: Batchnorm, s) = true
-outsize(:: Batchnorm, s) = s
-
-function Base.show(io :: IO, b :: Batchnorm)
-  print(io, "Batchnorm($(b.a.name))")
-end
-
-function Base.show(io :: IO, ::MIME"text/plain", b :: Batchnorm{GPU}) where {GPU}
-  at = GPU ? "GPU" : "CPU"
-  print(io, "Batchnorm{$at} layer with $(b.a.name) activation")
-end
-
-
-# -------- Chain ------------------------------------------------------------- #
+Pack.@binarray Batchnorm [:mean, :var, :bias, :scale]
 
 """
-Composition of neural network layers.
+    Batchnorm(c, f = identity)
+
+Create a `Batchnorm` layer that operates on `c` channels, activated by `f`.
 """
-struct Chain{GPU} <: CompositeLayer{GPU}
-  layers :: Vector{Layer{GPU}}
+function Batchnorm(c :: Int, f = identity)
+  mean = zeros(Float32, c)
+  var = ones(Float32, c)
+  bias = zeros(Float32, c)
+  scale = ones(Float32, c)
+  f = resolve(Activation, f)
+  Batchnorm{Array{Float32}}(mean, var, bias, scale, f)
 end
 
-function Chain(layers :: Layer{GPU}...; gpu = nothing) where {GPU} 
-  c = Chain{GPU}(Layer{GPU}[l for l in layers])
-  if !isnothing(gpu)
-    gpu != GPU ? swap(c) : c
+function bnsize(s)
+  if length(s) == 1
+    (s[1], 1)
+  elseif length(s) == 3
+    (1, 1, s[3], 1)
   else
-    c
+    error("Batchnorm layer only handles input with 1 or 3 dimensions")
   end
 end
 
-function (c :: Chain)(x)
+function (b :: Batchnorm{T})(x :: T) where {T}
+  @assert isvalidinput(b, x)
+
+  F = eltype(T)
+  sz = bnsize(size(x)[1:end-1])
+  eps = F(1e-5)
+
+  mean = reshape(b.mean, sz)
+  var = reshape(b.var, sz)
+  bias = reshape(b.bias, sz)
+  scale = reshape(b.scale, sz)
+
+  b.f.(((x .- mean) ./ sqrt.(eps .+ var)) .* scale .+ bias)
+end
+
+isvalidinputsize(b :: Batchnorm, s) = length(b.mean) == prod(bnsize(s))
+outputsize(:: Batchnorm, s) = s
+
+parameters(b :: Batchnorm) = [b.bias, b.scale]
+
+function adapt(:: DefaultBackend{T}, b :: Batchnorm) where {T}
+  Batchnorm{T}(
+    convert(T, b.mean),
+    convert(T, b.var),
+    convert(T, b.bias),
+    convert(T, b.scale),
+    b.f
+  )
+end
+
+function Base.copy(b :: Batchnorm{T}) where {T}
+  Batchnorm{T}(copy(b.mean), copy(b.var), copy(b.bias), copy(b.scale), b.f)
+end
+
+function Base.show(io :: IO, b :: Batchnorm)
+  print(io, "Batchnorm($(activationname(b.f)))")
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", b :: Batchnorm{T}) where {T}
+  name = activationname(b.f)
+  print(io, "Batchnorm{$T} layer with $name activation")
+end
+
+
+"""
+Composite neural layer that sequentially evaluates a vector of layers.
+"""
+struct Chain{T} <: CompositeLayer{DefaultBackend{T}}
+  layers :: Vector{Layer{DefaultBackend{T}}}
+end
+
+"""
+    Chain(layers)
+
+Create a chain of the given neural network layers `layers`.
+"""
+function Chain(layers :: AbstractVector{L}) where {T, L <: Layer{DefaultBackend{T}}}
+  @assert length(layers) > 0 "Empty chains are invalid"
+  layers = Layer{DefaultBackend{T}}[l for l in layers]
+  Chain{T}(layers)
+end
+
+function (c :: Chain{T})(x :: T) where {T}
+  @assert isvalidinput(c, x)
+
   xold = c.layers[1](x)
   for l in c.layers[2:end]
     x = l(xold)
-    release_gpu_memory!(xold)
+    releasememory!(xold)
     xold = x
   end
   xold
 end
 
-swap(c :: Chain{GPU}) where {GPU} = Chain(swap.(c.layers)...)
-Base.copy(c :: Chain{GPU}) where {GPU} = Chain(copy.(c.layers)...)
+layers(c :: Chain) = c.layers
 
-valid_insize(c :: Chain, s) = valid_insize(c.layers[1], s)
-
-function outsize(c :: Chain, s)
+function isvalidinputsize(c :: Chain, s)
   for l in c.layers
-    s = outsize(l, s)
+    valid = isvalidinputsize(l, s)
+    !valid && return false
+    s = outputsize(l, s)
+  end
+  true
+end
+
+function outputsize(c :: Chain, s)
+  for l in c.layers
+    s = outputsize(l, s)
   end
   s
 end
 
-layers(c :: Chain) = c.layers
+parameters(c :: Chain) = mapreduce(parameters, vcat, c.layers)
 
-function show_composite(name, io :: IO, layers)
-  n = length(layers)
-  if n == 0
-    print(io, "$name(0)")
-  else
-    pp(layer) = isnothing(layer) ? print(io, "...") : show(io, layer)
-    if n <= 2
-      layers = layers
+function adapt(backend :: DefaultBackend{T}, c :: Chain) where {T}
+  Chain{T}(adapt.(Ref(backend), c.layers))
+end
+
+Base.copy(c :: Chain{T}) where {T} = Chain{T}(copy.(c.layers))
+
+showcomposite(io :: IO, l) = show(io, l)
+showcomposite(io :: IO, mime, l) = show(io, mime, l)
+
+function showcomposite(io :: IO, c :: CompositeLayer{DefaultBackend{T}}) where {T}
+  name = nameof(typeof(c))
+  ls = layers(c)
+  if length(ls) > 2
+    ls = [ls[1], nothing, ls[end]]
+  end
+  print(io, "$name($(length(ls)), ")
+  for l in ls[1:end-1]
+    isnothing(l) ? print(io, "..") : show(io, l)
+    print(io, " -> ")
+  end
+  print(io, ls[end])
+  print(io, ")")
+end
+
+function showcomposite( io :: IO
+                      , mime :: MIME"text/plain"
+                      , c :: CompositeLayer{DefaultBackend{T}}
+                      , indent ) where {T}
+
+  name = nameof(typeof(c))
+  ls = layers(c)
+  istr = repeat(" ", indent)
+  istrp = repeat(" ", indent + 1)
+  print(io, istr)
+  
+  print(io, "$name{$T} with $(length(ls)) layer(s):")
+  for l in ls
+    println()
+    if l isa PrimitiveLayer
+      print(io, istrp)
+      showcomposite(io, l)
     else
-      layers = [layers[1]; nothing; layers[end]]
-    end
-    print(io, "$name($n, ")
-    for l in layers[1:end-1]
-      pp(l);
-      print(io, " -> ")
-    end
-    print(io, layers[end])
-    print(io, ")")
-  end
-end
-
-function show_composite(name, io :: IO, mime :: MIME"text/plain", layers, gpu, indent)
-  n = length(layers)
-  at = gpu ? "GPU" : "CPU"
-  ind = join(repeat(" ", indent))
-  ind2 = join(repeat(" ", indent+1))
-  print(io, ind)
-  if n == 1
-    println(io, "$name{$at} with 1 layer:")
-  else
-    println(io, "$name{$at} with $n layers:")
-  end
-  for (i, layer) in enumerate(layers)
-    if layer isa PrimitiveLayer
-      print(io, ind2)
-      show(io, layer)
-    else
-      show(io, mime, layer, indent+2)
-    end
-    if i != n
-      println(io)
+      showcomposite(io, mime, l, indent + 1)
     end
   end
 end
 
-Base.show(io :: IO, c :: Chain) = show_composite("Chain", io, c.layers)
-
-function Base.show(io :: IO, mime :: MIME"text/plain", c :: Chain{GPU}, indent = 0) where {GPU}
-  show_composite("Chain", io, mime, c.layers, GPU, indent)
+function Base.show(io :: IO, c :: CompositeLayer{DefaultBackend{T}}) where {T}
+  showcomposite(io, c)
 end
 
-# -------- Stack ------------------------------------------------------------- # 
+function Base.show( io :: IO
+                  , mime :: MIME"text/plain"
+                  , c :: CompositeLayer{DefaultBackend{T}} ) where {T}
+  showcomposite(io, mime, c, 0)
+end
 
 """
-A stack of neural network layers. It is similar to a chain, but all
-intermediate layers are concatenated in the output of the stack.
+Residual neural network layer.
 """
-struct Stack{GPU} <: CompositeLayer{GPU}
-  layers :: Vector{Layer{GPU}}
-  stack_input :: Bool
+struct Residual{T} <: CompositeLayer{DefaultBackend{T}}
+  chain :: Chain{T}
+  f :: Activation
 end
-
-function Stack(layers :: Layer{GPU}...; 
-               gpu = nothing, stack_input :: Bool = false) where {GPU}
-
-  s = Stack{GPU}(Layer{GPU}[l for l in layers], stack_input)
-
-  if !isnothing(gpu)
-    gpu != GPU ? swap(s) : s
-  else
-    s
-  end
-
-end
-
-function (s :: Stack{GPU})(x) where {GPU}
-
-  batchsize = size(x)[end]
-
-  out = s.stack_input ? Any[x] : Any[]
-
-  for layer in s.layers
-    x = layer(x)
-    push!(out, x)
-  end
-
-  out = map(out) do data
-    reshape(data, (prod(size(data)[1:end-1]), batchsize))
-  end
-
-  vcat(out...)
-
-end
-
-function swap(s :: Stack{GPU}) where {GPU}
-  Stack(swap.(s.layers)..., stack_input = s.stack_input)
-end
-
-function Base.copy(s :: Stack{GPU}) where {GPU}
-  Stack(copy.(s.layers)..., stack_input = s.stack_input)
-end
-
-valid_insize(stack :: Stack, s) = valid_insize(stack.layers[1], s)
-
-function outsize(stack :: Stack, s)
-
-  shapes  = []
-  lengths = Int[]
-
-  if stack.stack_input
-    push!(shapes, s)
-    push!(lengths, prod(s))
-  end
-
-  for layer in stack.layers
-    @assert valid_insize(layer, s)
-    s = outsize(layer, s)
-    push!(shapes, s)
-    push!(lengths, prod(s))
-  end
-
-  sum(lengths)
-end
-
-layers(s :: Stack) = s.layers
-
-Base.show(io :: IO, s :: Stack) = show_composite("Stack", io, s.layers)
-
-function Base.show(io :: IO, mime :: MIME"text/plain", s :: Stack{GPU}, indent = 0) where {GPU}
-  show_composite("Stack", io, mime, s.layers, GPU, indent)
-end
-
-
-# -------- Residual ---------------------------------------------------------- # 
 
 """
-Residual block that wraps a chain. The input to the residual block is added
-to the output of the chain (on the same input). Note that the chain must be
-shape-conserving.
+    Residual(layers, f = identity)
+    Residual(chain, f = identity)
+
+Create a residual neural network layer that wraps a chain `chain` with
+activation `f`. The chain must conserve the shape of the input.
 """
-struct Residual{GPU} <: CompositeLayer{GPU}
-  chain :: Chain{GPU}
-  a :: NamedFunction
+function Residual(chain :: Chain{T}, f = identity) where {T}
+  f = resolve(Activation, f)
+  Residual{T}(chain, f)
 end
 
-function Residual(layers :: Layer{GPU}...; f = "id", gpu = GPU) where {GPU}
-  ls = (gpu == GPU) ? Layer[layers...] : Layer[swap.(layers)...]
-  Residual(Chain(ls...), NamedFunction(f))
+function Residual(layers :: AbstractVector{L}, f = identity) where {T, L <: Layer{DefaultBackend{T}}}
+  f = resolve(Activation, f)
+  Residual{T}(Chain(layers), f)
 end
 
-function (r :: Residual)(x)
+function (r :: Residual{T})(x :: T) where {T}
+  @assert isvalidinput(r, x)
   tmp = r.chain(x)
-  res = r.a.f.(tmp .+ x)
-  release_gpu_memory!(tmp)
+  res = r.f.(tmp .+ x)
+  releasememory!(tmp)
   res
-end
-
-
-swap(r :: Residual{GPU}) where {GPU} = Residual{!GPU}(swap(r.chain), r.a)
-Base.copy(r :: Residual{GPU}) where {GPU} = Residual{GPU}(copy(r.chain), r.a)
-
-function valid_insize(r :: Residual, s)
-  valid = valid_insize(r.chain, s)
-  if valid
-    os = outsize(r.chain, s)
-    os != s && error("Residual chain is not shape-conserving: $os != $s.")
-  end
-  valid
-end
-
-function outsize(r :: Residual, s)
-  os = outsize(r.chain, s)
-  os != s && error("Residual layer is not shape-conserving: $os != $s.")
-  os
 end
 
 layers(r :: Residual) = layers(r.chain)
 
-Base.show(io :: IO, r :: Residual) = show_composite("Residual", io, layers(r))
-
-function Base.show(io :: IO, mime :: MIME"text/plain", r :: Residual{GPU}, indent = 0) where {GPU}
-  show_composite("Residual", io, mime, layers(r), GPU, indent)
+function isvalidinputsize(r :: Residual, s)
+  valid = isvalidinputsize(r.chain, s)
+  if valid
+    outsz = outputsize(r.chain, s)
+    @assert outsz == s "Residual chain is not shape-conserving: $outsz != $s."
+  end
+  valid
 end
 
+function outputsize(r :: Residual, s)
+  outsz = outputsize(r.chain, s)
+  @assert outsz == s "Residual chain is not shape-conserving: $outsz != $s."
+  outsz
+end
 
-# -------- Chain/Stack Macro ------------------------------------------------- #
+function adapt(backend :: DefaultBackend{T}, r :: Residual) where {T}
+  Residual{T}(adapt(backend, r.chain), r.f)
+end
 
-getsize(t :: Int) = t
-getsize(t :: Tuple) = t
-getsize(g :: AbstractGame) = size(g)
-getsize(:: Type{G}) where {G <: AbstractGame} = size(G)
+parameters(r :: Residual) = parameters(r.chain)
+
+Base.copy(r :: Residual{T}) where {T} = Residual{T}(copy(r.chain), r.f)
+
+
+##
+## Chain macro 
+##
+
+inputsize(t :: Int) = (t,)
+inputsize(t :: Tuple) = t
+inputsize(val :: Any) = size(val)
 
 function composite_arguments(symbol :: Symbol, size)
   if symbol in (:Dense,)
     (prod(size),)
-  elseif symbol in (:Conv, :Deconv)
+  elseif symbol in (:Conv,)
     (size[3],)
   elseif symbol in (:Batchnorm,)
     (size[end],)
-  elseif symbol in (:Chain, :Stack, :Pool, :Dropout, :Pointwise)
+  elseif symbol in (:Chain, :Residual)
     ()
   else
-    error("$symbol is no valid layer constructor")
+    error("$symbol is no supported layer constructor")
   end
 end
 
-# Take the size of a game / a game type itself as first argument,
-# and take a tuple of "partial" layer constructors as second argument.
-# The macro will calculate and prepend the constructor arguments that relate to
-# the input size for each layer consecutively.
-#
-# Example:
-#
-#   @chain (9,9,1) (Conv(10), Dense(50))
-#
-# will call
-#
-#   Chain(Conv(1, 10), Dense(490, 50))
-#
-# such that the two layers are compatible.
-
 function composite_macro_body(c, ex, layers...)
 
-  s = :(Jtac.Model.getsize($ex))
+  s = :(Jtac.Model.inputsize($ex))
 
   ssym = gensym("s")
   names = []
@@ -700,6 +687,14 @@ function composite_macro_body(c, ex, layers...)
     else
       [layer]
     end
+  end
+
+  # Check for activation function
+  if layers[1] isa QuoteNode && layers[1].value isa Symbol
+    activation = layers[1]
+    layers = layers[2:end]
+  else
+    activation = nothing
   end
 
   # Catch keyword arguments
@@ -756,23 +751,31 @@ function composite_macro_body(c, ex, layers...)
     push!(body, :(local $name = $(layer)))
 
     # Obtain the new input size
-    push!(body, :(local $ssym = Jtac.Model.outsize($name, $ssym)))
-
+    push!(body, :(local $ssym = Jtac.Model.outputsize($name, $ssym)))
   end
 
   name = gensym("l")
+
+  # Prepare layer and keyword arguments
+  layersex = Expr(:vect, names...)
+  kwargsex = Expr(:vect, kwargs...)
+  
   # Join all defined layers to a chain
-  push!(body, :(local $name = $c($(Expr(:vect, names...))...; $(Expr(:vect, kwargs...))...)))
-  push!(body, :(@assert Jtac.Model.valid_insize($name, $s) "Macro failed to respect input size. This should not happen."))
+  if !isnothing(activation)
+    push!(body, :(local $name = $c($layersex, $activation; $kwargsex...)))
+  else
+    push!(body, :(local $name = $c($layersex; $kwargsex...)))
+  end
+  push!(body, :(@assert Jtac.Model.isvalidinputsize($name, $s) "Macro failed to respect input size. This should not happen."))
   push!(body, :($name))
 
   # Return the created block of code
   esc(Expr(:block, body...))
-
 end
 
+
 """
-    @chain(gametype, [kwoptions...,] partial_layer_constructors...)
+    @chain(gametype, [kwoptions...], partial_layer_constructors...)
 
 Macro to comfortably create chains that are consistent with `gametype`.
 
@@ -786,8 +789,8 @@ given.
 # The following two calls will create the same networks
 # Both of them are compatible with the game TicTacToe
 
-Model.Chain([ Model.Conv(1, 32, "relu"), Model.Dense(32, 50) ])
-Model.@chain Game.TicTacToe Conv(32, "relu") Dense(50)
+Model.Chain([ Model.Conv(1, 32, :relu), Model.Dense(32, 50) ])
+Model.@chain Game.TicTacToe Conv(32, :relu) Dense(50)
 ```
 """
 macro chain(ex, layers...)
@@ -795,18 +798,11 @@ macro chain(ex, layers...)
 end
 
 """
-    @stack(gametype, [kwoptions...,] partial_layer_constructors...)
+    @residual(gametype, [kwoptions...], partial_layer_constructors...) 
 
-Stack macro that works analogously to `@chain`.
-"""
-macro stack(ex, layers...)
-  composite_macro_body(:(Jtac.Model.Stack), ex, layers...)
-end
+Macro to comfortably create residual layers that are consistent with `gametype`.
 
-"""
-    @residual(gametype, [kwoptions...,] partial_layer_constructors...)
-
-Macro to comfortably create residual blocks. It works like `@chain`.
+See also [`Chain`](@ref).
 """
 macro residual(ex, layers...)
   composite_macro_body(:(Jtac.Model.Residual), ex, layers...)
