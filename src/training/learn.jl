@@ -29,30 +29,18 @@ L1 weight regularization.
 """
 struct L1Reg <: Regularization end
 
-function (:: L1Reg)(model :: NeuralModel)
-  sum(Model.parameters(model)) do param
-    if !isbiasparameter(param)
-      sum(abs, param)
-    else
-      0f0
-    end
-  end
-end
+(:: L1Reg)(x :: AbstractArray) = sum(abs, x)
+(:: L1Reg)(:: AbstractVector{F}) where {F} = F(0)
+(r :: L1Reg)(model) = sum(r, Model.parameters(model))
 
 """
 L2 weight regularization.
 """
 struct L2Reg <: Regularization end
 
-function (:: L2Reg)(model :: NeuralModel)
-  sum(Model.parameters(model)) do param
-    if !isbiasparameter(param)
-      sum(abs2, param)
-    else
-      0f0
-    end
-  end
-end
+(:: L2Reg)(x :: AbstractArray) = sum(abs2, x)
+(:: L2Reg)(:: AbstractVector{F}) where {F} = F(0)
+(r :: L2Reg)(model) = sum(r, Model.parameters(model))
 
 """
     gettargets(model, dataset; [targets])
@@ -119,22 +107,22 @@ end
 Structure that stores meta information necessary to evaluate the model loss on a
 dataset. It holds as members
 - a vector of active targets (`targets`),
-- their names (`targetnames`),
-- their weights (`targetweights`),
-- their loss functionals (`lossfunctions`),
+- their names (`target_names`),
+- their weights (`target_weights`),
+- their loss functionals (`target_lossfunctions`),
 - a vector of active regularizations (`regs`),
-- their names (`regnames`),
-- their weights (`regweights`)
+- their names (`reg_names`),
+- their weights (`reg_weights`)
 """
 struct LossContext
   targets :: Vector{AbstractTarget}
-  targetnames :: Vector{Symbol}
-  targetweights :: Vector{Float32}
-  targetlossfunctions :: Vector{LossFunction}
+  target_names :: Vector{Symbol}
+  target_weights :: Vector{Float32}
+  target_lossfunctions :: Vector{LossFunction}
 
   regs :: Vector{Regularization}
-  regnames :: Vector{Symbol}
-  regweights :: Vector{Float32}
+  reg_names :: Vector{Symbol}
+  reg_weights :: Vector{Float32}
 end
 
 """
@@ -158,7 +146,7 @@ the named tuple `weights`. Each weight defaults to `1f0`.
 See also [`losscomponents`](@ref) and [`loss`](@ref).
 """
 function LossContext( model :: NeuralModel{G, B}
-                    , dataset :: Union{DataSet{G}, DataCache{G, T}}
+                    , dataset :: Union{DataSet{G}, DataCache{G, T}} = DataSet(model)
                     ; losses = (;)
                     , reg = (;)
                     , targets = nothing           
@@ -171,26 +159,26 @@ function LossContext( model :: NeuralModel{G, B}
   losses = (; losses...)
 
   targets = gettargets(model, dataset; targets)
-  targetnames = collect(keys(targets))
-  targetlossfunctions = getlossfunctions(losses, targets)
-  targetweights = [F(get(weights, name, 1)) for name in targetnames]
+  target_names = collect(keys(targets))
+  target_lossfunctions = getlossfunctions(losses, targets)
+  target_weights = [F(get(weights, name, 1)) for name in target_names]
   
-  regnames = collect(keys(reg))
-  regweights = [F(get(weights, name, 1)) for name in regnames]
+  reg_names = collect(keys(reg))
+  reg_weights = [F(get(weights, name, 1)) for name in reg_names]
 
-  @assert isempty(intersect(targetnames, regnames)) """
+  @assert isempty(intersect(target_names, reg_names)) """
   The same name cannot be used for both a prediction target and a regularization
   term.
   """
 
   LossContext(
     collect(targets),
-    targetnames,
-    targetweights,
-    targetlossfunctions,
+    target_names,
+    target_weights,
+    target_lossfunctions,
     collect(reg),
-    regnames,
-    regweights,
+    reg_names,
+    reg_weights,
   )
 end
 
@@ -201,7 +189,7 @@ Return a `LossContext` derived from `context` that deactivates all prediction
 targets.
 """
 function excludetargets(ctx :: LossContext)
-  LossContext([], [], [], [], ctx.regs, ctx.regnames, ctx.regweights)
+  LossContext([], [], [], [], ctx.regs, ctx.reg_names, ctx.reg_weights)
 end
 
 """
@@ -213,9 +201,9 @@ regularization terms.
 function excluderegularizations(ctx :: LossContext)
   LossContext(
     ctx.targets,
-    ctx.targetnames,
-    ctx.targetweights,
-    ctx.targetlossfunctions,
+    ctx.target_names,
+    ctx.target_weights,
+    ctx.target_lossfunctions,
     [],
     [],
     [],
@@ -243,21 +231,21 @@ function losscomponents( model :: NeuralModel{G, B}
                        , ctx :: LossContext
                        ) where {G, T <: AbstractArray, B <: Backend{T}}
 
-  labels = getlabels(cache, ctx.targetnames)
-  outputs = model(cache.data; targets = ctx.targetnames) 
-  lossfs = ctx.targetlossfunctions
-  weights = ctx.targetweights
+  labels = getlabels(cache, ctx.target_names)
+  outputs = model(cache.data; targets = ctx.target_names) 
+  lossfs = ctx.target_lossfunctions
+  weigths = ctx.target_weights
 
   tlosses = map((l, x, y, w) -> w * l(x, y), lossfs, outputs, labels, weigths)
   tlosses ./= length(cache)
-  rlosses = Float32[w * r(model) for (r, w) in zip(ctx.regs, ctx.regweights)]
+  rlosses = Float32[w * r(model) for (r, w) in zip(ctx.regs, ctx.reg_weights)]
 
-  (; zip(ctx.targetnames, tlosses)..., zip(ctx.regnames, rlosses)...)
+  (; zip(ctx.target_names, tlosses)..., zip(ctx.reg_names, rlosses)...)
 end
 
 function losscomponents(model, cache :: DataCache; kwargs...)
-  ctx = LossContext(model, dataset; kwargs...)
-  losscomponents(model, dataset, ctx)
+  ctx = LossContext(model, cache; kwargs...)
+  losscomponents(model, cache, ctx)
 end
 
 function losscomponents( model :: NeuralModel{G, B}
@@ -266,18 +254,18 @@ function losscomponents( model :: NeuralModel{G, B}
                        ; batchsize :: Integer = 1024
                        ) where {G, T <: AbstractArray, B <: Backend{T}}
 
-  lossfs = ctx.targetlossfunctions
-  weights = ctx.targetweights
+  lossfs = ctx.target_lossfunctions
+  weights = ctx.target_weights
   tlosses = sum(DataBatches(T, dataset, batchsize)) do cache
-    labels = getlabels(cache, ctx.targetnames)
-    outputs = model(cache.data; targets = ctx.targetnames)
+    labels = getlabels(cache, ctx.target_names)
+    outputs = model(cache.data; targets = ctx.target_names)
     map((l, x, y, w) -> w * l(x, y), lossfs, outputs, labels, weights)
   end
   tlosses ./= length(dataset)
 
-  rlosses = Float32[w * r(model) for (r, w) in zip(ctx.regs, ctx.regweights)]
+  rlosses = Float32[w * r(model) for (r, w) in zip(ctx.regs, ctx.reg_weights)]
 
-  (; zip(ctx.targetnames, tlosses)..., zip(ctx.regnames, rlosses)...)
+  (; zip(ctx.target_names, tlosses)..., zip(ctx.reg_names, rlosses)...)
 end
 
 function losscomponents(model, dataset :: DataSet; batchsize = 1024, kwargs...)
@@ -303,18 +291,18 @@ reduce memory requirements.
 See also [`losscomponents`](@ref) and [`LossContext`](@ref).
 """
 function loss(model, cache :: DataCache, ctx :: LossContext)
-  labels = getlabels(cache, ctx.targetnames)
-  outputs = model(cache.data; targets = ctx.targetnames)
+  labels = getlabels(cache, ctx.target_names)
+  outputs = model(cache.data; targets = ctx.target_names)
 
   tloss = 0f0
-  weights = ctx.targetweights
-  lossfs = ctx.targetlossfunctions
+  weights = ctx.target_weights
+  lossfs = ctx.target_lossfunctions
   foreach(lossfs, outputs, labels, weights) do l, x, y, weight
     tloss += weight * l(x, y)
   end
   
   rloss = 0f0
-  foreach(ctx.regs, ctx.regweights) do r, weight
+  foreach(ctx.regs, ctx.reg_weights) do r, weight
     rloss += weight * r(model)
   end
 
@@ -342,7 +330,7 @@ function loss( model :: NeuralModel{G, B}
   end
 
   rloss = 0f0
-  foreach(ctx.regs, ctx.regweights) do r, weight
+  foreach(ctx.regs, ctx.reg_weights) do r, weight
     rloss += weight * r(model)
   end
 
@@ -351,10 +339,62 @@ end
 
 
 """
-    step!(model, cache, context, opt)
+   _loss(trunk, heads, activations, cache, context) 
+
+Low-level loss function that can be used by autodiff-based training backends.
+"""
+function _loss(trunk, heads, activations, data, labels, weights, losses)
+  tmp = trunk(data)
+  sum(1:length(heads)) do index
+    h = heads[index]
+    a = activations[index]
+
+    w = weights[index]
+    l = losses[index]
+    y = labels[index]
+
+    x = a(h(tmp))
+    w * l(x, y)
+  end
+end
+
+
+"""
+   _regloss(trunk, heads, activations, cache, context) 
+
+Low-level regularization loss function that can be used by autodiff-based training backends.
+"""
+function _regloss(params, ctx :: LossContext)
+  if !isempty(ctx.regs)
+    sum(1:length(ctx.regs)) do index
+      r = ctx.regs[index]
+      w = ctx.reg_weights[index]
+      w * sum(r, params)
+    end
+  else
+    0f0
+  end
+end
+
+"""
+    setup(model, context, opt) 
+
+Set up an optimizer `opt` for model `model` and loss context `context`.
+
+Must be implemented by trainable backends together with [`step!`](@ref).
+"""
+function setup(model :: NeuralModel, ctx :: LossContext, opt)
+  error("Training is not supported for this backend")
+end
+
+
+"""
+    step!(model, cache, context, opt_setup)
 
 Train `model` for one training step on the data in `cache` in the loss context
-`context` via the optimizer `opt`.
+`context` via the optimizer setup `opt_setup`.
+
+Must be implemented by trainable backends together with [`setup`](@ref).
 """
 function step!(model, cache, context, opt)
   error("Training is not supported for this backend")
@@ -366,11 +406,11 @@ end
 Print a header row that announces the loss components in ctx.
 """
 function printlossheader(ctx :: LossContext)
-  targets = map(ctx.targetnames) do name
+  targets = map(ctx.target_names) do name
     str = string(name)[1:min(end, 8)]
     Printf.@sprintf("%8s", str)
   end
-  regs = map(ctx.regnames) do name
+  regs = map(ctx.reg_names) do name
     str = string(name)[1:min(end, 8)]
     Printf.@sprintf("%8s", str)
   end
@@ -434,16 +474,18 @@ function learn!( model :: NeuralModel{G, B}
     printlossheader(ctx)
   end
 
+  opt_setup = setup(model, ctx, opt)
+
   totalsteps = 0
   for epoch in 1:epochs
 
     if verbose
-      steps = ceil(Int, sum(length, ds) / batchsize)
+      steps = ceil(Int, length(ds) / batchsize)
       step, finish = Util.stepper("# Learning...", steps)
     end
 
-    for cache in Batches(T, ds, batchsize; shuffle, partial)
-      step!(model, cache, ctx, opt)
+    for cache in DataBatches(T, ds, batchsize; shuffle, partial)
+      step!(model, cache, ctx, opt_setup)
       callback(totalsteps += 1)
       if verbose
         step()
@@ -463,3 +505,5 @@ function learn!( model :: NeuralModel{G, B}
     callback_epoch(epoch)
   end
 end
+
+# function learn!()

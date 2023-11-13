@@ -150,7 +150,6 @@ function (model :: NeuralModel{G, B})( games :: Vector{G}
   out
 end
 
-
 """
     apply(model, game; targets = targetnames(model), activate = true)  
 
@@ -168,8 +167,8 @@ function Model.apply( model :: NeuralModel{G, B}
 
   outputs = model([game]; targets, activate)
   outputs = map(outputs) do output
-    out = reshape(output, :)
-    length(out) == 1 ? out[1] : convert(Array{Float32}, out)
+    out = convert(Array{Float32}, reshape(output, :))
+    length(out) == 1 ? out[1] : out
   end
   (; zip(targets, outputs)...)
 end

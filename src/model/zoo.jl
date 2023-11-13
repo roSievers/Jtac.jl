@@ -76,7 +76,8 @@ end
 function ZeroConv( G :: Type{<: AbstractGame}
                  ; blocks = 6
                  , filters = 256
-                 , targets = (;) )
+                 , targets = (;)
+                 , kwargs... )
   @assert blocks >= 1
 
   heads = (;
@@ -87,16 +88,17 @@ function ZeroConv( G :: Type{<: AbstractGame}
   ci = size(G)[3]
   layers = [
     zero_conv_block(G, ci, filters);
-    [zero_conv_block(G, filters, filters) for i in 1:(blocks-1)]
+    [zero_conv_block(G, filters, filters) for _ in 1:(blocks-1)]
   ]
   trunk = Model.Chain(layers)
-  NeuralModel(G, trunk; heads, targets)
+  NeuralModel(G, trunk; heads, targets, kwargs...)
 end
 
 function ZeroRes( G :: Type{<: AbstractGame}
                 ; blocks = 6
                 , filters = 256
-                , targets = (;) )
+                , targets = (;)
+                , kwargs... )
   @assert blocks >= 1
   heads = (;
     value = zero_vhead(G, filters),
@@ -106,10 +108,10 @@ function ZeroRes( G :: Type{<: AbstractGame}
   ci = size(G)[3]
   layers = [
     zero_conv_block(G, ci, filters);
-    [zero_res_block(G, filters) for i in 1:(blocks-1)]
+    [zero_res_block(G, filters) for _ in 1:(blocks-1)]
   ]
   trunk = Model.Chain(layers)
-  NeuralModel(G, trunk; heads, targets)
+  NeuralModel(G, trunk; heads, targets, kwargs...)
 end
 
 

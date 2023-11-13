@@ -270,8 +270,6 @@ end
 #   out .= d.f(out)
 # end
 
-params(d :: Dense) = d.bias ? [d.w, d.b] : [d.w]
-
 isvalidinputsize(d :: Dense, s) = (prod(s) == size(d.w, 2))
 
 function outputsize(d :: Dense, s)
@@ -339,7 +337,7 @@ function Conv( ci :: Int
   s = isa(stride, Int) ? (stride, stride) : stride
 
   w = kaiming(rng, k[1], k[2], ci, co)
-  b = zeros(Float32, 1, 1, co, 1)
+  b = zeros(Float32, co)
   f = resolve(Activation, f)
 
   Conv{Array{Float32}}(w, b, f, bias, p, s)
@@ -348,7 +346,8 @@ end
 function (c :: Conv{T})(x :: T) where {T}
   @assert isvalidinput(c, x)
   tmp = NNlib.conv(x, c.w, pad = c.p, stride = c.s)
-  res = c.f(tmp .+ c.b)
+  b = reshape(c.b, 1, 1, :, 1)
+  res = c.f(tmp .+ b)
   releasememory!(tmp)
   res
 end

@@ -333,7 +333,9 @@ function MCTSPlayer( model :: AbstractModel{G}
 end
 
 # The default MCTSPlayer uses the RolloutModel
-MCTSPlayer(; kwargs...) = MCTSPlayer(RolloutModel(); kwargs...)
+function MCTSPlayer(G :: Type{<: AbstractGame}; kwargs...)
+  MCTSPlayer(RolloutModel(G); kwargs...)
+end
 
 function MCTSPlayer( player :: IntuitionPlayer{G}
                    , kwargs...
