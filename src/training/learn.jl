@@ -126,8 +126,7 @@ struct LossContext
 end
 
 """
-    LossContext(model, dataset; [losses, regs, targets, weights])
-    LossContext(model, cache; [losses, regs, targets, weights])
+    LossContext(model, [dataset/cache; losses, reg, targets, weights])
 
 Construct a `LossContext` object.
 
@@ -137,7 +136,7 @@ functions can be customized via the named tuple `losses`. If left unspecified
 for a target, the loss function returned by [`Target.defaultlossfunction`](@ref)
 is used.
 
-The argument `regs` must be a named tuple of [`Regularization`](@ref)s, whose
+The argument `reg` must be a named tuple of [`Regularization`](@ref)s, whose
 names must be distinct from active target names.
 
 The weights for both target and regularization components can be adjusted via
@@ -341,7 +340,7 @@ end
 """
    _loss(trunk, heads, activations, cache, context) 
 
-Low-level loss function that can be used by autodiff-based training backends.
+Low-level loss function that may be used by training backends.
 """
 function _loss(trunk, heads, activations, data, labels, weights, losses)
   tmp = trunk(data)
@@ -362,7 +361,7 @@ end
 """
    _regloss(trunk, heads, activations, cache, context) 
 
-Low-level regularization loss function that can be used by autodiff-based training backends.
+Low-level regularization loss function that may be used by training backends.
 """
 function _regloss(params, ctx :: LossContext)
   if !isempty(ctx.regs)
@@ -377,28 +376,43 @@ function _regloss(params, ctx :: LossContext)
 end
 
 """
+    defaultoptimizer(backend)      
+
+Return a default optimizer object for the backend `backend`. Should correspond
+to stochastic gradient descent with learning rate `0.01` and momentum `0.9`.
+
+Must be implemented by trainable backends together with [`setup`](@ref) and
+[`step`](@ref).
+"""
+function defaultoptimizer(backend :: Backend)
+  error("Training is not supported for this backend")
+end
+
+"""
     setup(model, context, opt) 
 
 Set up an optimizer `opt` for model `model` and loss context `context`.
 
-Must be implemented by trainable backends together with [`step!`](@ref).
+Must be implemented by trainable backends together with [`step!`](@ref) and
+[`defaultoptimizer`](@ref).
 """
 function setup(model :: NeuralModel, ctx :: LossContext, opt)
   error("Training is not supported for this backend")
 end
 
-
 """
     step!(model, cache, context, opt_setup)
 
 Train `model` for one training step on the data in `cache` in the loss context
-`context` via the optimizer setup `opt_setup`.
+`context` via the optimizer setup `opt_setup`. Returns the loss value.
 
-Must be implemented by trainable backends together with [`setup`](@ref).
+Must be implemented by trainable backends together with [`setup`](@ref) and
+[`defaultoptimizer`](@ref).
 """
 function step!(model, cache, context, opt)
   error("Training is not supported for this backend")
 end
+
 
 """
     printlossheader(ctx)
@@ -449,15 +463,51 @@ end
 
 
 """
-    learn!(model, data, context, opt; kwargs...)     
+    learn!(model, data, context; kwargs...)     
+    learn!(model, data; context_kwargs..., kwargs...)     
 
-Train `model` on `data` with loss context `context` and optimizer `opt`.
+Train `model` on `data` with loss context `context` and optimizer `opt`. If no
+loss context is provided, it is derived from additional keyword arguments (see
+[`LossContext`](@ref)).
+
+# Arguments
+- `opt`: Optimizer to be used. Defaults to SGD with learning rate `0.01` and \
+momentum `0.9`.
+- `testset = nothing`: Testset on which the loss is evaluated after each epoch.
+- `epochs = 10`: Number of epochs.
+- `batchsize = 64`: Batchsize for the gradient descent steps.
+- `shuffle = true`: Whether to shuffle `data` for each epoch.
+- `partial = true`: Whether to train over incomplete batches.
+- `callback`: Function that is called after each training step.
+- `callback_epoch`: Function that is called after each epoch.
+- `verbose = true`: Whether to print progress information and loss values.
+
+# Examples
+```julia
+import Flux # to trigger flux support
+
+# Generate training data
+G = Game.TicTacToe
+player = Player.MCTSPlayer(G, power = 500)
+ds = Training.record(player, 100)
+
+# Train on the generated data for 5 epochs
+chain = Model.@chain G Conv(32, :relu) Dense(64, :relu)
+model = Model.NeuralModel(G, chain, backend = :flux)
+weights = (value = 2.5, policy = 1)
+Training.learn!(model, ds; epochs = 5, batchsize = 64, opt = Flux.Adam(1e-2))
+
+# Use the model to generate new data and train for another 10 epochs
+player = Player.MCTSPlayer(model, power = 500)
+ds = Training.record(player, 100)
+Training.learn!(model, ds; epochs = 10, batchsize = 64, opt = Flux.Adam(1e-2))
+```
 """
 function learn!( model :: NeuralModel{G, B}
                , ds :: DataSet{G}
                , ctx :: LossContext
-               , opt
-               ; test = nothing
+               ; opt = defaultoptimizer(B())
+               , testset = nothing
                , epochs = 10
                , batchsize = 64
                , shuffle = true
@@ -494,9 +544,9 @@ function learn!( model :: NeuralModel{G, B}
 
     if verbose
       finish()
-      if !isnothing(test)
+      if !isnothing(testset)
         printlossvalues(model, ds, ctx; epoch, batchsize, color = 245)
-        printlossvalues(model, test, ctx; epoch, batchsize)
+        printlossvalues(model, testset, ctx; epoch, batchsize)
       else
         printlossvalues(model, ds, ctx; epoch, batchsize, color = 245)
       end
@@ -504,6 +554,19 @@ function learn!( model :: NeuralModel{G, B}
 
     callback_epoch(epoch)
   end
+
+  opt_setup # needed to continue training consistently
 end
 
-# function learn!()
+function learn!( model :: NeuralModel{G, B}
+               , ds :: DataSet{G}
+               ; losses = (;)
+               , reg = (;)
+               , targets = nothing
+               , weights = (;)
+               , kwargs...
+               ) where {G, T <: AbstractArray, B <: Backend{T}}
+
+  ctx = LossContext(model, ds; losses, reg, targets, weights)
+  learn!(model, ds, ctx; kwargs...)
+end

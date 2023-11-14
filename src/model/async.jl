@@ -1,9 +1,7 @@
 
-# -------- Async Wrapper ----------------------------------------------------- #
-
 """
-Asynchronous model wrapper that allows a model to be called on a batch of games
-in parallel when the single calls take place in an async context.
+Asynchronous model wrapper that allows for a model to be called on a batch of
+games in parallel when the single calls take place in an async context.
 """
 mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   model      :: NeuralModel{G}
@@ -35,7 +33,7 @@ Wrap `model` into an `AsyncModel` model.
 - `batchsize = 64`: Maximal number of games evaluated in parallel.
 - `buffersize = 10batchsize`: Size of the channel that buffers games to be \
 evaluated.
-- `spawn = false`: If true, the worker is spawned in its own thread.
+- `spawn = false`: If true, the worker is spawned in a thread.
 - `dynamic = true`: If true, the model is not forced to wait until `batchsize` \
 games are buffered before evaluation. This can prevent blocking (if games stop \
 being evaluated) but may lead to situations where the effective batchsize is \

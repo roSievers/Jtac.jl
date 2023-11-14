@@ -307,14 +307,14 @@ struct Conv{T} <: PrimitiveLayer{DefaultBackend{T}}
   f :: Activation
 
   bias :: Bool          # (trainable) bias?
-  p :: Tuple{Int, Int}  # padding
+  p :: Tuple{Int, Int}  # pad
   s :: Tuple{Int, Int}  # stride
 end
 
 Pack.@binarray Conv [:w, :b]
 
 """
-    Conv(ci, co, f = identity; window = 3, padding = 0, stride = 1, [bias, rng])
+    Conv(ci, co, f = identity; window = 3, pad = 0, stride = 1, [bias, rng])
 
 Create a `Conv` layer with `ci` input and `co` output channels, activated by
 `f`.
@@ -327,13 +327,13 @@ function Conv( ci :: Int
              , co :: Int
              , f = identity
              ; window = 3
-             , padding = 0
+             , pad = 0
              , stride = 1
              , bias = true
              , rng = Random.default_rng() )
 
   k = isa(window, Int) ? (window, window) : window
-  p = isa(padding, Int) ? (padding, padding) : padding
+  p = isa(pad, Int) ? (pad, pad) : pad
   s = isa(stride, Int) ? (stride, stride) : stride
 
   w = kaiming(rng, k[1], k[2], ci, co)
@@ -403,7 +403,7 @@ function Base.show(io :: IO, ::MIME"text/plain", c :: Conv{T}) where {T}
   window = size(c.w)[1:2]
   println(io, "Conv{$T} layer with $oc out-channels and $name activation:")
   println(io, " window:  $window")
-  println(io, " padding: $(c.p)")
+  println(io, " pad: $(c.p)")
   print(io, " stride:  $(c.s)")
 end
 

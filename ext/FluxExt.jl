@@ -1,6 +1,10 @@
+
 module FluxExt
 
+import Flux
+
 using Jtac
+import Jtac.Game: AbstractGame
 import Jtac.Model: Activation,
                    Backend,
                    DefaultBackend,
@@ -9,28 +13,17 @@ import Jtac.Model: Activation,
                    CompositeLayer,
                    NeuralModel
 
-import Flux
-
+"""
+Neural layer backend supported by the julia package Flux.jl.
+"""
 struct FluxBackend{T} <: Backend{T} end
+
+adapt(T, :: FluxBackend) = FluxBackend{T}()
 
 function Base.show(io :: IO, :: FluxBackend{T}) where {T}
   print(io, "FluxBackend{$T}()")
 end
 
-adapt(T, :: FluxBackend) = FluxBackend{T}()
-
-const FluxDense = Flux.Chain{Tuple{typeof(Flux.flatten), D}} where {D <: Flux.Dense}
-const FluxResidual = Flux.Chain{Tuple{S, A}} where {S <: Flux.SkipConnection, A<: Activation}
-
-wrap(T, layer :: FluxDense) = Dense{T}(layer)
-wrap(T, layer :: Flux.Conv) = Conv{T}(layer)
-wrap(T, layer :: Flux.BatchNorm) = Batchnorm{T}(layer)
-wrap(T, layer :: Flux.Chain) = Chain{T}(layer)
-wrap(T, layer :: FluxResidual) = Residual{T}(layer)
-
-unwrap(l :: Layer{FluxBackend{T}}) where {T} = l.layer
-
-(l :: Layer{F})(x) where {F <: FluxBackend} = unwrap(l)(x)
 
 #
 # TODO: There is a flux bug in Flux.outputsize(trunk, size(data))
@@ -51,8 +44,22 @@ function Model.outputsize(l :: Layer{<: FluxBackend}, insize)
 end
 
 ##
-## FluxBackend layers
+## FluxBackend layer implementations
 ##
+
+const FluxDense = Flux.Chain{Tuple{typeof(Flux.flatten), D}} where {D <: Flux.Dense}
+const FluxResidual = Flux.Chain{Tuple{S, A}} where {S <: Flux.SkipConnection, A<: Activation}
+
+wrap(T, layer :: FluxDense) = Dense{T}(layer)
+wrap(T, layer :: Flux.Conv) = Conv{T}(layer)
+wrap(T, layer :: Flux.BatchNorm) = Batchnorm{T}(layer)
+wrap(T, layer :: Flux.Chain) = Chain{T}(layer)
+wrap(T, layer :: FluxResidual) = Residual{T}(layer)
+
+unwrap(l :: Layer{FluxBackend{T}}) where {T} = l.layer
+
+(l :: Layer{F})(x) where {F <: FluxBackend} = unwrap(l)(x)
+
 
 struct Dense{T} <: PrimitiveLayer{FluxBackend{T}}
   layer :: FluxDense
@@ -90,16 +97,19 @@ function Model.adapt(:: DefaultBackend{T}, d :: Conv) where {T}
   w = convert(T, d.layer.weight)
   b = d.layer.bias == false ? zeros(size(w, 4)) : d.layer.bias
   b = convert(T, b)
-  padding = d.layer.pad
+  pad = d.layer.pad
   stride = d.layer.stride
-  Model.Conv{T}(w, b, d.layer.σ, !(d.layer.bias == false), padding, stride)
+  Model.Conv{T}(w, b, d.layer.σ, !(d.layer.bias == false), pad, stride)
 end
+
 
 struct Batchnorm{T} <: PrimitiveLayer{FluxBackend{T}}
   layer :: Flux.BatchNorm
 end
 
-function Model.adapt(:: FluxBackend{T}, b :: Model.Batchnorm) where {F, T <: AbstractArray{F}}
+function Model.adapt( :: FluxBackend{T}
+                    , b :: Model.Batchnorm
+                    ) where {F, T <: AbstractArray{F}}
   eps = F(1e-5)
   momentum = F(0.1)
   affine = true
@@ -169,19 +179,43 @@ function Model.adapt(backend :: DefaultBackend{T}, r :: Residual) where {T}
   Model.Residual(chain, r.layer.layers[2])
 end
 
+
 ##
 ## Training
 ##
 
-struct FluxHelperModel
+function Model.trainingmodel( model :: NeuralModel{G, B}
+                            ) where {G <: AbstractGame, B <: FluxBackend}
+  model
+end
+
+"""
+Flux optimizer setup that can be used to continue training with seamless
+optimizer settings.
+"""
+struct FluxOptimizerSetup
+  setup
+end
+
+function Base.show(io :: IO, ::MIME"text/plain", s :: FluxOptimizerSetup)
+  print(io, "FluxOptimizerSetup()")
+end
+
+
+"""
+Helper model struct that collects the trunk, heads, and activations of a
+[`NeuralModel`](@ref) after targets have been fixed in a way that is more
+compatible with Flux and Zygote (e.g., by using tuples).
+"""
+struct FluxProxyModel
   trunk
   heads
   activations
 end
 
-Flux.@functor FluxHelperModel
+Flux.@functor FluxProxyModel
 
-function FluxHelperModel(model :: Model.NeuralModel, ctx)
+function FluxProxyModel(model :: Model.NeuralModel, ctx)
   heads = []
   activations = []
 
@@ -191,44 +225,38 @@ function FluxHelperModel(model :: Model.NeuralModel, ctx)
     push!(activations, model.target_activations[index])
   end
 
-  FluxHelperModel(
-    model.trunk.layer,
-    Tuple(heads),
-    Tuple(activations),
-  )
-end
-
-function Model.trainingmodel(model :: NeuralModel{G, <: FluxBackend}) where {G}
-  model
+  FluxProxyModel(model.trunk.layer, Tuple(heads), Tuple(activations))
 end
 
 function Training.setup( model :: NeuralModel{G, <: FluxBackend}
                        , ctx :: Training.LossContext
-                       , opt ) where {G <: Game.AbstractGame}
-  if opt isa NamedTuple
+                       , opt ) where {G <: AbstractGame}
+  if opt isa FluxOptimizerSetup
     opt
   else
-    proxy = FluxHelperModel(model, ctx)
-    Flux.setup(opt, proxy)
+    proxy = FluxProxyModel(model, ctx)
+    FluxOptimizerSetup(Flux.setup(opt, proxy))
   end
 end
 
-function Training.step!( model :: Model.NeuralModel{G}
+Training.defaultoptimizer(:: FluxBackend) = Flux.Momentum(0.01, 0.9)
+
+function Training.step!( model :: Model.NeuralModel{G, <: FluxBackend}
                        , cache
                        , ctx
-                       , setup ) where {G}
+                       , setup ) where {G <: AbstractGame}
 
-  proxy = FluxHelperModel(model, ctx)
-  data = cache.data
+  proxy = FluxProxyModel(model, ctx)
   labels = Tuple(cache.target_labels)
   weights = Tuple(ctx.target_weights)
   losses = Tuple(ctx.target_lossfunctions)
-  grads = Flux.gradient(proxy) do m
+
+  loss, grads = Flux.withgradient(proxy) do m
     tloss = Training._loss(
       m.trunk,
       m.heads,
       m.activations,
-      data,
+      cache.data,
       labels,
       weights,
       losses,
@@ -238,11 +266,15 @@ function Training.step!( model :: Model.NeuralModel{G}
     tloss + rloss
   end
 
-  Flux.update!(setup, proxy, grads[1])
-  nothing
+  Flux.update!(setup.setup, proxy, grads[1])
+  loss
 end
 
 
+##
+## Register Array-based Flux backends
+##
+  
 function __init__()
   Util.register!(Backend, FluxBackend{Array{Float32}}(), :flux, :flux32)
   Util.register!(Backend, FluxBackend{Array{Float64}}(), :flux64)
