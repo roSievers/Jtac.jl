@@ -12,6 +12,7 @@ function __init__()
   FluxBackend = FluxExt.FluxBackend
 
   register!(Backend, FluxBackend{CuArray{Float32}}(), :cuflux, :cuflux32)
+  register!(Backend, FluxBackend{CuArray{Float16}}(), :cuflux16)
   register!(Backend, FluxBackend{CuArray{Float64}}(), :cuflux64)
 end
 

@@ -18,6 +18,7 @@ end
 
 function __init__()
   register!(Backend, DefaultBackend{CuArray{Float32}}(), :cu, :cu32)
+  register!(Backend, DefaultBackend{CuArray{Float16}}(), :cu16)
   register!(Backend, DefaultBackend{CuArray{Float64}}(), :cu64)
 end
 

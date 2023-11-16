@@ -389,6 +389,7 @@ function __init__()
   register!(Activation, Activation(NNlib.softmax, broadcast = false), :softmax)
 
   register!(Backend, DefaultBackend{Array{Float32}}(), :default, :default32)
+  register!(Backend, DefaultBackend{Array{Float16}}(), :default16)
   register!(Backend, DefaultBackend{Array{Float64}}(), :default64)
 
   register!(Format, DefaultFormat(), :jtm)

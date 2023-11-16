@@ -281,6 +281,7 @@ end
   
 function __init__()
   Util.register!(Backend, FluxBackend{Array{Float32}}(), :flux, :flux32)
+  Util.register!(Backend, FluxBackend{Array{Float16}}(), :flux16)
   Util.register!(Backend, FluxBackend{Array{Float64}}(), :flux64)
 end
 
