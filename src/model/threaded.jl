@@ -122,7 +122,7 @@ end
 function calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
 
   @info "Calc task initiated on thread $(Threads.threadid())"
-  adapt_gpu_device!(model)
+  aligndevice!(model)
 
   while isopen(calc_ch)
     n, idx = try take!(calc_ch) catch _ break end
@@ -146,9 +146,9 @@ function calc_task(model, calc_ch, lock, buf_in, buf_out, profile)
     end
   end
 
-  close(io_ch)
+  # close(io_ch)
   close(calc_ch)
-  notify(lock[idx])
+  foreach(notify, lock)
   @info "Threaded worker: calc_task returns"
 end
 

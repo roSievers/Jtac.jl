@@ -14,7 +14,7 @@ import Jtac.Model: Activation,
                    NeuralModel
 
 """
-Neural layer backend supported by the julia package Flux.jl.
+Neural network layer backend built upon the julia package Flux.jl.
 """
 struct FluxBackend{T} <: Backend{T} end
 
@@ -228,6 +228,8 @@ function FluxProxyModel(model :: Model.NeuralModel, ctx)
   FluxProxyModel(model.trunk.layer, Tuple(heads), Tuple(activations))
 end
 
+Training.defaultoptimizer(:: FluxBackend) = Flux.Momentum(0.01, 0.9)
+
 function Training.setup( model :: NeuralModel{G, <: FluxBackend}
                        , ctx :: Training.LossContext
                        , opt ) where {G <: AbstractGame}
@@ -239,8 +241,6 @@ function Training.setup( model :: NeuralModel{G, <: FluxBackend}
   end
 end
 
-Training.defaultoptimizer(:: FluxBackend) = Flux.Momentum(0.01, 0.9)
-
 function Training.step!( model :: Model.NeuralModel{G, <: FluxBackend}
                        , cache
                        , ctx
@@ -251,6 +251,7 @@ function Training.step!( model :: Model.NeuralModel{G, <: FluxBackend}
   weights = Tuple(ctx.target_weights)
   losses = Tuple(ctx.target_lossfunctions)
 
+  Flux.trainmode!(proxy)
   loss, grads = Flux.withgradient(proxy) do m
     tloss = Training._loss(
       m.trunk,
@@ -267,12 +268,15 @@ function Training.step!( model :: Model.NeuralModel{G, <: FluxBackend}
   end
 
   Flux.update!(setup.setup, proxy, grads[1])
+  Flux.testmode!(proxy)
+
   loss
 end
 
 
 ##
-## Register Array-based Flux backends
+## Register standard Flux backends
+## More backends are added in CudaFluxExt
 ##
   
 function __init__()

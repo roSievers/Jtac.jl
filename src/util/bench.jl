@@ -12,13 +12,13 @@ end
 function layer_data(sz, batchsize)
   a = "relu"
   chain = Model.Chain(
-    [ Model.Conv(sz, sz, a, padding = 1)
+    [ Model.Conv(sz, sz, a, pad = 1)
     , Model.Batchnorm(sz, a)
-    , Model.Conv(sz, sz, a, padding = 1)
+    , Model.Conv(sz, sz, a, pad = 1)
     , Model.Batchnorm(sz, a)
     ]...
   )
-  [ "conv$(sz)x$(sz)" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Conv(sz, sz, a, padding = 1))
+  [ "conv$(sz)x$(sz)" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Conv(sz, sz, a, pad = 1))
   , "dense$(8sz)x$(sz)" => (() -> rand(Float32, (8sz, batchsize)), () -> Model.Dense(8sz, sz, a))
   , "batchnorm$sz" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> Model.Batchnorm(sz, a))
   , "chain$sz" => (() -> rand(Float32, (9, 9, sz, batchsize)), () -> chain)

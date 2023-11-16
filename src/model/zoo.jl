@@ -31,16 +31,16 @@ end
 
 function zero_res_block(G :: Type{<: AbstractGame}, filters :: Int)
   Model.@residual (size(G)[1:2]..., filters) :relu begin
-    Conv(filters, window = 3, padding = 1, stride = 1)
+    Conv(filters, window = 3, pad = 1, stride = 1)
     Batchnorm("relu")
-    Conv(filters, window = 3, padding = 1, stride = 1)
+    Conv(filters, window = 3, pad = 1, stride = 1)
     Batchnorm()
   end
 end
 
 function zero_conv_block(G :: Type{<: AbstractGame}, ci :: Int, co :: Int)
   Model.@chain (size(G)[1:2]..., ci) begin
-    Conv(co, window = 3, padding = 1, stride = 1)
+    Conv(co, window = 3, pad = 1, stride = 1)
     Batchnorm("relu")
   end
 end
@@ -48,7 +48,7 @@ end
 function zero_vhead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
-    Conv(32, window = 1, padding = 0, stride = 1)
+    Conv(32, window = 1, pad = 0, stride = 1)
     Batchnorm("relu")
     Dense(256, "relu")
     Dense(1)
@@ -58,7 +58,7 @@ end
 function zero_phead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
-    Conv(32, window = 1, padding = 0, stride = 1)
+    Conv(32, window = 1, pad = 0, stride = 1)
     Batchnorm("relu")
     Dense(Game.policylength(G))
   end
@@ -67,7 +67,7 @@ end
 function zero_head(G :: Type{<: AbstractGame}, target, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
-    Conv(32, window = 1, padding = 0, stride = 1)
+    Conv(32, window = 1, pad = 0, stride = 1)
     Batchnorm("relu")
     Dense(length(target))
   end

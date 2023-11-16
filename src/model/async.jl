@@ -15,6 +15,7 @@ mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   dynamic    :: Bool
 
   cdynamic :: Channel{Bool}
+  nqueue :: Threads.Atomic{Int}
   profile
 end
 
@@ -62,9 +63,11 @@ function AsyncModel( model :: NeuralModel{G}
     task = @async worker(model, ch, batchsize, cdynamic, profile)
   end
 
+  nqueue = Threads.Atomic{Int}(0)
+
   # Create the instance
   amodel = AsyncModel{G}( model, ch, task, batchsize, buffersize
-                   , spawn, dynamic, cdynamic, profile )
+                        , spawn, dynamic, cdynamic, nqueue, profile )
 
   # Register finalizer
   finalizer(m -> close(m.ch), amodel)
@@ -82,12 +85,16 @@ function apply( m :: AsyncModel{G}
   @assert issubset(targets, targetnames(m))
   @assert !istaskdone(m.task) "Worker task of async model has stopped"
   c = Threads.Condition()
+  # Threads.atomic_add!(m.nqueue, 1)
   put!(m.ch, (copy(game), c))
-  # notify(ticket) in the worker will provide the value
-  lock(() -> wait(c), c)
+  val = lock(() -> wait(c), c) # notify(c) in the worker will provide the value
+  # Threads.atomic_sub!(m.nqueue, 1)
+  val
 end
 
-dynamicmode!(m :: AbstractModel, :: Bool) = nothing
+nqueue(m :: AsyncModel) = m.nqueue[]
+
+dynamicmode!(:: AbstractModel, :: Bool) = nothing
 
 function dynamicmode!(m :: AsyncModel{G}, dynamic :: Bool) where {G}
   take!(m.cdynamic)

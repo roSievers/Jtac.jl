@@ -282,11 +282,11 @@ end
 """
     aligndevice!(model)  
 
-This function is called when `model` is to be used after context-switches (e.g.,
-in new tasks). Can be used by GPU-based backends to set consistent devices.
+This function is called when `model` is to be used after context-switches
+(e.g., in new tasks). Can be used by GPU-based backends to set the active device
+consistent with the model.
 """
 aligndevice!(model) = nothing
-## TODO: implement this in the CUDA backend!
 
 """
      arraytype(model) 
