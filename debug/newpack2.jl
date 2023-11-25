@@ -513,13 +513,24 @@ function unpack(io :: IO, :: StringFormat) :: String
 end
 
 #
-# Generic string support
+# Default destruct / construct
 #
 
-format(:: Type{<: AbstractString}) = StringFormat()
 destruct(value, :: StringFormat) = Base.string(value)
 construct(:: Type{T}, x, :: StringFormat) where {T} = convert(T, x)
 
+#
+# String / Symbol support
+#
+
+format(:: Type{<: AbstractString}) = StringFormat()
+
+#
+# Symbol support
+#
+
+format(:: Type{Symbol}) = StringFormat()
+construct(:: Type{Symbol}, x, :: StringFormat) = Symbol(x)
 
 #
 # BinaryFormat
@@ -906,10 +917,10 @@ end
 
 
 #
-# BinArray format
+# BinArrayFormat
 #
 # destruct: size, BinVectorFormat
-# construct: BinArrayFormatWrapper
+# construct: BinArrayValue
 #
 
 struct BinArrayFormat <: Format end
@@ -945,6 +956,91 @@ end
 function construct(:: Type{A}, val, :: BinArrayFormat) where {A <: AbstractArray}
   convert(A, reshape(val.data, val.size...))
 end
+
+#
+# TypeFormat
+#
+
+struct TypeFormat <: Format end
+
+struct TypeValue
+  name :: Symbol
+  path :: Vector{Symbol}
+  params :: Vector{TypeValue}
+end
+
+"""
+    TypeValue(T)
+
+Construct a [`TypeValue`](@ref) out of the type `T`.
+
+Currently, the following limitation for parameterized types applies: If `T` has
+more type parameters than are explicitly specified (e.g., `T = Array{Float32}`),
+the specified type parameters must come first (e.g., `T = Array{F, 1} where {F}`
+would fail).
+"""
+function TypeValue(T :: Type)
+  name = Base.nameof(T)
+  path = string(Base.parentmodule(T))
+  path = Symbol.(split(path, "."))
+  params = extracttypeparams(T)
+  params = TypeValue.(params)
+  TypeValue(name, path, params)
+end
+
+
+
+function extracttypeparams(T)
+  params = nothing
+  vars = []
+  body = T
+  while isnothing(params)
+    if hasproperty(body, :parameters)
+      params = collect(body.parameters)
+    elseif hasproperty(body, :body) && hasproperty(body, :var)
+      push!(vars, body.var)
+      body = body.body
+    else
+      error("Failed to understand structure of type $T")
+    end
+  end
+  for R in reverse(vars)
+    @assert pop!(params) == R "Cannot extract type parameters from type $T"
+  end
+  params
+end
+
+function composetype(value :: TypeValue) :: Type
+  # Resolve type from module path and name
+  T = Main
+  for m in value.path
+    T = getfield(T, m) :: Module
+  end
+  T = getfield(T, value.name) :: Type
+  # attach type parameters
+  if isempty(value.params)
+    T
+  else
+    params = map(composetypeparams, value.params)
+    T{params...}
+  end
+end
+
+format(:: Type{TypeValue}) = MapFormat()
+
+pack(io :: IO, value, :: TypeFormat) :: Nothing = pack(io, TypeValue(value))
+
+function unpack(io :: IO, :: TypeFormat) :: Type
+  value = unpack(io, TypeValue)
+  composetype(value)
+end
+
+format(:: Type{<: Type}) = TypeFormat()
+
+
+#
+# ForcedFormat
+#
 
 """
 Format wrapper that is used to resolve ambiguities for the type
@@ -987,9 +1083,6 @@ end
 construct(:: Type{T}, val, :: Alias) where {T} = T(val)
 destruct(val :: T, :: Alias{S}) where {S, T} = S(val)
 
-# Symbol support
-
-format(:: Type{Symbol}) = Alias{String}()
 
 #
 # Value that forces packing / unpacking in a certain format
