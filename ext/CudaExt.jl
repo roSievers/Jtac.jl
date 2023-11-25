@@ -8,6 +8,8 @@ import Jtac.Model: Backend, DefaultBackend, NeuralModel
 
 Model.releasememory!(x :: CuArray) = x.data.freed || CUDA.unsafe_free!(x)
 
+Model.arraytype(:: CuArray{F}) where F = CuArray{F}
+
 function Model.aligndevice!( model :: NeuralModel{G, B}
                            ) where {G, T <: CuArray, B <: Backend{T}}
   params = Model.parameters(model)

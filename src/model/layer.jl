@@ -55,6 +55,14 @@ Check whether `backend` can be used for training or for inference only.
 istrainable(:: Backend) = false
 
 """
+    arraytype(array)
+
+Returns the general array type of `array`, i.e., forgets the dimension.
+"""
+arraytype(:: AbstractArray{F}) where {F} = error("not implemented")
+arraytype(:: Array{F}) where {F} = Array{F}
+
+"""
     arraytype(backend)
 
 Returns the array type that the backend operates on.
