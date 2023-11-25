@@ -55,12 +55,10 @@ than calculating the game status via `status(game)`.
 models.
 - `moves(game :: G)`: Count the number of moves that have been applied to \
 `game`.
-- `Pack.freeze(game :: G) / Pack.unfreeze(game :: G)`: Prepare `game` for \
-serialization / reconstruct `game` after deserialization.
 """
 abstract type AbstractGame end
 
-Pack.@untyped AbstractGame
+Pack.format(:: Type{<: AbstractGame}) = Pack.MapFormat()
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
  

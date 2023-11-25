@@ -6,7 +6,7 @@ struct Activation{BC}
   f :: Function
 end
 
-Pack.@named Activation
+Pack.format(:: Type{<: Activation}) = Util.NamedValueFormat{Activation}()
 
 """
     Activation(f, broadcast = true)
@@ -45,7 +45,7 @@ like `Array{Float32}` or `CuArray{Float32}`, is indicated as type parameter.
 """
 abstract type Backend{T} end
 
-Pack.@named Backend
+Pack.format(:: Type{<: Backend}) = Util.NamedValueFormat{Backend}()
 
 """
     istrainable(backend)
@@ -131,7 +131,7 @@ Neural network layer.
 """
 abstract type Layer{B <: Backend} end
 
-Pack.@typed Layer
+Pack.format(:: Type{<: Layer}) = Pack.TypedFormat{Pack.MapFormat}()
 
 """
 Elementary neural network layer that is not composed of other layers.

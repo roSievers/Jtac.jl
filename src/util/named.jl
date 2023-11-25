@@ -110,3 +110,19 @@ See also [`lookup`](@ref) and [`register!`](@ref).
 """
 resolve(T, name :: Union{AbstractString, Symbol}) = lookup(T, name)
 resolve(T, value) = convert(T, value)
+
+@pack MyType in NamedValueFormat{MyType}
+
+@pack MyType (a in BinArrayFormat, b in BinArrayFormat)
+
+struct NamedValueFormat{S} <: Pack.Format end
+
+function Pack.pack(io :: IO, value, :: NamedValueFormat{S}) where {S}
+  name = lookupname(S, value)
+  Pack.pack(io, name, Pack.StringFormat())
+end
+
+function Pack.unpack(io :: IO, :: Type{T}, :: NamedValueFormat{S}) :: T where {T, S}
+  name = Pack.unpack(io, Pack.StringFormat())
+  lookup(S, name)
+end

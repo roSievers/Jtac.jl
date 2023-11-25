@@ -34,7 +34,7 @@ Optionally, the methods [`Target.defaultlossfunction`](@ref) and
 """
 abstract type AbstractTarget{G <: AbstractGame} end
 
-Pack.@typed AbstractTarget
+Pack.format(:: Type{<: AbstractTarget}) = Pack.TypedFormat{Pack.MapFormat}()
 
 """
     length(target :: Target.AbstractTarget)

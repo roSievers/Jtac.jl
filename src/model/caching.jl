@@ -15,7 +15,6 @@ mutable struct CachingModel{G <: AbstractGame} <: AbstractModel{G}
   calls_uncached :: Int
 end
 
-Pack.freeze(m :: CachingModel) = switchmodel(m, Pack.freeze(m.model))
 Pack.@only CachingModel [:model, :cachesize]
 
 CachingModel{G}(model, cachesize) where {G} = CachingModel(model; cachesize)

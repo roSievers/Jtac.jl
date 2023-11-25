@@ -26,7 +26,6 @@ Provides fast serialization and deserialization of basic struct types via the
 msgpack format.
 """
 module Pack
-  import MsgPack
   import TranscodingStreams: TOKEN_END
   import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
 
