@@ -110,8 +110,7 @@ end
 
 
 """
-    unpack(bytes, T) :: T
-    unpack(io, T) :: T
+    unpack(io / bytes, T) :: T
 
 Unpack a binary msgpack representation of a value of type `T` from a byte vector
 `bytes` or an output stream `io`.
@@ -121,27 +120,16 @@ function unpack(io :: IO, :: Type{T}) :: T where {T}
   unpack(io, T, fmt)
 end
 
-function unpack(bytes :: Vector{UInt8}, :: Type{T}) :: T where {T}
-  io = IOBuffer(bytes,  write = false, read = true)
-  unpack(io, T)
-end
-
-
 """
-  unpack(io, T, format)
-  unpack(io, format = AnyFormat())
+  unpack(io / bytes, T, format)
+  unpack(io / bytes, format = AnyFormat())
 
-Unpack a value in format `format` from `io` and construct a
-value of type `T` via [`Pack.construct`](@ref).
+Unpack a value packed in format `format` from `io` or `bytes` and (optionally)
+construct a value of type `T` via [`Pack.construct`](@ref).
 """
 function unpack(io :: IO, T, fmt :: Format)
   val = unpack(io, fmt)
   construct(T, val, fmt)
-end
-
-function unpack(bytes :: Vector{UInt8}, fmt :: Format = AnyFormat())
-  io = IOBuffer(bytes,  write = false, read = true)
-  unpack(io, fmt)
 end
 
 function unpack(io :: IO, fmt :: Format)
@@ -150,6 +138,11 @@ end
 
 unpack(io :: IO) = unpack(io, AnyFormat())
 
+function unpack(bytes :: Vector{UInt8}, args...)
+  io = IOBuffer(bytes, write = false, read = true)
+  unpack(io, args...)
+end
+
 
 """
     byteerror(byte, format)
@@ -157,7 +150,7 @@ unpack(io :: IO) = unpack(io, AnyFormat())
 Throw an error indicating that `byte` is not compatible with `format`.
 """
 function byteerror(byte, :: F) where {F <: Format}
-  msg = "invalid magic byte $byte when unpacking value in format $F"
+  msg = "invalid format byte $byte when unpacking value in format $F"
   throw(ArgumentError(msg))
 end
 
@@ -545,7 +538,7 @@ end
 
 function pack(io :: IO, value, :: BinaryFormat) :: Nothing
   bin = destruct(value, BinaryFormat()) 
-  n = length(bin)
+  n = sizeof(bin)
   if n <= typemax(UInt8) # bin8
     write(io, 0xc4)
     write(io, UInt8(n))
@@ -566,9 +559,9 @@ function unpack(io :: IO, :: BinaryFormat) :: Vector{UInt8}
   byte = read(io, UInt8)
   n = if byte == 0xc4 # bin8
     read(io, UInt8)
-  elseif byte == 0xc4 # bin16
+  elseif byte == 0xc5 # bin16
     read(io, UInt16) |> ntoh
-  elseif byte == 0xc4 # bin32
+  elseif byte == 0xc6 # bin32
     read(io, UInt32) |> ntoh
   else
     byteerror(byte, BinaryFormat())
@@ -585,6 +578,25 @@ end
 
 destruct(x :: Bytes, :: BinaryFormat) = x.bytes
 construct(:: Type{Bytes}, bytes, :: BinaryFormat) = Bytes(bytes)
+
+#
+# Vector support for bitstype elements
+#
+
+function destruct(value :: Vector{F}, :: BinaryFormat) where {F}
+  @assert isbitstype(F) """
+  Only vectors with bitstype elements can be saved in BinVectorFormat.
+  """
+  value
+end
+
+function construct(:: Type{Vector{F}}, bytes, :: BinaryFormat) where {F}
+  @assert isbitstype(F) """
+  Only vectors with bitstype elements can be loaded from BinVectorFormat.
+  """
+  convert(Vector{F}, bytes)
+end
+
 
 #
 # VectorFormat
@@ -830,58 +842,57 @@ valuetype(:: Type{<: Dict{K, V}}, _) where {K, V} = V
 # - TypedFormat
 
 
-"""
-Format wrapper that is used to resolve ambiguities for the type
-[`ForcedFormat`](@ref).
-"""
-struct ForcedFormat <: Format end
+#
+# BinVector format
+#
+# destruct: BinaryFormat
+# construct: Vector{UInt8}
+#
 
-"""
-Wrapper that enforces packing / unpacking of a value in a certain format.
-"""
-struct Forced{F <: Format, T}
-  value :: T
+struct BinVectorFormat <: Format end
+
+function pack(io :: IO, value, :: BinVectorFormat) :: Nothing
+  val = destruct(value, BinVectorFormat())
+  pack(io, val, BinaryFormat())
 end
 
-function pack(io :: IO, value :: Forced{F, T}, :: ForcedFormat) where {F, T}
-  pack(io, value.value, F())
+function unpack(io :: IO, :: Type{T}, :: BinVectorFormat) :: T where {T}
+  bytes = unpack(io, BinaryFormat())
+  construct(T, bytes, BinVectorFormat())
 end
 
-function unpack(io, :: Type{Forced{F, T}}, :: ForcedFormat) where {F, T}
-  unpack(io, T, F())
+function construct(:: Type{Vector{F}}, bytes, :: BinVectorFormat) where {F}
+  vals = reinterpret(F, bytes)
+  convert(Vector{F}, vals)
 end
-
-Forced(val :: T, :: F) where {F, T} = Forced{F, T}(val)
-
-format(:: Type{<: Forced}) = ForcedFormat()
-
 
 
 #
 # Array format
 #
 # destruct: size(.), VectorFormat
-# construct: (; data, size)
+# construct: eltype(T), ArrayValue
 #
 
 struct ArrayFormat <: Format end
 
-struct ArrayAux{F}
-  data :: Vector{F}
+struct ArrayValue{T}
+  data :: T
   size :: Vector{Int}
 end
 
-format(:: Type{<: ArrayAux}) = MapFormat()
+format(:: Type{<: ArrayValue}) = MapFormat()
+valuetype(:: Type{ArrayValue{T}}, index) where {T} = index == 1 ? T : Vector{Int}
+valueformat(:: Type{<: ArrayValue}, index) = VectorFormat()
 
-function pack(io :: IO, value, :: ArrayFormat) where {N, F}
+function pack(io :: IO, value, :: ArrayFormat) :: Nothing
   val = destruct(value, ArrayFormat())
-  size = Base.size(val)
-  data = Forced(val, VectorFormat()) # needed since format(val) could be different from VectorFormat
-  pack(io, (; data, size))
+  pack(io, ArrayValue(val, collect(size(val))))
 end
 
 function unpack(io :: IO, :: Type{T}, :: ArrayFormat) :: T where {T}
-  val = unpack(io, ArrayAux{eltype(T)})
+  V = Vector{eltype(T)}
+  val = unpack(io, ArrayValue{V})
   construct(T, val, ArrayFormat())
 end
 
@@ -894,6 +905,71 @@ function construct(:: Type{A}, val, :: ArrayFormat) where {A <: AbstractArray}
 end
 
 
+#
+# BinArray format
+#
+# destruct: size, BinVectorFormat
+# construct: BinArrayFormatWrapper
+#
+
+struct BinArrayFormat <: Format end
+
+struct BinArrayValue{T}
+  data :: T
+  size :: Vector{Int}
+end
+
+format(:: Type{<: BinArrayValue}) = MapFormat()
+
+function valuetype(:: Type{BinArrayValue{T}}, index) where {T}
+  index == 1 ? T : Vector{Int}
+end
+
+function valueformat(:: Type{<: BinArrayValue}, index)
+  index == 1 ? BinVectorFormat() : VectorFormat()
+end
+
+function pack(io :: IO, value, :: BinArrayFormat)
+  val = destruct(value, BinArrayFormat())
+  pack(io, BinArrayValue(val, collect(size(val))))
+end
+
+function unpack(io :: IO, :: Type{T}, :: BinArrayFormat) :: T where {T}
+  V = Vector{eltype(T)}
+  val = unpack(io, BinArrayValue{V})
+  construct(T, val, BinArrayFormat())
+end
+
+# ND Array support
+
+function construct(:: Type{A}, val, :: BinArrayFormat) where {A <: AbstractArray}
+  convert(A, reshape(val.data, val.size...))
+end
+
+"""
+Format wrapper that is used to resolve ambiguities for the type
+[`ForcedFormat`](@ref).
+"""
+struct ForcedFormat <: Format end
+
+"""
+Wrapper that enforces packing / unpacking of a value in a certain format.
+"""
+struct ForcedValue{F <: Format, T}
+  value :: T
+end
+
+function pack(io :: IO, value :: ForcedValue{F, T}, :: ForcedFormat) where {F, T}
+  pack(io, value.value, F())
+end
+
+function unpack(io, :: Type{ForcedValue{F, T}}, :: ForcedFormat) where {F, T}
+  unpack(io, T, F())
+end
+
+ForcedValue(val :: T, :: F) where {F, T} = ForcedValue{F, T}(val)
+
+format(:: Type{<: ForcedValue}) = ForcedFormat()
 
 
 struct Alias{S} <: Format end
@@ -925,6 +1001,7 @@ struct BinArrayFormat <: Format end
 
 end
 
+using Random
 using MsgPack
 using BenchmarkTools
 
