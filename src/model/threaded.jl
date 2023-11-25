@@ -29,8 +29,6 @@ Pack.@only Threaded [:model, :max_batchsize, :buffersize]
 Threaded{G}(models, max_batchsize, buffersize) where {G} =
   Threaded(models; max_batchsize, buffersize) :: Threaded{G}
 
-Pack.freeze(m :: Threaded) = switchmodel(m, Pack.freeze(m.model))
-
 """
     Threaded(model; max_batchsize, buffersize)
 

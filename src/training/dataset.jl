@@ -18,10 +18,10 @@ LabelData() = LabelData([])
 Pack.@untyped LabelData
 
 # Enable efficient packing
-Pack.fieldnames(:: Type{LabelData}) = [:matrix]
-Pack.fieldtypes(:: Type{LabelData}) = [Pack.BinArray{Float32}]
-Pack.fieldvalues(l :: LabelData) = [Pack.BinArray(reduce(hcat, l.data))]
-Pack.construct(:: Type{LabelData}, mat) = LabelData(collect.(eachcol(mat.data)))
+# Pack.fieldnames(:: Type{LabelData}) = [:matrix]
+# Pack.fieldtypes(:: Type{LabelData}) = [Pack.BinArray{Float32}]
+# Pack.fieldvalues(l :: LabelData) = [Pack.BinArray(reduce(hcat, l.data))]
+# Pack.construct(:: Type{LabelData}, mat) = LabelData(collect.(eachcol(mat.data)))
 
 # Base methods
 Base.length(ld :: LabelData) = Base.length(ld.data)

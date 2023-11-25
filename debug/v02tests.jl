@@ -2,6 +2,13 @@
 using Revise, Test
 using Jtac
 
+function packcycle(value, T = typeof(value), isequal = isequal)
+  bytes = Pack.pack(value)
+  uvalue = Pack.unpack(bytes, T)
+  isequal(value, uvalue) &&
+  all(bytes .== Pack.pack(uvalue))
+end
+
 @testset "Target" begin
 
   G = Game.TicTacToe
@@ -21,6 +28,8 @@ using Jtac
   @test Target.label(pt, ctx) == policy
   @test Target.defaultlossfunction(pt) == :crossentropy
 
+  @test packcycle(vt)
+  @test packcycle(pt)
 end
 
 
@@ -164,7 +173,7 @@ end
 
   @testset "Residual" begin
     sz = (50, 50, 10)
-    layer = Model.@residual sz Conv(10, padding = 1) Batchnorm() Conv(10, padding = 1)
+    layer = Model.@residual sz Conv(10, pad = 1) Batchnorm() Conv(10, pad = 1)
     player = Pack.unpack(Pack.pack(layer), Model.Layer)
     clayer = copy(layer)
   

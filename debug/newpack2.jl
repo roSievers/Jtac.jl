@@ -1,19 +1,15 @@
 
 """
 Wishlist:
-* support nothing, Int64, Float64, String, Bool natively
-* support Symbol, Int32, Int16, Int8, UInt64, UInt32, UInt16, UInt on top
-* support arbitrary tuples (array)
+-[x] support nothing, Int64, Float64, String, Bool natively
+-[x] support Symbol, Int32, Int16, Int8, UInt64, UInt32, UInt16, UInt on top
+-[x] support arbitrary tuples (array)
 * support Union{Nothing, A}
-* support Vector{T} where T is bitstype
-* support Array{T} where T is bitstype (map: data, size)
-* support Vector{T} where T is no bistype
-* can say that whole type should be packed "binary" (e.g. all arrays)
-* can say that certain fields should be packed "binary"
+-[x] support Vector (array format)
+-[x] support Array (map format: data, size)
+-[x] support binary Vector{T} where T is a bitstype
+-[x] support binary Array{T} where T is a bitstype
 """
-
-
-
 
 module Pack
 
@@ -34,8 +30,10 @@ Return the format of `T`. Must be implemented for any type `T` for which
 See also [`Format`](@ref).
 """
 function format(T :: Type)
-  error("no format has been specified for type $T")
+  error("no default format has been specified for type $T")
 end
+
+format(value) = format(typeof(value))
 
 """
     construct(T, val, format)
@@ -89,50 +87,49 @@ Return the format of the value at `index` in `T`.
 """
 valueformat(:: Type{T}, index) where {T} = format(valuetype(T, index))
 
-
 """
     pack(value, [format]) :: Vector{UInt8}
     pack(io, value, [format]) :: Nothing
 
 Create a binary representation of `value` in the given `format`. If an input
-stream is passed, the representation is written into `io`. If no format is
-provided, it is derived from the type of value via [`Pack.format`](@ref).
+stream is passed, the representation is written into `io`.
+
+If no format is provided, it is derived from the type of value via
+[`Pack.format`](@ref).
 """
-function pack(io :: IO, value :: T, fmt :: Format = format(T)) :: Nothing where {T}
-  pack(io, value, fmt)
+function pack(io :: IO, value :: T) :: Nothing where {T}
+  pack(io, value, format(T))
 end
 
-function pack(value :: T, fmt :: Format = format(T)) :: Vector{UInt8} where {T}
+function pack(value :: T, args...) :: Vector{UInt8} where {T}
   io = IOBuffer(write = true, read = false)
-  pack(io, value, fmt)
+  pack(io, value, args...)
   take!(io)
 end
 
 
 """
-    unpack(io / bytes, T) :: T
+    unpack(io / bytes) :: Any
+    unpack(io / bytes, T, [format]) :: T
 
 Unpack a binary msgpack representation of a value of type `T` from a byte vector
 `bytes` or an output stream `io`.
+
+If no format and no type is provided, the format [`AnyFormat`](@ref) is used.
+If no format is provided, it is derived from `T` via [`Pack.format`](@ref).
+[`Pack.format`](@ref).
 """
 function unpack(io :: IO, :: Type{T}) :: T where {T}
   fmt = format(T)
   unpack(io, T, fmt)
 end
 
-"""
-  unpack(io / bytes, T, format)
-  unpack(io / bytes, format = AnyFormat())
-
-Unpack a value packed in format `format` from `io` or `bytes` and (optionally)
-construct a value of type `T` via [`Pack.construct`](@ref).
-"""
 function unpack(io :: IO, T, fmt :: Format)
   val = unpack(io, fmt)
   construct(T, val, fmt)
 end
 
-function unpack(io :: IO, fmt :: Format)
+function unpack(:: IO, fmt :: Format)
   ArgumentError("Unpacking in format $fmt not supported") |> throw
 end
 
@@ -596,16 +593,17 @@ construct(:: Type{Bytes}, bytes, :: BinaryFormat) = Bytes(bytes)
 
 function destruct(value :: Vector{F}, :: BinaryFormat) where {F}
   @assert isbitstype(F) """
-  Only vectors with bitstype elements can be saved in BinVectorFormat.
+  Only vectors with bitstype elements can be saved in BinaryFormat.
   """
   value
 end
 
 function construct(:: Type{Vector{F}}, bytes, :: BinaryFormat) where {F}
   @assert isbitstype(F) """
-  Only vectors with bitstype elements can be loaded from BinVectorFormat.
+  Only vectors with bitstype elements can be loaded from BinaryFormat.
   """
-  convert(Vector{F}, bytes)
+  value = reinterpret(F, bytes)
+  convert(Vector{F}, value)
 end
 
 
@@ -659,7 +657,7 @@ function unpack(io :: IO, :: VectorFormat) :: Vector
   else
     byteerror(byte, VectorFormat())
   end
-  map(1:n) do index
+  map(1:n) do _
     unpack(io, AnyFormat())
   end
 end
@@ -845,13 +843,6 @@ construct(:: Type{<: Dict}, pairs, :: MapFormat) = Dict(pairs)
 keytype(:: Type{<: Dict{K, V}}, _) where {K, V} = K
 valuetype(:: Type{<: Dict{K, V}}, _) where {K, V} = V
 
-## TODO
-# - AliasFormat
-# - BinVectorFormat
-# - ArrayFormat
-# - BinArrayFormat
-# - TypedFormat
-
 
 #
 # BinVector format
@@ -958,39 +949,104 @@ function construct(:: Type{A}, val, :: BinArrayFormat) where {A <: AbstractArray
 end
 
 #
+# ValFormat
+#
+
+"""
+Format wrapper that is used to resolve ambiguities for the type
+[`ValFormat`](@ref).
+"""
+struct ValFormat <: Format end
+
+"""
+Wrapper that enforces packing / unpacking of a value in a certain format.
+"""
+struct Val{F <: Format, T}
+  value :: T
+end
+
+Val(val :: T, :: F) where {F, T} = Val{F, T}(val)
+
+format(:: Type{<: Val}) = ValFormat()
+
+function pack(io :: IO, value :: Val{F, T}, :: ValFormat) where {F, T}
+  pack(io, value.value, F())
+end
+
+function unpack(io :: IO, :: Type{Val{F, T}}, :: ValFormat) where {F, T}
+  Val(unpack(io, T, F()), F())
+end
+
+function unpack(io :: IO, :: Type{Val{F}}, :: ValFormat) where {F <: Format}
+  Val(unpack(io, F()), F())
+end
+
+
+#
 # TypeFormat
 #
+
+struct TypeParamFormat <: Format end
+
+pack(io :: IO, value, :: TypeParamFormat) = pack(io, value)
+
+function unpack(io :: IO, :: TypeParamFormat)
+  if peekformat(io) == MapFormat()
+    unpack(io, TypeValue)
+  elseif peekformat(io) == VectorFormat()
+    Tuple(unpack(io, Vector))
+  else
+    unpack(io, Any)
+  end
+end
 
 struct TypeFormat <: Format end
 
 struct TypeValue
   name :: Symbol
   path :: Vector{Symbol}
-  params :: Vector{TypeValue}
+  params :: Vector{Val{TypeParamFormat}}
 end
 
+# TODO: check if there is a way to find the type of a bitstype type parameter!
 """
     TypeValue(T)
 
 Construct a [`TypeValue`](@ref) out of the type `T`.
 
-Currently, the following limitation for parameterized types applies: If `T` has
-more type parameters than are explicitly specified (e.g., `T = Array{Float32}`),
-the specified type parameters must come first (e.g., `T = Array{F, 1} where {F}`
-would fail).
+Currently, the following limitations for parameterized types apply:
+* If `T` has more type parameters than are explicitly specified \
+(e.g., `T = Array{Float32}`), the specified type parameters must come first \
+(e.g., `T = Array{F, 1} where {F}` would fail).
+* Only certain primitive bitstypes are supported as type parameters, like \
+`Bool` or `Int64`. Other bitstypes (like `UInt64` or `Int16`) are converted \
+to Int64 type parameters when unpacking.
 """
 function TypeValue(T :: Type)
   name = Base.nameof(T)
   path = string(Base.parentmodule(T))
   path = Symbol.(split(path, "."))
-  params = extracttypeparams(T)
-  params = TypeValue.(params)
+  params = typeparams(T)
+  params = map(params) do param
+    if param isa Type
+      Val(TypeValue(param), TypeParamFormat())
+    else
+      Val(param, TypeParamFormat())
+    end
+  end
   TypeValue(name, path, params)
 end
 
+format(:: Type{TypeValue}) = MapFormat()
 
+pack(io :: IO, value, :: TypeFormat) :: Nothing = pack(io, TypeValue(value))
 
-function extracttypeparams(T)
+function unpack(io :: IO, :: TypeFormat) :: Type
+  value = unpack(io, TypeValue)
+  composetype(value)
+end
+
+function typeparams(T)
   params = nothing
   vars = []
   body = T
@@ -1021,78 +1077,119 @@ function composetype(value :: TypeValue) :: Type
   if isempty(value.params)
     T
   else
-    params = map(composetypeparams, value.params)
+    params = map(value.params) do param
+      composetypeparam(param.value)
+    end
     T{params...}
   end
 end
 
-format(:: Type{TypeValue}) = MapFormat()
-
-pack(io :: IO, value, :: TypeFormat) :: Nothing = pack(io, TypeValue(value))
-
-function unpack(io :: IO, :: TypeFormat) :: Type
-  value = unpack(io, TypeValue)
-  composetype(value)
+function composetypeparam(value)
+  if value isa TypeValue
+    composetype(value)
+  else
+    value
+  end
 end
+
 
 format(:: Type{<: Type}) = TypeFormat()
 
+function construct(:: Type{Type}, S, :: TypeFormat)
+  @assert isa(S, Type) "unpacked value $S was expected to be a type"
+  S
+end
+
+
+"""
+Format reserved to the type [`Typed`](@ref)
+"""
+struct TypedFormat{F <: Format} <: Format end
+struct OwnFormat <: Format end
+
+TypedFormat() = TypedFormat{OwnFormat}()
+
+function pack(io :: IO, value, :: TypedFormat{F}) where {F <: Format}
+  write(io, 0x82) # fixmap of length 2
+  pack(io, :type)
+  pack(io, typeof(value))
+  pack(io, :value)
+  pack(io, Val(value, F()))
+end
+
+function pack(io :: IO, value, :: TypedFormat{OwnFormat})
+  F = typeof(format(typeof(value)))
+  pack(io, value, TypedFormat{F}())
+end
+
+function unpack(io :: IO, :: TypedFormat{F}) where {F <: Format}
+  byte = read(io, UInt8)
+  if byte == 0x82 # expect fixmap of length 2
+    key = unpack(io, Symbol)
+    @assert key == :type "Expected map key :type when unpacking typed value"
+    T = unpack(io, Type)
+    key = unpack(io, Symbol)
+    @assert key == :value "Expected map key :value when unpacking typed value"
+    val = unpack(io, T, F())
+    val.value
+  else
+    byteerror(byte, TypedFormat{F}())
+  end
+end
+
+function unpack(io :: IO, :: Type{T}, :: TypedFormat{F}) :: T where {T, F <: Format}
+  val = unpack(io, TypedFormat{F})
+  @assert val isa T "Expected value type $T when unpacking typed value"
+  val
+end
+
+function unpack(io :: IO, :: TypedFormat{OwnFormat})
+  byte = read(io, UInt8)
+  if byte == 0x82 # expect fixmap of length 2
+    key = unpack(io, Symbol)
+    @assert key == :type "Expected map key :type when unpacking typed value"
+    T = unpack(io, Type)
+    key = unpack(io, Symbol)
+    @assert key == :value "Expected map key :value when unpacking typed value"
+    unpack(io, T)
+  else
+    byteerror(byte, TypedFormat{OwnFormat}())
+  end
+end
+
+
 
 #
-# ForcedFormat
+# AliasFormat
 #
 
-"""
-Format wrapper that is used to resolve ambiguities for the type
-[`ForcedFormat`](@ref).
-"""
-struct ForcedFormat <: Format end
+struct AliasFormat{S} <: Format end
 
-"""
-Wrapper that enforces packing / unpacking of a value in a certain format.
-"""
-struct ForcedValue{F <: Format, T}
-  value :: T
-end
-
-function pack(io :: IO, value :: ForcedValue{F, T}, :: ForcedFormat) where {F, T}
-  pack(io, value.value, F())
-end
-
-function unpack(io, :: Type{ForcedValue{F, T}}, :: ForcedFormat) where {F, T}
-  unpack(io, T, F())
-end
-
-ForcedValue(val :: T, :: F) where {F, T} = ForcedValue{F, T}(val)
-
-format(:: Type{<: ForcedValue}) = ForcedFormat()
-
-
-struct Alias{S} <: Format end
-
-function pack(io :: IO, value :: T, :: Alias{S}) :: Nothing where {S, T}
-  val = destruct(value, Alias{S}())
+function pack(io :: IO, value :: T, :: AliasFormat{S}) :: Nothing where {S, T}
+  val = destruct(value, AliasFormat{S}())
   pack(io, val)
 end
 
-function unpack(io :: IO, :: Type{T}, :: Alias{S}) :: T where {S, T}
+function unpack(io :: IO, :: Type{T}, :: AliasFormat{S}) :: T where {S, T}
   val = unpack(io, S)
-  construct(T, val, Alias{S}())
+  construct(T, val, AliasFormat{S}())
 end
 
-construct(:: Type{T}, val, :: Alias) where {T} = T(val)
-destruct(val :: T, :: Alias{S}) where {S, T} = S(val)
+construct(:: Type{T}, val, :: AliasFormat) where {T} = T(val)
+destruct(val :: T, :: AliasFormat{S}) where {S, T} = S(val)
 
 
 #
-# Value that forces packing / unpacking in a certain format
+# struct packing macro
 #
 
+macro pack(a)
+  return :(nothing)
+end
 
-struct BinVectorFormat <: Format end
-struct BinArrayFormat <: Format end
 
 end
+
 
 using Random
 using MsgPack
@@ -1126,71 +1223,72 @@ end
 
 using Test
 
-# @testset "Nothing" begin
-#   @test packtest1(nothing)
-#   @test packtest2(nothing)
-# end
-# speedtest(nothing)
+@testset "Nothing" begin
+  @test packtest1(nothing)
+  @test packtest2(nothing)
+end
+speedtest(nothing)
 
-# @testset "Bool" begin
-#   @test packtest1(true)
-#   @test packtest2(true)
-#   @test packtest1(false)
-#   @test packtest2(false)
-# end
-# speedtest(true)
+@testset "Bool" begin
+  @test packtest1(true)
+  @test packtest2(true)
+  @test packtest1(false)
+  @test packtest2(false)
+end
+speedtest(true)
 
-# @testset "Integer" begin
-#   for i in -100:100
-#     @test packtest1(i)
-#     @test packtest2(i)
-#   end
-#   for T in [Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64]
-#     i = rand(T)
-#     @test packtest1(i)
-#     i = typemin(T)
-#     # MsgPack also uses unsigned format for signed types, therefore loading
-#     # fails.
-#     @test packtest2(i)
-#   end
-# end
-# speedtest(-13)
-# speedtest(12)
+@testset "Integer" begin
+  for i in -100:100
+    @test packtest1(i)
+    @test packtest2(i)
+  end
+  for T in [Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64]
+    i = rand(T)
+    @test packtest1(i)
+    i = typemin(T)
+    # MsgPack also uses unsigned format for signed types, therefore loading
+    # fails.
+    @test packtest2(i)
+  end
+end
+speedtest(-13)
+speedtest(12)
 
-# @testset "String" begin
-#   @test packtest1("haha")
-#   @test packtest2("haha")
-#   @test packtest1(:haha)
-#   @test packtest2(:haha)
-#   for len in [2, 2^8-1, 2^8 + 1, 2^16 + 1]
-#     str = String(rand(UInt8, len))
-#     @test packtest1(str)
-#     @test packtest2(str)
-#   end
-# end
-# speedtest("hahaha")
+@testset "String" begin
+  @test packtest1("haha")
+  @test packtest2("haha")
+  @test packtest1(:haha)
+  @test packtest2(:haha)
+  for len in [2, 2^8-1, 2^8 + 1, 2^16 + 1]
+    str = String(rand(UInt8, len))
+    @test packtest1(str)
+    @test packtest2(str)
+  end
+end
+speedtest("hahaha")
 
-# @testset "Float" begin
-#   f32 = rand(Float32)
-#   f64 = rand(Float64)
-#   @test packtest1(f32)
-#   @test packtest2(f32)
-#   @test packtest1(f64)
-#   @test packtest2(f64)
-# end
-# speedtest(f32)
-# speedtest(f64)
+@testset "Float" begin
+  f32 = rand(Float32)
+  f64 = rand(Float64)
+  @test packtest1(f32)
+  @test packtest2(f32)
+  @test packtest1(f64)
+  @test packtest2(f64)
+end
+speedtest(rand(Float32))
+speedtest(rand(Float32))
 
-# @testset "Vector" begin
-#   for n in [1, 10, 100, 1000]
-#     a = rand(10)
-#     @test packtest1(a)
-#     @test packtest2(a)
-#   end
-#   b = (-5, "haha", 3.0, true, nothing) 
-#   @test packtest1(b)
-#   @test packtest2(b)
-# end
+@testset "Vector" begin
+  for n in [1, 10, 100, 1000]
+    a = rand(10)
+    @test packtest1(a)
+    @test packtest2(a)
+  end
+  b = (-5, "haha", 3.0, true, nothing) 
+  @test packtest1(b)
+  @test packtest2(b)
+end
+
 b = (-5, "haha", 3.0, true, nothing, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10) 
 # b = (3, 3.0, true)
 # speedtest(b)

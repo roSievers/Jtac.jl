@@ -1,572 +1,1045 @@
 
 """
-    pack(x)
-
-Return the serialized value of `x` in the msgpack format.
-
-See also [`pack_compressed`](@ref) and [`unpack`](@ref).
+Wishlist:
+-[x] support nothing, Int64, Float64, String, Bool natively
+-[x] support Symbol, Int32, Int16, Int8, UInt64, UInt32, UInt16, UInt on top
+-[x] support arbitrary tuples (array)
+-[ ] support Union{Nothing, A} # 
+-[x] support Vector (array format)
+-[x] support Array (map format: data, size)
+-[x] support binary Vector{T} where T is a bitstype
+-[x] support binary Array{T} where T is a bitstype
 """
-function pack(x)
-  buf = IOBuffer()
-  pack(buf, x)
-  take!(buf)
+
+"""
+Abstract format type.
+
+Formats are responsible for reducing the packing and unpacking of julia values
+to primitives that are natively supported.
+"""
+abstract type Format end
+
+"""
+    format(T)
+
+Return the format of `T`. Must be implemented for any type `T` for which
+[`pack`] (@ref) and [`unpack`](@ref) are not defined explicitly.
+
+See also [`Format`](@ref).
+"""
+function format(T :: Type)
+  error("no default format has been specified for type $T")
 end
 
-"""
-    unpack(data, T)
+format(value) = format(typeof(value))
 
-Unpack the packed data `data` as value of type `T`.
-
-See also [`pack`](@ref).
 """
-function unpack(bin :: Vector{UInt8}, T :: Type)
-  unpack(IOBuffer(bin), T)
+    construct(T, val, format)
+
+Postprocess a value `val` unpacked in the format `format` and return an object
+of type `T`. The type of `val` depends on `format`.
+
+Defaults to `T(val)`.
+
+See [`Format`](@ref) and its subtypes for more information.
+"""
+construct(:: Type{T}, val, :: Format) where {T} = T(val)
+
+"""
+    destruct(val, format)
+
+Preprocess a value `val` for packing it in the format `format`. Each format has
+specific requirements regarding the output type of `destruct`.
+
+Defaults to `val`.
+
+See [`Format`](@ref) and its subtypes for more information.
+"""
+destruct(val, :: Format) = val
+
+"""
+    keytype(T, index)
+
+Return the type of the key at `index` in `T`.
+"""
+keytype(:: Type, :: Any) = Symbol
+
+"""
+    keyformat(T, index)
+
+Return the format of the key at `index` in `T`
+"""
+keyformat(:: Type{T}, index) where {T} = format(keytype(T, index))
+
+"""
+    valuetype(T, index)
+
+Return the type of the value at `index` in `T`.
+"""
+valuetype(:: Type{T}, index) where {T} = Base.fieldtype(T, index)
+
+"""
+    valueformat(T, index)
+
+Return the format of the value at `index` in `T`.
+"""
+valueformat(:: Type{T}, index) where {T} = format(valuetype(T, index))
+
+"""
+    pack(value, [format]) :: Vector{UInt8}
+    pack(io, value, [format]) :: Nothing
+
+Create a binary representation of `value` in the given `format`. If an input
+stream is passed, the representation is written into `io`.
+
+If no format is provided, it is derived from the type of value via
+[`Pack.format`](@ref).
+"""
+function pack(io :: IO, value :: T) :: Nothing where {T}
+  pack(io, value, format(T))
 end
 
-pack(args...) = MsgPack.pack(args...)
-unpack(args...) = MsgPack.unpack(args...)
-
-"""
-    pack_compressed([io, ] value)
-
-Serialize `value` with additional Zstd compression.
-
-See also [`pack`](@ref) and [`unpack_compressed`](@ref).
-"""
-function pack_compressed(io :: IO, value)
-  stream = ZstdCompressorStream(io)
-  pack(stream, value)
-  write(stream, TOKEN_END)
-  flush(stream)
+function pack(value :: T, args...) :: Vector{UInt8} where {T}
+  io = IOBuffer(write = true, read = false)
+  pack(io, value, args...)
+  take!(io)
 end
 
-function pack_compressed(value)
-  io = IOBuffer()
-  pack_compressed(io, value)
-  io.data
+
+"""
+    unpack(io / bytes) :: Any
+    unpack(io / bytes, T, [format]) :: T
+
+Unpack a binary msgpack representation of a value of type `T` from a byte vector
+`bytes` or an output stream `io`.
+
+If no format and no type is provided, the format [`AnyFormat`](@ref) is used.
+If no format is provided, it is derived from `T` via [`Pack.format`](@ref).
+[`Pack.format`](@ref).
+"""
+function unpack(io :: IO, :: Type{T}) :: T where {T}
+  fmt = format(T)
+  unpack(io, T, fmt)
 end
 
-"""
-    unpack_compressed(io / data, value)
+function unpack(io :: IO, T, fmt :: Format)
+  val = unpack(io, fmt)
+  construct(T, val, fmt)
+end
 
-Unpack a value that was packed via [`pack_compressed`](@ref).
+function unpack(:: IO, fmt :: Format)
+  ArgumentError("Unpacking in format $fmt not supported") |> throw
+end
 
-See also [`unpack`](@ref).
-"""
-unpack_compressed(io :: IO, T) =
-  unpack(ZstdDecompressorStream(io), T)
+unpack(io :: IO) = unpack(io, AnyFormat())
 
-unpack_compressed(data :: Vector{UInt8}, T) =
-  unpack_compressed(IOBuffer(data), T)
-
-
-"""
-    freeze(x)
-
-Freeze the value `x`. This function is called before custom packing is applied,
-and the return value is used for packing instead of `x`. For example, this can
-be used to automatically convert models to the CPU before saving or to resolve
-pointers in game states.
-"""
-freeze(x :: Any) = x
-
-"""
-    unfreeze(x)
-
-Undo `freeze(x)`. This function is called after custom unpacking.
-"""
-unfreeze(x :: Any) = x
+function unpack(bytes :: Vector{UInt8}, args...)
+  io = IOBuffer(bytes, write = false, read = true)
+  unpack(io, args...)
+end
 
 
 """
-    array_length(io)
+    byteerror(byte, format)
 
-Get the length of a msgpack array stored in `io`. Consumes all bytes with length
-information.
+Throw an error indicating that `byte` is not compatible with `format`.
 """
-function array_length(io)
+function byteerror(byte, :: F) where {F <: Format}
+  msg = "invalid format byte $byte when unpacking value in format $F"
+  throw(ArgumentError(msg))
+end
+
+#
+# AnyFormat
+# destruct: Any
+# construct: Any
+#
+# msgpack: all (except date and extension)
+#
+
+struct AnyFormat <: Format end
+
+"""
+    peekformat(io)
+
+Peek at `io` and return the [`Format`](@ref) that best fits the detected msgpack
+format.
+"""
+function peekformat(io)
+  byte = peek(io)
+  if isformatbyte(byte, NilFormat())
+    NilFormat()
+  elseif isformatbyte(byte, BoolFormat())
+    BoolFormat()
+  elseif isformatbyte(byte, SignedFormat())
+    SignedFormat()
+  elseif isformatbyte(byte, UnsignedFormat())
+    UnsignedFormat()
+  elseif isformatbyte(byte, FloatFormat())
+    FloatFormat()
+  elseif isformatbyte(byte, StringFormat())
+    StringFormat()
+  elseif isformatbyte(byte, BinaryFormat())
+    BinaryFormat()
+  elseif isformatbyte(byte, VectorFormat())
+    VectorFormat()
+  elseif isformatbyte(byte, MapFormat())
+    MapFormat()
+  else
+    byteerror(byte, AnyFormat())
+  end
+end
+
+pack(io :: IO, value, :: AnyFormat) = pack(io, value)
+
+function unpack(io :: IO, :: AnyFormat)
+  fmt = peekformat(io)
+  unpack(io, fmt)
+end
+
+format(:: Type{Any}) = AnyFormat()
+construct(:: Type{Any}, val, :: AnyFormat) = val
+
+
+#
+# NilFormat
+# 
+# destruct: Any
+# construct: Nothing
+#
+# msgpack: nil
+#
+
+struct NilFormat <: Format end
+
+function isformatbyte(byte, :: NilFormat)
+  byte == 0xc0
+end
+
+function pack(io :: IO, value, :: NilFormat) :: Nothing
+  write(io, 0xc0)
+  nothing
+end
+
+function unpack(io :: IO, :: NilFormat) :: Nothing
   byte = read(io, UInt8)
-  if byte >> 4 == 0x09 # fixed array 16
-    (byte << 4 >> 4) |> Base.ntoh |> Int # remove first 4 bytes and handle endianness
-  elseif byte == 0xdc # array with length <= 2^16 - 1
-    read(io, UInt16) |> Base.ntoh |> Int
-  elseif byte == 0xdd # array with length <= 2^32 - 1
-    read(io, UInt32) |> Base.ntoh |> Int
-  else
-    ArgumentError("array_length: invalid msgpack array byte") |> throw
-  end
-end
-
-function write_array_format(io, n :: Int)
-  if n <= 15
-    write(io, 0x90 | UInt8(n))
-  elseif n <= typemax(UInt16)
-    write(io, 0xdc); write(io, hton(UInt16(n)))
-  elseif n <= typemax(UInt32)
-    write(io, 0xdd); write(io, hton(UInt32(n)))
-  else
-    ArgumentError("write_array_format: invalid number $n of fields") |> throw
-  end
-end
-
-"""
-    map_length(io)
-
-Get the length of a msgpack map stored in `io`. Consumes all bytes with length
-information.
-"""
-function map_length(io)
-  byte = read(io, UInt8)
-  if byte >> 4 == 0x08 # fixed map 16
-    (byte << 4 >> 4) |> Base.ntoh |> Int
-  elseif byte == 0xde # map with length <= 2^16 - 1
-    read(io, UInt16) |> Base.ntoh |> Int
-  elseif byte == 0xdf # map with length <= 2^32 - 1
-    read(io, UInt32) |> Base.ntoh |> Int
-  else
-    ArgumentError("map_length: invalid msgpack array byte") |> throw
-  end
-end
-
-function write_map_format(io, n :: Int)
-  if n <= 15
-    write(io, 0x80 | UInt8(n))
-  elseif n <= typemax(UInt16)
-    write(io, 0xde); write(io, hton(UInt16(N)))
-  elseif n <= typemax(UInt32)
-    write(io, 0xdf); write(io, hton(UInt32(N)))
-  else
-    ArgumentError("write_map_format: invalid number $n of fields") |> throw
-  end
-end
-
-"""
-    bin_length(io)
-
-Get the length of a msgpack byte vector stored in `io`. Consumes all bytes with
-length information.
-"""
-function bin_length(io)
-  byte = read(io, UInt8)
-  if byte == 0xc4 # bin with length <= 2^8 - 1
-    read(io, UInt8) |> Base.ntoh |> Int
-  elseif byte == 0xc5 # bin with length <= 2^16 - 1
-    read(io, UInt16) |> Base.ntoh |> Int
-  elseif byte == 0xc6 # bin with length <= 2^32 - 1
-    read(io, UInt32) |> Base.ntoh |> Int
-  else
-    ArgumentError("bin_length: invalid msgpack bin byte") |> throw
-  end
-end
-
-function write_bin_format(io, n :: Int)
-  if n <= typemax(UInt8)
-    write(io, 0xc4); write(io, hton(UInt8(n)))
-  elseif n <= typemax(UInt16)
-    write(io, 0xc5); write(io, hton(UInt16(n)))
-  elseif n <= typemax(UInt32)
-    write(io, 0xc6); write(io, hton(UInt32(n)))
-  else
-    ArgumentError("write_bin_format: invalid number $n of fields") |> throw
-  end
-end
-
-"""
-Auxiliary type that allows storing data structures in binary format. Relies on
-the `binary` format of the msgpack protocol.
-"""
-struct Bytes
-  data :: Vector{UInt8}
-end
-
-function pack(io :: IO, val :: Bytes)
-  write_bin_format(io, length(val.data))
-  write(io, val.data)
-end
-
-function unpack(io :: IO, :: Type{Bytes})
-  n = bin_length(io)
-  Bytes(read(io, n))
-end
-
-
-Bytes(arr :: Array) = Bytes(reinterpret(UInt8, reshape(arr, :)))
-Base.convert(:: Type{Bytes}, bytes :: Vector{UInt8}) = Bytes(bytes)
-
-
-"""
-Auxiliary type that allows storing julia Float32 arrays in binary format. Relies
-on the `binary` format of the msgpack protocol.
-"""
-struct BinArray{F <: Real}
-  data :: Array{F}
-end
-
-BinArray(arr :: Array) = BinArray(arr)
-
-function pack(io :: IO, val :: BinArray{F}) where {F}
-  write_map_format(io, 3)
-  pack(io, :type)
-  pack(io, nameof(F))
-  pack(io, :size)
-  pack(io, size(val.data))
-  pack(io, :data)
-  data = reinterpret(UInt8, reshape(val.data, :))
-  write_bin_format(io, length(data))
-  write(io, data)
-end
-
-function unpack(io :: IO, :: Type{BinArray})
-  @assert map_length(io) == 3
-  @assert unpack(io, Symbol) == :type
-  type = unpack(io, Symbol)
-  F = Base.eval(type)
-  @assert F <: Real
-  @assert unpack(io, Symbol) == :size
-  size = unpack(io, Vector{Int})
-  @assert unpack(io, Symbol) == :data
-  n = bin_length(io)
-  data = read(io, n)
-  arr = reshape(reinterpret(F, data), Tuple(size))
-  arr = convert(Array{F}, arr)
-  BinArray(arr)
-end
-
-function unpack(io :: IO, :: Type{BinArray{F}}) where {F}
-  unpack(io, BinArray) :: BinArray{F}
-end
-
-
-"""
-    fieldnames(T)
-
-Get the field names of an instance of type `T` that are included in (typed or
-untyped) packing. See also the convenience macro `Pack.@only`.
-
-This function can be specialized (together with `Pack.fieldvalues` and
-`Pack.fieldytpes`) in order to provide custom packing / unpacking.
-"""
-fieldnames(T :: Type) = Base.fieldnames(T)
-
-"""
-    binarrayfieldnames(T)
-
-Returns a vector of field names of `T` that are to be packed in binary format.
-The corresponding fields must be of type `Array{<: Real}`.
-"""
-binarrayfieldnames(_) = Symbol[]
-
-"""
-    fieldvalues(val)
-
-Return a vector of entries that are packed when `val` is packed (typed or
-untyped). The entries of this vector correspond to the names returned by
-`fieldnames(typeof(val))`.
-
-This function can be specialized (together with `Pack.fieldnames` and
-`Pack.fieldytpes`) in order to provide custom packing / unpacking.
-"""
-function fieldvalues(val)
-  names = fieldnames(typeof(val))
-  (Base.getfield(val, name) for name in names)
-end
-
-"""
-    fieldtypes(T)
-
-Returns a vector of types that are used as type information for unpacking
-instances of `T`.
-
-This function can be specialized (together with `Pack.fieldnames` and
-`Pack.fieldvalues`) in order to provide custom packing / unpacking.
-"""
-function fieldtypes(T :: Type)
-  names = fieldnames(T)
-  (Base.fieldtype(T, name) for name in names)
-end
-
-"""
-    construct(T, args...)
-
-Construct values of type `T` based on arguments `args...`. This function should
-be defined for any type that implements custom packing / unpacking via
-specializing `fieldnames`, `fieldtypes`, and `fieldvalues`.
-"""
-construct(T :: Type, args...) = T(args...)
-
-"""
-    @only T fields
-
-When packing instances of type `T`, ignore fields other than the ones provided
-in `fields`. In this case, a constructor that accepts the respective fields as
-positional arguments (in the order specified in `fields`) must be provided.
-
-Note that this macro must only be applied to (semi-)concrete subtypes of a
-type on which `@untyped` or `@typed` has been applied.
-"""
-macro only(T, fields)
-  quote
-    Pack.fieldnames(:: Type{<: $T}) = $fields
-  end |> esc
-end
-
-"""
-    @binarray T fields 
-
-Mark the fields `fields` of type `T` as arrays to be saved in binary mode. The
-respective fields must be of type `Array{<: Real}`.
-"""
-macro binarray(T, fields)
-  quote
-    Pack.binarrayfieldnames(:: Type{<: $T}) = $fields
-  end |> esc
-end
-
-
-"""
-    @vector T
-
-Enables packing / unpacking of values with type `Vector{S}` as long as instances
-of type `S <: T` can be packed / unpacked.
-"""
-macro vector(T)
-  S = Base.gensym(:S)
-  quote
-    Pack.pack(io :: IO, val :: Vector{<: $T}) = Pack.pack_vector(io, val)
-    Pack.unpack(io :: IO, :: Type{Vector{$S}}) where {$S <: $T} =
-      Pack.unpack_vector(io, Vector{$S})
-  end |> esc
-end
-
-function pack_vector(io :: IO, vec :: AbstractVector)
-  write_array_format(io, length(vec))
-  for v in vec
-    pack(io, v)
-  end
-end
-
-function unpack_vector(io :: IO, :: Type{Vector{S}}) where {S}
-  n = array_length(io)
-  vec = Vector{S}(undef, n)
-  for i in 1:n
-    vec[i] = unpack(io, S)
-  end
-  vec
-end
-
-
-"""
-    @nullable T
-
-Enables unpacking of values of type `Union{Nothing, <: T}`.
-"""
-macro nullable(T)
-  S = Base.gensym(:S)
-  quote
-    Pack.unpack(io :: IO, :: Type{Union{Nothing, $S}}) where {$S <: $T} =
-      Pack.unpack_nullable(io, $S)
-  end |> esc
-end
-
-function unpack_nullable(io :: IO, S :: Type)
-  if peek(io, UInt8) == 0xc0
-    read(io, UInt8)
+  if byte == 0xc0
     nothing
   else
-    unpack(io, S)
+    byteerror(byte, NilFormat())
   end
 end
 
+format(:: Type{Nothing}) = NilFormat()
+construct(:: Type{Nothing}, :: Nothing, :: NilFormat) = nothing
 
-"""
-    @named T
 
-Enable packing of named values with type `T` as their scope type.
-As a consequence, only values of type `T` that have previously been registered
-via [`Util.register!`](@ref) can be serialized / deserialized.
-"""
-macro named(T)
-  quote
-    Pack.@vector $T
+#
+# BoolFormat
+#
+# destruct: Bool
+# construct: Bool
+#
+# msgpack: bool 
+#
 
-    function Pack.pack(io :: IO, val :: $T)
-      name = Util.lookupname($T, val)
-      Pack.pack(io, name)
-    end
+struct BoolFormat <: Format end
 
-    function Pack.unpack(io :: IO, :: Type{<: $T})
-      name = Pack.unpack(io, Symbol)
-      Util.lookup($T, name)
-    end
-  end |> esc
+function isformatbyte(byte, :: BoolFormat)
+  byte == 0xc2 || byte == 0xc3
 end
 
-"""
-    @untyped T
-
-Enable packing of all concrete subtypes `S <: T` as msgpack map type. Note that
-unpacking requires prior knowledge of the concrete type `S`. For more flexible
-(albeit slower) unpacking, see `@typed`, which additionally stores type
-information.
-"""
-macro untyped(T)
-  S = Base.gensym(:S)
-  quote
-    Pack.@vector $T
-    Pack.@nullable $T
-    Pack.pack(io :: IO, val :: $T) = Pack.pack_untyped(io, val)
-    Pack.unpack(io :: IO, $S :: Type{<: $T}) = Pack.unpack_untyped(io, $S)
-  end |> esc
+function pack(io :: IO, value, :: BoolFormat) :: Nothing
+  if destruct(value, BoolFormat())
+    write(io, 0xc3)
+  else
+    write(io, 0xc2)
+  end
+  nothing
 end
 
-function pack_untyped(io :: IO, val :: S) where {S}
-  val = freeze(val)
-  fields = fieldvalues(val)
-  names = fieldnames(S)
-  binnames = binarrayfieldnames(S)
-  @assert length(names) == length(fields)
-  write_map_format(io, length(names))
-  for (name, field) in zip(names, fields)
-    pack(io, name)
-    if name in binnames
-      pack(io, BinArray(field))
-    else
-      pack(io, field)
-    end
+function unpack(io :: IO, :: BoolFormat) :: Bool
+  byte = read(io, UInt8)
+  if byte == 0xc3
+    true
+  elseif byte == 0xc2
+    false
+  else
+    byteerror(byte, BoolFormat())
   end
 end
 
-function unpack_untyped(io :: IO, T :: Type)
-  types = fieldtypes(T)
-  names = fieldnames(T)
-  binnames = binarrayfieldnames(T)
-  @assert map_length(io) == length(names) == length(types)
+format(:: Type{Bool}) = BoolFormat()
 
-  args = map(names, types) do name, type
-    @assert unpack(io, Symbol) == name
-    if name in binnames
-      F = eltype(type)
-      unpack(io, BinArray{F}).data
-    else
-      unpack(io, type)
-    end
+#
+# SignedFormat
+#
+# destruct: Signed
+# construct: Int64
+#
+# msgpack: negative fixint,
+#          positive fixint,
+#          signed 8,
+#          signed 16,
+#          signed 32,
+#          signed 64
+#
+
+struct SignedFormat <: Format end
+
+function isformatbyte(byte, :: SignedFormat)
+  byte <= 0x7f ||  # positive fixint
+  byte >= 0xe0 ||  # negative fixint
+  0xd0 <= byte == 0xd3 # signed 8 to 64
+end
+
+function pack(io :: IO, value, :: SignedFormat) :: Nothing
+  x = destruct(value, SignedFormat())
+  if -32 <= x < 0 # negative fixint
+    write(io, reinterpret(UInt8, Int8(x)))
+  elseif 0 <= x < 128 # positive fixint
+    write(io, UInt8(x))
+  elseif typemin(Int8) <= x <= typemax(Int8) # signed 8
+    write(io, 0xd0)
+    write(io, Int8(x))
+  elseif typemin(Int16) <= x <= typemax(Int16) # signed 16
+    write(io, 0xd1)
+    write(io, Int16(x) |> hton)
+  elseif typemin(Int32) <= x <= typemax(Int32) # signed 32
+    write(io, 0xd2)
+    write(io, Int32(x) |> hton)
+  elseif typemin(Int64) <= x <= typemax(Int64) # signed 64
+    write(io, 0xd3)
+    write(io, Int64(x) |> hton)
+  else
+    ArgumentError("invalid signed integer $x") |> throw
   end
-
-  val = construct(T, args...)
-  Pack.unfreeze(val)
+  nothing
 end
 
-
-"""
-    @typed T
-
-Enable typed packing for all subtypes of the type `T`. Instead of only storing
-the fields of `val :: T` (see `@untyped T`), typed packing stores a msgpack map
-of the following layout:
-
-    { type : typeinfo, (fields of val)... }
-
-The entry `typeinfo` is created via `decompose(typeof(val))` during packing, and
-converted into a type again via `compose(typeinfo)` during unpacking.
-
-Since the type is explicitly stored and can be retrieved, the following pack
-/ unpack cycle also works when `S <: T` is abstract:
-
-    bytes = pack(val :: S)
-    bytes .== pack(unpack(bytes, S)) |> all
-"""
-macro typed(T)
-  S = Base.gensym(:S)
-  R = Base.gensym(:R)
-  quote
-    Pack.@vector $T 
-    Pack.@nullable $T
-    Pack.pack(io :: IO, val :: $T) = Pack.pack_typed(io, val)
-    Pack.unpack(io :: IO, $S :: Type{<: $T}) = Pack.unpack_typed(io, $S)
-  end |> esc
-end
-
-function pack_typed(io :: IO, val)
-  val = Pack.freeze(val)
-  S = typeof(val)
-  fields = fieldvalues(val)
-  names = fieldnames(S)
-  binnames = binarrayfieldnames(S)
-  @assert length(names) == length(fields)
-
-  write_map_format(io, length(names) + 1)
-  pack(io, "type")
-  pack(io, Pack.decompose(S))
-
-  for (name, field) in zip(names, fields)
-    pack(io, name)
-    if name in binnames
-      pack(io, BinArray(field))
-    else
-      pack(io, field)
-    end
+function unpack(io :: IO, :: SignedFormat) :: Int64
+  byte = read(io, UInt8)
+  if byte >= 0xe0 # negative fixint
+    reinterpret(Int8, byte)
+  elseif byte < 128 # positive fixint
+    byte
+  elseif byte == 0xd0 # signed 8
+    read(io, Int8)
+  elseif byte == 0xd1 # signed 16
+    read(io, Int16) |> ntoh
+  elseif byte == 0xd2 # signed 32
+    read(io, Int32) |> ntoh
+  elseif byte == 0xd3 # signed 64
+    read(io, Int64) |> ntoh
+  # For compability, also read unsigned values when signed is expected
+  elseif byte == 0xcc # unsigned 8
+    read(io, UInt8)
+  elseif byte == 0xcd # unsigned 16
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xce # unsigned 32
+    read(io, UInt32) |> ntoh
+  elseif byte == 0xcf # unsigned 64
+    read(io, UInt64) |> ntoh
+  else
+    byteerror(byte, SignedFormat())
   end
 end
 
-function unpack_typed(io :: IO, T :: Type)
-  n = map_length(io) - 1
-  @assert unpack(io, Symbol) == :type
-  S = compose(unpack(io), T)
-  @assert S <: T "unexpected type $S when unpacking $T"
-  
-  types = fieldtypes(S)
-  names = fieldnames(S)
-  binnames = binarrayfieldnames(S)
-  @assert n == length(names) == length(types)
+format(:: Type{<: Signed}) = SignedFormat()
+destruct(value, :: SignedFormat) = Base.signed(value)
 
-  args = map(names, types) do name, type
-    @assert unpack(io, Symbol) == name
-    if name in binnames
-      F = eltype(type)
-      unpack(io, BinArray{F}).data
-    else
-      unpack(io, type)
-    end
+
+#
+# UnsignedFormat
+#
+# destruct: Unsigned
+# construct: UInt64
+#
+# msgpack: positive fixint,
+#          unsigned 8,
+#          unsigned 16,
+#          unsigned 32,
+#          unsigned 64
+#
+
+struct UnsignedFormat <: Format end
+
+function isformatbyte(byte, :: UnsignedFormat)
+  byte <= 0x7f ||  # positive fixint
+  0xcc <= byte == 0xcf # unsigned 8 to 64
+end
+
+function pack(io :: IO, value, :: UnsignedFormat) :: Nothing
+  x = destruct(value, UnsignedFormat())
+  if x < 128 # positive fixint
+    write(io, UInt8(x))
+  elseif x <= typemax(UInt8) # unsigned 8
+    write(io, 0xcc)
+    write(io, UInt8(x))
+  elseif x <= typemax(UInt16) # unsigned 16
+    write(io, 0xcd)
+    write(io, UInt16(x) |> hton)
+  elseif x <= typemax(UInt32) # unsigned 32
+    write(io, 0xce)
+    write(io, UInt32(x) |> hton)
+  elseif x <= typemax(UInt64) # unsigned 64
+    write(io, 0xcf)
+    write(io, UInt64(x) |> hton)
+  else
+    ArgumentError("invalid unsigned integer $x") |> throw
   end
+  nothing
+end
 
-  val = construct(S, args...)
-  Pack.unfreeze(val)
+function unpack(io :: IO, :: UnsignedFormat) :: UInt64
+  byte = read(io, UInt8)
+  if byte < 128 # positive fixint
+    byte
+  elseif byte == 0xcc # unsigned 8
+    read(io, UInt8)
+  elseif byte == 0xcd # unsigned 16
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xce # unsigned 32
+    read(io, UInt32) |> ntoh
+  elseif byte == 0xcf # unsigned 64
+    read(io, UInt64) |> ntoh
+  else
+    byteerror(byte, UnsignedFormat())
+  end
+end
+
+format(:: Type{<: Unsigned}) = UnsignedFormat()
+destruct(x, :: UnsignedFormat) = Base.unsigned(x)
+
+
+#
+# FloatFormat
+#
+# destruct: Float16, Float32, Float64
+# construct: Float64
+#
+# msgpack: float 32, float 64
+#
+
+struct FloatFormat <: Format end
+
+function isformatbyte(byte, :: FloatFormat)
+  byte == 0xca || byte == 0xcb 
+end
+
+function pack(io :: IO, value, :: FloatFormat) :: Nothing
+  val = destruct(value, FloatFormat())
+  if isa(val, Float16) || isa(val, Float32) # float 32
+    write(io, 0xca)
+    write(io, Float32(val) |> hton)
+  else # float 64
+    write(io, 0xcb)
+    write(io, Float64(val) |> hton)
+  end
+  nothing
+end
+
+function unpack(io :: IO, :: FloatFormat) :: Float64
+  byte = read(io, UInt8)
+  if byte == 0xca ## float 32
+    read(io, Float32) |> ntoh
+  elseif byte == 0xcb # float 64
+    read(io, Float64) |> ntoh
+  else
+    byteerror(byte, FloatFormat())
+  end
+end
+
+format(:: Type{<: AbstractFloat}) = FloatFormat()
+destruct(value, :: FloatFormat) = Base.float(value)
+
+
+#
+# StringFormat
+#
+# destruct: sizeof(.), write(io, .)
+# construct: String
+#
+# msgpack: fixstr, str 8, str 16, str 32
+#
+
+struct StringFormat <: Format end
+
+function isformatbyte(byte, :: StringFormat)
+  0xa0 <= byte <= 0xbf || # fixstr
+  0xd9 <= byte <= 0xdb # str 8 to 32
+end
+
+function pack(io :: IO, value, :: StringFormat) :: Nothing
+  str = destruct(value, StringFormat())
+  n = sizeof(str)
+  if n < 32 # fixstr format
+    write(io, 0xa0 | UInt8(n))
+  elseif n <= typemax(UInt8) # str 8 format
+    write(io, 0xd9)
+    write(io, UInt8(n))
+  elseif n <= typemax(UInt16) # str 16 format
+    write(io, 0xda)
+    write(io, UInt16(n) |> hton)
+  elseif n <= typemax(UInt32) # str 32 format
+    write(io, 0xdb)
+    write(io, UInt32(n) |> hton)
+  else
+    ArgumentError("invalid string length $n") |> throw
+  end
+  write(io, str)
+  nothing
+end
+
+function unpack(io :: IO, :: StringFormat) :: String
+  byte = read(io, UInt8)
+  n = if 0xa0 <= byte <= 0xbf # fixstr  format
+    byte & 0x1f
+  elseif byte == 0xd9 # str 8 format
+    read(io, UInt8)
+  elseif byte == 0xda # str 16 format
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xdb # str 32 format
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, StringFormat())
+  end
+  String(read(io, n))
+end
+
+#
+# Default destruct / construct
+#
+
+destruct(value, :: StringFormat) = Base.string(value)
+construct(:: Type{T}, x, :: StringFormat) where {T} = convert(T, x)
+
+#
+# String / Symbol support
+#
+
+format(:: Type{<: AbstractString}) = StringFormat()
+
+#
+# Symbol support
+#
+
+format(:: Type{Symbol}) = StringFormat()
+construct(:: Type{Symbol}, x, :: StringFormat) = Symbol(x)
+
+#
+# BinaryFormat
+#
+# destruct: length(.), write(io, .)
+# construct: Vector{UInt8}
+#
+# msgpack: bin 8, bin 16, bin 32
+#
+
+struct BinaryFormat <: Format end
+
+function isformatbyte(byte, :: BinaryFormat) 
+  0xc4 <= byte <= 0xc6
+end
+
+function pack(io :: IO, value, :: BinaryFormat) :: Nothing
+  bin = destruct(value, BinaryFormat()) 
+  n = sizeof(bin)
+  if n <= typemax(UInt8) # bin8
+    write(io, 0xc4)
+    write(io, UInt8(n))
+  elseif n <= typemax(UInt16) # bin16
+    write(io, 0xc5)
+    write(io, UInt16(n) |> hton)
+  elseif n <= typemax(UInt32) # bin32
+    write(io, 0xc6)
+    write(io, UInt32(n) |> hton)
+  else
+    ArgumentError("invalid binary length $n") |> throw
+  end
+  write(io, bin)
+  nothing
+end
+
+function unpack(io :: IO, :: BinaryFormat) :: Vector{UInt8}
+  byte = read(io, UInt8)
+  n = if byte == 0xc4 # bin8
+    read(io, UInt8)
+  elseif byte == 0xc5 # bin16
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xc6 # bin32
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, BinaryFormat())
+  end
+  read(io, n)
 end
 
 """
-    typename(T)
-
-Snake-case representation of the type `T`. Used for nicer type entries only.
+Simple struct that implements [`BinaryFormat`](@ref).
 """
-function typename(T :: Type)
-  name = Base.nameof(T) |> string
-  join(lowercase.(split(name, r"(?=[A-Z])")), "_")
+struct Bytes
+  bytes :: Vector{UInt8}
 end
 
-function typepath(T :: Type)
-  mod = Base.parentmodule(T)
+destruct(x :: Bytes, :: BinaryFormat) = x.bytes
+construct(:: Type{Bytes}, bytes, :: BinaryFormat) = Bytes(bytes)
+
+#
+# Vector support for bitstype elements
+#
+
+function destruct(value :: Vector{F}, :: BinaryFormat) where {F}
+  @assert isbitstype(F) """
+  Only vectors with bitstype elements can be saved in BinaryFormat.
+  """
+  value
+end
+
+function construct(:: Type{Vector{F}}, bytes, :: BinaryFormat) where {F}
+  @assert isbitstype(F) """
+  Only vectors with bitstype elements can be loaded from BinaryFormat.
+  """
+  value = reinterpret(F, bytes)
+  convert(Vector{F}, value)
+end
+
+
+#
+# VectorFormat
+#
+# destruct: length(.), iterate(.)
+# construct: Generator
+# methods: valuetype, [valueformat]
+#
+# msgpack: fixarray, array 16, array 32
+#
+
+struct VectorFormat <: Format end
+
+function isformatbyte(byte, :: VectorFormat) 
+  0x90 <= byte <= 0x9f || # fixarray
+  byte == 0xdc || # array 16
+  byte == 0xdd # array 32
+end
+
+function pack(io :: IO, value :: T, :: VectorFormat) :: Nothing where {T}
+  val = destruct(value, VectorFormat())
+  n = length(val)
+  if n < 16 # fixarray
+    write(io, 0x90 | UInt8(n))
+  elseif n <= typemax(UInt16) # array16
+    write(io, 0xdc)
+    write(io, UInt16(n) |> hton)
+  elseif n <= typemax(UInt32) # array32
+    write(io, 0xdd)
+    write(io, UInt32(n) |> hton)
+  else
+    ArgumentError("invalid array length $n") |> throw
+  end
+  for (index, x) in enumerate(val)
+    fmt = valueformat(T, index)
+    pack(io, x, fmt)
+  end
+  nothing
+end
+
+function unpack(io :: IO, :: VectorFormat) :: Vector
+  byte = read(io, UInt8)
+  n = if byte & 0xf0 == 0x90 # fixarray
+    byte & 0x0f
+  elseif byte == 0xdc # array 16
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xdd # array 32
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, VectorFormat())
+  end
+  map(1:n) do _
+    unpack(io, AnyFormat())
+  end
+end
+
+function unpack(io :: IO, :: Type{T}, :: VectorFormat) :: T where {T}
+  byte = read(io, UInt8)
+  n = if byte & 0xf0 == 0x90 # fixarray
+    byte & 0x0f
+  elseif byte == 0xdc # array 16
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xdd # array 32
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, VectorFormat())
+  end
+  values = Iterators.map(1:n) do index
+    S = valuetype(T, index)
+    fmt = valueformat(T, index)
+    unpack(io, S, fmt)
+  end
+  construct(T, values, VectorFormat())
+end
+
+# Struct support
+
+function destruct(value :: T, :: VectorFormat) where {T}
+  n = Base.fieldcount(T)
+  Iterators.map(1:n) do index
+    Base.getfield(value, index)
+  end
+end
+
+construct(:: Type{T}, vals, :: VectorFormat) where {T} = T(vals...)
+
+# Tuple support (default)
+
+format(:: Type{<: T}) where {T <: Tuple} = VectorFormat()
+
+function construct(:: Type{T}, vals, :: VectorFormat) where {T <: Tuple}
+  convert(T, (vals...,))
+end
+
+# NamedTuple support (default MapFormat)
+
+function construct(:: Type{T}, vals, :: VectorFormat) where {T <: NamedTuple}
+  T(vals)
+end
+
+# Vector support (default)
+
+format(:: Type{<: AbstractVector}) = VectorFormat()
+destruct(value :: AbstractArray, :: VectorFormat) = value
+
+function construct(:: Type{T}, vals, :: VectorFormat) where {T <: AbstractVector}
+  convert(T, collect(vals))
+end
+
+valuetype(:: Type{T}, _) where {T <: AbstractArray} = eltype(T)
+
+#
+# MapFormat
+#
+# destruct: length(.), iterate(.)
+# construct: Base.Generator
+# requires: keytype, valuetype, [keyformat, valueformat]
+#
+# msgpack: fixmap, map 16, map 32
+#
+
+struct MapFormat <: Format end
+
+function isformatbyte(byte, :: MapFormat) 
+  0x80 <= byte <= 0x8f || # fixmap
+  byte == 0xde || # map 16
+  byte == 0xdf # map 32
+end
+
+function pack(io :: IO, value :: T, :: MapFormat) :: Nothing where {T}
+  val = destruct(value, MapFormat())
+  n = length(val)
+  if n < 16 # fixmap
+    write(io, 0x80 | UInt8(n))
+  elseif n <= typemax(UInt16) # map 16
+    write(io, 0xde)
+    write(io, UInt16(n) |> hton)
+  elseif n <= typemax(UInt32) # map 32
+    write(io, 0xdf)
+    write(io, UInt32(n) |> hton)
+  else
+    ArgumentError("invalid map length $n") |> throw
+  end
+  for (index, (key, val)) in enumerate(val)
+    fmt_key = keyformat(T, index)
+    fmt_val = valueformat(T, index)
+    pack(io, key, fmt_key)
+    pack(io, val, fmt_val)
+  end
+  nothing
+end
+
+function unpack(io :: IO, :: MapFormat) :: Dict
+  byte = read(io, UInt8)
+  n = if byte & 0xf0 == 0x80
+    byte & 0x0f
+  elseif byte == 0xde 
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xdf 
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, MapFormat())
+  end
+  pairs = Iterators.map(1:n) do index
+    key = unpack(io, AnyFormat())
+    value = unpack(io, AnyFormat())
+    (key, value)
+  end
+  Dict(pairs)
+end
+
+function unpack(io :: IO, :: Type{T}, :: MapFormat) :: T where {T}
+  byte = read(io, UInt8)
+  n = if byte & 0xf0 == 0x80
+    byte & 0x0f
+  elseif byte == 0xde 
+    read(io, UInt16) |> ntoh
+  elseif byte == 0xdf 
+    read(io, UInt32) |> ntoh
+  else
+    byteerror(byte, MapFormat())
+  end
+  pairs = Iterators.map(1:n) do index
+    K = keytype(T, index)
+    V = valuetype(T, index)
+    fmt_key = keyformat(T, index)
+    fmt_val = valueformat(T, index)
+    key = unpack(io, K, fmt_key)
+    value = unpack(io, V, fmt_val)
+    (key, value)
+  end
+  construct(T, pairs, MapFormat())
+end
+
+#
+# Generic struct support
+#
+
+function destruct(value :: T, :: MapFormat) where {T}
+  n = Base.fieldcount(T)
+  Iterators.map(1:n) do index
+    key = Base.fieldname(T, index)
+    val = Base.getfield(value, index)
+    (key, val)
+  end
+end
+
+function construct(:: Type{T}, pairs, :: MapFormat) where {T}
+  values = Iterators.map(last, pairs)
+  T(values...)
+end
+
+#
+# NamedTuple support (default)
+#
+
+format(:: Type{<: NamedTuple}) = MapFormat()
+
+function construct(:: Type{T}, pairs, :: MapFormat) where {T <: NamedTuple}
+  values = Iterators.map(last, pairs)
+  T(values)
+end
+
+#
+# Dict support (default)
+#
+
+format(:: Type{<: Dict}) = MapFormat()
+destruct(value :: Dict, :: MapFormat) = value
+construct(:: Type{<: Dict}, pairs, :: MapFormat) = Dict(pairs)
+keytype(:: Type{<: Dict{K, V}}, _) where {K, V} = K
+valuetype(:: Type{<: Dict{K, V}}, _) where {K, V} = V
+
+
+#
+# BinVector format
+#
+# destruct: BinaryFormat
+# construct: Vector{UInt8}
+#
+
+struct BinVectorFormat <: Format end
+
+function pack(io :: IO, value, :: BinVectorFormat) :: Nothing
+  val = destruct(value, BinVectorFormat())
+  pack(io, val, BinaryFormat())
+end
+
+function unpack(io :: IO, :: Type{T}, :: BinVectorFormat) :: T where {T}
+  bytes = unpack(io, BinaryFormat())
+  construct(T, bytes, BinVectorFormat())
+end
+
+function construct(:: Type{Vector{F}}, bytes, :: BinVectorFormat) where {F}
+  vals = reinterpret(F, bytes)
+  convert(Vector{F}, vals)
+end
+
+
+#
+# Array format
+#
+# destruct: size(.), VectorFormat
+# construct: eltype(T), ArrayValue
+#
+
+struct ArrayFormat <: Format end
+
+struct ArrayValue{T}
+  data :: T
+  size :: Vector{Int}
+end
+
+format(:: Type{<: ArrayValue}) = MapFormat()
+valuetype(:: Type{ArrayValue{T}}, index) where {T} = index == 1 ? T : Vector{Int}
+valueformat(:: Type{<: ArrayValue}, index) = VectorFormat()
+
+function pack(io :: IO, value, :: ArrayFormat) :: Nothing
+  val = destruct(value, ArrayFormat())
+  pack(io, ArrayValue(val, collect(size(val))))
+end
+
+function unpack(io :: IO, :: Type{T}, :: ArrayFormat) :: T where {T}
+  V = Vector{eltype(T)}
+  val = unpack(io, ArrayValue{V})
+  construct(T, val, ArrayFormat())
+end
+
+# ND Array support
+
+format(:: Type{<: AbstractArray}) = ArrayFormat()
+
+function construct(:: Type{A}, val, :: ArrayFormat) where {A <: AbstractArray}
+  convert(A, reshape(val.data, val.size...))
+end
+
+
+#
+# BinArrayFormat
+#
+# destruct: size, BinVectorFormat
+# construct: BinArrayValue
+#
+
+struct BinArrayFormat <: Format end
+
+struct BinArrayValue{T}
+  data :: T
+  size :: Vector{Int}
+end
+
+format(:: Type{<: BinArrayValue}) = MapFormat()
+
+function valuetype(:: Type{BinArrayValue{T}}, index) where {T}
+  index == 1 ? T : Vector{Int}
+end
+
+function valueformat(:: Type{<: BinArrayValue}, index)
+  index == 1 ? BinVectorFormat() : VectorFormat()
+end
+
+function pack(io :: IO, value, :: BinArrayFormat)
+  val = destruct(value, BinArrayFormat())
+  pack(io, BinArrayValue(val, collect(size(val))))
+end
+
+function unpack(io :: IO, :: Type{T}, :: BinArrayFormat) :: T where {T}
+  V = Vector{eltype(T)}
+  val = unpack(io, BinArrayValue{V})
+  construct(T, val, BinArrayFormat())
+end
+
+# ND Array support
+
+function construct(:: Type{A}, val, :: BinArrayFormat) where {A <: AbstractArray}
+  convert(A, reshape(val.data, val.size...))
+end
+
+#
+# ValFormat
+#
+
+"""
+Format wrapper that is used to resolve ambiguities for the type
+[`ValFormat`](@ref).
+"""
+struct ValFormat <: Format end
+
+"""
+Wrapper that enforces packing / unpacking of a value in a certain format.
+"""
+struct Val{F <: Format, T}
+  value :: T
+end
+
+Val(val :: T, :: F) where {F, T} = Val{F, T}(val)
+
+format(:: Type{<: Val}) = ValFormat()
+
+function pack(io :: IO, value :: Val{F, T}, :: ValFormat) where {F, T}
+  pack(io, value.value, F())
+end
+
+function unpack(io :: IO, :: Type{Val{F, T}}, :: ValFormat) where {F, T}
+  Val(unpack(io, T, F()), F())
+end
+
+function unpack(io :: IO, :: Type{Val{F}}, :: ValFormat) where {F <: Format}
+  Val(unpack(io, F()), F())
+end
+
+
+#
+# TypeFormat
+#
+
+struct TypeParamFormat <: Format end
+
+pack(io :: IO, value, :: TypeParamFormat) = pack(io, value)
+
+function unpack(io :: IO, :: TypeParamFormat)
+  if peekformat(io) == MapFormat()
+    unpack(io, TypeValue)
+  elseif peekformat(io) == VectorFormat()
+    Tuple(unpack(io, Vector))
+  else
+    unpack(io, Any)
+  end
+end
+
+struct TypeFormat <: Format end
+
+struct TypeValue
+  name :: Symbol
+  path :: Vector{Symbol}
+  params :: Vector{Val{TypeParamFormat}}
+end
+
+# TODO: check if there is a way to find the type of a bitstype type parameter!
+"""
+    TypeValue(T)
+
+Construct a [`TypeValue`](@ref) out of the type `T`.
+
+Currently, the following limitations for parameterized types apply:
+* If `T` has more type parameters than are explicitly specified \
+(e.g., `T = Array{Float32}`), the specified type parameters must come first \
+(e.g., `T = Array{F, 1} where {F}` would fail).
+* Only certain primitive bitstypes are supported as type parameters, like \
+`Bool` or `Int64`. Other bitstypes (like `UInt64` or `Int16`) are converted \
+to Int64 type parameters when unpacking.
+"""
+function TypeValue(T :: Type)
   name = Base.nameof(T)
-  string(mod) * "." * string(name)
-end
-
-function parsetypepath(str, T = Main)
-  syms = map(Symbol, split(str, "."))
-  for sym in syms
-    T = getfield(T, sym)
+  path = string(Base.parentmodule(T))
+  path = Symbol.(split(path, "."))
+  params = typeparams(T)
+  params = map(params) do param
+    if param isa Type
+      Val(TypeValue(param), TypeParamFormat())
+    else
+      Val(param, TypeParamFormat())
+    end
   end
-  T :: Type
+  TypeValue(name, path, params)
 end
 
+format(:: Type{TypeValue}) = MapFormat()
 
-"""
-    typeparams(T)
+pack(io :: IO, value, :: TypeFormat) :: Nothing = pack(io, TypeValue(value))
 
-Return the type parameters of a type `T`.
+function unpack(io :: IO, :: TypeFormat) :: Type
+  value = unpack(io, TypeValue)
+  composetype(value)
+end
 
-If `T` has more type parameters than are specified (e.g., `T = Array{Float32}`),
-the specified type parameters must come first (e.g., `T = Array{F, 1} where {F}`
-would fail).
-"""
 function typeparams(T)
   params = nothing
   vars = []
@@ -587,48 +1060,180 @@ function typeparams(T)
   params
 end
 
-
-"""
-    decompose(T)
-
-Generic decomposition of a type `T` into a dictionary that can be packed and
-unpacked. Type parameters are also stored. Note that `T` as well as all type
-parameters must be accessible from the module `Main` in the context of
-unpacking.
-"""
-function decompose(T :: Type)
-  d = Dict()
-  d["name"] = typename(T)
-  d["path"] = typepath(T)
-  params = typeparams(T)
-  if !isempty(params)
-    d["params"] = params .|> decompose
+function composetype(value :: TypeValue) :: Type
+  # Resolve type from module path and name
+  T = Main
+  for m in value.path
+    T = getfield(T, m) :: Module
   end
-  d
+  T = getfield(T, value.name) :: Type
+  # attach type parameters
+  if isempty(value.params)
+    T
+  else
+    params = map(value.params) do param
+      composetypeparam(param.value)
+    end
+    T{params...}
+  end
 end
 
-decompose(x :: Union{Int, Bool, Symbol}) = x
-
-"""
-    compose(dict [, T])
-
-Compose the type stored as a dictionary `dict` that was created by `decompose`.
-The type argument `T` can be specified to make sure that the composed type is in
-fact a subtype of `T`.
-
-Note that composition only works if all types and type parameters stored in
-`dict` are accessible from the module `Main`.
-"""
-function compose(d :: Dict, T :: Type = Any)
-  S = parsetypepath(d["path"])
-  if haskey(d, "params") && !isempty(d["params"])
-    params = map(x -> compose(x), d["params"])
-    S = S{params...}
+function composetypeparam(value)
+  if value isa TypeValue
+    composetype(value)
+  else
+    value
   end
-  @assert S <: T "$S is not a subtype of $T"
+end
+
+
+format(:: Type{<: Type}) = TypeFormat()
+
+function construct(:: Type{Type}, S, :: TypeFormat)
+  @assert isa(S, Type) "unpacked value $S was expected to be a type"
   S
 end
 
-compose(x :: Bool) = x
-compose(x :: Integer) = Int(x)
-compose(x :: String) = Symbol(x) # a packing / unpacking cycle converts symbols to strings
+#
+# OwnFormat
+#
+
+"""
+Artificial format that hands back the format choice to the type (via [`Pack.format`](@ref)).
+"""
+struct OwnFormat <: Format end
+
+pack(io :: IO, value :: T, :: OwnFormat) where {T} = pack(io, value, format(T))
+unpack(io :: IO, :: Type{T}, :: OwnFormat) where {T} = unpack(io, T, format(T))
+
+#
+# TypedFormat
+#
+
+"""
+Format reserved to the type [`Typed`](@ref)
+"""
+struct TypedFormat{F <: Format} <: Format end
+
+TypedFormat() = TypedFormat{OwnFormat}()
+
+function pack(io :: IO, value, :: TypedFormat{F}) where {F <: Format}
+  write(io, 0x82) # fixmap of length 2
+  pack(io, :type)
+  pack(io, typeof(value))
+  pack(io, :value)
+  pack(io, Val(value, F()))
+end
+
+function pack(io :: IO, value :: T, :: TypedFormat{OwnFormat}) where {T}
+  F = typeof(format(T))
+  pack(io, value, TypedFormat{F}())
+end
+
+function unpack(io :: IO, :: TypedFormat{F}) where {F <: Format}
+  byte = read(io, UInt8)
+  if byte == 0x82 # expect fixmap of length 2
+    key = unpack(io, Symbol)
+    @assert key == :type "Expected map key :type when unpacking typed value"
+    T = unpack(io, Type)
+    key = unpack(io, Symbol)
+    @assert key == :value "Expected map key :value when unpacking typed value"
+    unpack(io, T, F())
+  else
+    byteerror(byte, TypedFormat{F}())
+  end
+end
+
+function unpack(io :: IO, :: Type{T}, :: TypedFormat{F}) :: T where {T, F <: Format}
+  val = unpack(io, TypedFormat{F}())
+  @assert val isa T "Expected value type $T when unpacking typed value"
+  val
+end
+
+function unpack(io :: IO, :: TypedFormat{OwnFormat})
+  byte = read(io, UInt8)
+  if byte == 0x82 # expect fixmap of length 2
+    key = unpack(io, Symbol)
+    @assert key == :type "Expected map key :type when unpacking typed value"
+    T = unpack(io, Type)
+    key = unpack(io, Symbol)
+    @assert key == :value "Expected map key :value when unpacking typed value"
+    unpack(io, T)
+  else
+    byteerror(byte, TypedFormat{OwnFormat}())
+  end
+end
+
+#
+# StreamFormat
+#
+
+struct StreamFormat{S, F <: Format} <: Format end
+
+StreamFormat(S) = StreamFormat{S, OwnFormat}()
+
+function pack(io :: IO, value, :: StreamFormat{S, F}) where {S, F}
+  stream = S(io)
+  pack(stream, value, F)
+  write(stream, TOKEN_END)
+end
+
+function unpack(io :: IO, :: StreamFormat{S, F}) where {S, F <: Format}
+  stream = S(io)
+  unpack(stream, F())
+end
+
+function unpack(io :: IO, :: Type{T}, :: StreamFormat{S, F}) where {T, S, F <: Format}
+  stream = S(io)
+  unpack(stream, T, F())
+end
+
+
+#
+# AliasFormat
+#
+
+struct AliasFormat{S} <: Format end
+
+function pack(io :: IO, value :: T, :: AliasFormat{S}) :: Nothing where {S, T}
+  val = destruct(value, AliasFormat{S}())
+  pack(io, val)
+end
+
+function unpack(io :: IO, :: Type{T}, :: AliasFormat{S}) :: T where {S, T}
+  val = unpack(io, S)
+  construct(T, val, AliasFormat{S}())
+end
+
+construct(:: Type{T}, val, :: AliasFormat) where {T} = T(val)
+destruct(val :: T, :: AliasFormat{S}) where {S, T} = S(val)
+
+
+
+#
+# struct packing macro
+#
+
+macro pack(a)
+  return :(nothing)
+end
+
+macro typed(a)
+  return :(nothing)
+end
+
+macro named(a)
+  return :(nothing)
+end
+
+macro binarray(a, b)
+  return :(nothing)
+end
+
+macro untyped(a)
+  return :(nothing)
+end
+
+macro only(a, b)
+  return :(nothing)
+end

@@ -29,7 +29,6 @@ struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
 end
 
 Pack.@typed NeuralModel
-Pack.freeze(model :: NeuralModel{<: DefaultBackend}) = adapt(:default, model)
 
 
 """

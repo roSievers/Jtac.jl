@@ -19,7 +19,6 @@ mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   profile
 end
 
-Pack.freeze(m :: AsyncModel) = switchmodel(m, Pack.freeze(m.model))
 Pack.@only AsyncModel [:model, :batchsize, :buffersize, :spawn, :dynamic]
 
 AsyncModel{G}(model, batchsize, buffersize, spawn, dynamic) where {G} =
