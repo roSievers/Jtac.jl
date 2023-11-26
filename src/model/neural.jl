@@ -28,9 +28,6 @@ struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
   target_activations :: Vector{Activation}
 end
 
-Pack.@typed NeuralModel
-
-
 """
     NeuralModel(G, trunk; [targets, heads, activations, backend])
 

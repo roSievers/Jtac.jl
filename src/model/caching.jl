@@ -15,10 +15,7 @@ mutable struct CachingModel{G <: AbstractGame} <: AbstractModel{G}
   calls_uncached :: Int
 end
 
-Pack.@only CachingModel [:model, :cachesize]
-
-CachingModel{G}(model, cachesize) where {G} = CachingModel(model; cachesize)
-
+@pack {<: CachingModel} CachingModel(model; cachesize)
 
 """
     CachingModel(model; cachesize)

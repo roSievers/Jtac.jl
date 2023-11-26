@@ -1,17 +1,5 @@
 
 """
-Wishlist:
--[x] support nothing, Int64, Float64, String, Bool natively
--[x] support Symbol, Int32, Int16, Int8, UInt64, UInt32, UInt16, UInt on top
--[x] support arbitrary tuples (array)
--[ ] support Union{Nothing, A} # 
--[x] support Vector (array format)
--[x] support Array (map format: data, size)
--[x] support binary Vector{T} where T is a bitstype
--[x] support binary Array{T} where T is a bitstype
-"""
-
-"""
 Abstract format type.
 
 Formats are responsible for reducing the packing and unpacking of julia values
@@ -22,16 +10,28 @@ abstract type Format end
 """
     format(T)
 
-Return the format of `T`. Must be implemented for any type `T` for which
-[`pack`] (@ref) and [`unpack`](@ref) are not defined explicitly.
+Return the default format associated to type `T`. Must be implemented in order
+for `pack(io, value :: T)` and `unpack(io, T)` to work.
 
-See also [`Format`](@ref).
+See also [`Format`](@ref) and [`DefaultFormat`](@ref).
 """
 function format(T :: Type)
   error("no default format has been specified for type $T")
 end
 
 format(value) = format(typeof(value))
+
+"""
+Special format that acts as placeholder for `Pack.format(T)` in situations where
+the type `T` is not yet known.
+
+!!! Never define `Pack.format(T)` for your type `T` in terms of `DefaultFormat`.
+!!! This will lead to infinite recursion.
+"""
+struct DefaultFormat <: Format end
+
+pack(io :: IO, val, :: DefaultFormat) = pack(io, val)
+unpack(io :: IO, :: Type{T}, :: DefaultFormat) where {T} = unpack(io, T)
 
 """
     construct(T, val, format)
@@ -69,7 +69,7 @@ keytype(:: Type, :: Any) = Symbol
 
 Return the format of the key at `index` in `T`
 """
-keyformat(:: Type{T}, index) where {T} = format(keytype(T, index))
+keyformat(:: Type{T}, index) where {T} = DefaultFormat()
 
 """
     valuetype(T, index)
@@ -83,7 +83,7 @@ valuetype(:: Type{T}, index) where {T} = Base.fieldtype(T, index)
 
 Return the format of the value at `index` in `T`.
 """
-valueformat(:: Type{T}, index) where {T} = format(valuetype(T, index))
+valueformat(:: Type{T}, index) where {T} = DefaultFormat()
 
 """
     pack(value, [format]) :: Vector{UInt8}
@@ -104,7 +104,6 @@ function pack(value :: T, args...) :: Vector{UInt8} where {T}
   pack(io, value, args...)
   take!(io)
 end
-
 
 """
     unpack(io / bytes) :: Any
@@ -290,7 +289,7 @@ struct SignedFormat <: Format end
 function isformatbyte(byte, :: SignedFormat)
   byte <= 0x7f ||  # positive fixint
   byte >= 0xe0 ||  # negative fixint
-  0xd0 <= byte == 0xd3 # signed 8 to 64
+  0xd0 <= byte <= 0xd3 # signed 8 to 64
 end
 
 function pack(io :: IO, value, :: SignedFormat) :: Nothing
@@ -366,7 +365,7 @@ struct UnsignedFormat <: Format end
 
 function isformatbyte(byte, :: UnsignedFormat)
   byte <= 0x7f ||  # positive fixint
-  0xcc <= byte == 0xcf # unsigned 8 to 64
+  0xcc <= byte <= 0xcf # unsigned 8 to 64
 end
 
 function pack(io :: IO, value, :: UnsignedFormat) :: Nothing
@@ -873,17 +872,21 @@ end
 struct ArrayFormat <: Format end
 
 struct ArrayValue{T}
-  data :: T
+  datatype :: Symbol
   size :: Vector{Int}
+  data :: T
 end
 
 format(:: Type{<: ArrayValue}) = MapFormat()
-valuetype(:: Type{ArrayValue{T}}, index) where {T} = index == 1 ? T : Vector{Int}
-valueformat(:: Type{<: ArrayValue}, index) = VectorFormat()
+
+function valueformat(:: Type{<: ArrayValue}, index)
+  index == 3 ? VectorFormat() : DefaultFormat()
+end
 
 function pack(io :: IO, value, :: ArrayFormat) :: Nothing
   val = destruct(value, ArrayFormat())
-  pack(io, ArrayValue(val, collect(size(val))))
+  datatype = Base.eltype(val) |> string |> Symbol
+  pack(io, ArrayValue(datatype, collect(size(val)), val))
 end
 
 function unpack(io :: IO, :: Type{T}, :: ArrayFormat) :: T where {T}
@@ -911,23 +914,21 @@ end
 struct BinArrayFormat <: Format end
 
 struct BinArrayValue{T}
-  data :: T
+  datatype :: Symbol
   size :: Vector{Int}
+  data :: T
 end
 
 format(:: Type{<: BinArrayValue}) = MapFormat()
 
-function valuetype(:: Type{BinArrayValue{T}}, index) where {T}
-  index == 1 ? T : Vector{Int}
-end
-
 function valueformat(:: Type{<: BinArrayValue}, index)
-  index == 1 ? BinVectorFormat() : VectorFormat()
+  index == 3 ? BinVectorFormat() : DefaultFormat()
 end
 
 function pack(io :: IO, value, :: BinArrayFormat)
   val = destruct(value, BinArrayFormat())
-  pack(io, BinArrayValue(val, collect(size(val))))
+  datatype = Base.eltype(val) |> string |> Symbol
+  pack(io, BinArrayValue(datatype, collect(size(val)), val))
 end
 
 function unpack(io :: IO, :: Type{T}, :: BinArrayFormat) :: T where {T}
@@ -1086,7 +1087,6 @@ function composetypeparam(value)
   end
 end
 
-
 format(:: Type{<: Type}) = TypeFormat()
 
 function construct(:: Type{Type}, S, :: TypeFormat)
@@ -1094,17 +1094,6 @@ function construct(:: Type{Type}, S, :: TypeFormat)
   S
 end
 
-#
-# OwnFormat
-#
-
-"""
-Artificial format that hands back the format choice to the type (via [`Pack.format`](@ref)).
-"""
-struct OwnFormat <: Format end
-
-pack(io :: IO, value :: T, :: OwnFormat) where {T} = pack(io, value, format(T))
-unpack(io :: IO, :: Type{T}, :: OwnFormat) where {T} = unpack(io, T, format(T))
 
 #
 # TypedFormat
@@ -1115,7 +1104,7 @@ Format reserved to the type [`Typed`](@ref)
 """
 struct TypedFormat{F <: Format} <: Format end
 
-TypedFormat() = TypedFormat{OwnFormat}()
+TypedFormat() = TypedFormat{DefaultFormat}()
 
 function pack(io :: IO, value, :: TypedFormat{F}) where {F <: Format}
   write(io, 0x82) # fixmap of length 2
@@ -1125,7 +1114,7 @@ function pack(io :: IO, value, :: TypedFormat{F}) where {F <: Format}
   pack(io, Val(value, F()))
 end
 
-function pack(io :: IO, value :: T, :: TypedFormat{OwnFormat}) where {T}
+function pack(io :: IO, value :: T, :: TypedFormat{DefaultFormat}) where {T}
   F = typeof(format(T))
   pack(io, value, TypedFormat{F}())
 end
@@ -1150,7 +1139,7 @@ function unpack(io :: IO, :: Type{T}, :: TypedFormat{F}) :: T where {T, F <: For
   val
 end
 
-function unpack(io :: IO, :: TypedFormat{OwnFormat})
+function unpack(io :: IO, :: TypedFormat{DefaultFormat})
   byte = read(io, UInt8)
   if byte == 0x82 # expect fixmap of length 2
     key = unpack(io, Symbol)
@@ -1160,7 +1149,7 @@ function unpack(io :: IO, :: TypedFormat{OwnFormat})
     @assert key == :value "Expected map key :value when unpacking typed value"
     unpack(io, T)
   else
-    byteerror(byte, TypedFormat{OwnFormat}())
+    byteerror(byte, TypedFormat{DefaultFormat}())
   end
 end
 
@@ -1170,7 +1159,7 @@ end
 
 struct StreamFormat{S, F <: Format} <: Format end
 
-StreamFormat(S) = StreamFormat{S, OwnFormat}()
+StreamFormat(S) = StreamFormat{S, DefaultFormat}()
 
 function pack(io :: IO, value, :: StreamFormat{S, F}) where {S, F}
   stream = S(io)
@@ -1208,32 +1197,3 @@ end
 construct(:: Type{T}, val, :: AliasFormat) where {T} = T(val)
 destruct(val :: T, :: AliasFormat{S}) where {S, T} = S(val)
 
-
-
-#
-# struct packing macro
-#
-
-macro pack(a)
-  return :(nothing)
-end
-
-macro typed(a)
-  return :(nothing)
-end
-
-macro named(a)
-  return :(nothing)
-end
-
-macro binarray(a, b)
-  return :(nothing)
-end
-
-macro untyped(a)
-  return :(nothing)
-end
-
-macro only(a, b)
-  return :(nothing)
-end

@@ -4,6 +4,8 @@ Asynchronous model wrapper that allows a model to be called on a batch of games
 in parallel when the single calls take place in an async context. Note that an
 `Threaded` model always returns CPU arrays, even if the worker model acts on the
 GPU.
+
+!!! This model is not properly supported in this version of Jtac.jl.
 """
 mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G}
   model :: NeuralModel{G}
@@ -24,10 +26,7 @@ mutable struct Threaded{G <: AbstractGame} <: AbstractModel{G}
   profile
 end
 
-Pack.@only Threaded [:model, :max_batchsize, :buffersize]
-
-Threaded{G}(models, max_batchsize, buffersize) where {G} =
-  Threaded(models; max_batchsize, buffersize) :: Threaded{G}
+@pack {<: Threaded} (model; max_batchsize, buffersize)
 
 """
     Threaded(model; max_batchsize, buffersize)

@@ -195,7 +195,7 @@ Abstract type that embodies a mapping from `Node`s to policy vectors.
 """
 abstract type MCTSPolicy end
 
-Pack.@typed MCTSPolicy
+@pack {<: MCTSPolicy} in TypedFormat{MapFormat}
 
 """
     getpolicy!(buffer, policy, node)
@@ -533,7 +533,7 @@ Currently, randomization at non-root nodes is not supported.
 """
 abstract type ActionSelector end
 
-Pack.@typed ActionSelector
+@pack {<: ActionSelector} in TypedFormat{MapFormat}
 
 """
     select(selector, node; [buffer])

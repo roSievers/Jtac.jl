@@ -19,10 +19,7 @@ mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   profile
 end
 
-Pack.@only AsyncModel [:model, :batchsize, :buffersize, :spawn, :dynamic]
-
-AsyncModel{G}(model, batchsize, buffersize, spawn, dynamic) where {G} =
-  AsyncModel(model; batchsize, buffersize, spawn, dynamic)
+@pack {<: AsyncModel} AsyncModel(model; batchsize, buffersize, spawn, dynamic)
 
 """
     AsyncModel(model; kwargs...)

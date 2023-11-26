@@ -1,6 +1,7 @@
 
 using Revise, Test
 using Jtac
+using Random
 
 function packcycle(value, T = typeof(value), isequal = isequal)
   bytes = Pack.pack(value)
@@ -9,8 +10,44 @@ function packcycle(value, T = typeof(value), isequal = isequal)
   all(bytes .== Pack.pack(uvalue))
 end
 
-@testset "Target" begin
+@testset "Pack" begin
+  @test packcycle(nothing)
+  @test packcycle(true)
+  @test packcycle(false)
+  for v in [-100000000000, -1000, -100, -10, 0, 10, 100, 1000, 10000000000]
+    @test packcycle(v)
+  end
+  for v in [rand(Float32), rand(Float64)]
+    @test packcycle(v)
+  end
+  for v in [randstring(n) for n in (3, 16, 32, 100, 1000)]
+    @test packcycle(v)
+  end
+  @test packcycle(rand(Float32, 1000))
+  @test packcycle(rand(Float64, 1000))
+  @test packcycle((:this, :is, "a tuple", (:with, true, :numbers), 5))
+  @test packcycle((a = "named", b = "tuple", length = 3))
 
+  # struct A
+  #   a :: Vector{Float32}
+  #   b :: String
+  #   c :: Int
+  # end
+
+  # Pack.@pack A in MapFormat a in BinArrayFormat (a, b)
+  # @test packcycle(A(rand(100), "test"), A, (x,y) -> x.a == y.a && x.b == y.b)
+
+  # function A(a, b)
+  #   A(a, b, 5)
+  # end
+
+  # Pack.@pack A (a, b)
+  # @test packcycle(A(rand(100), "test"), A, (x,y) -> x.a == y.a && x.b == y.b)
+  
+end
+
+@testset "Target" begin
+  
   G = Game.TicTacToe
 
   vt = Target.DefaultValueTarget(G)
@@ -418,6 +455,10 @@ end
       @test Player.turn!(G(), player) isa G
       @test Player.ntasks(player) == Model.ntasks(player) == 1
       @test Player.gametype(player) == Model.gametype(player) == G
+
+      bytes = Pack.pack(player)
+      player2 = Pack.unpack(bytes, Player.AbstractPlayer)
+      @test typeof(player) == typeof(player2)
     end
   end
 

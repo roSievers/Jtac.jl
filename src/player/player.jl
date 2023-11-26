@@ -11,7 +11,7 @@ have to be extended.
 """
 abstract type AbstractPlayer{G <: AbstractGame} end
 
-Pack.@typed AbstractPlayer
+@pack {<: AbstractPlayer} in TypedFormat{MapFormat}
 
 """
     name(player)

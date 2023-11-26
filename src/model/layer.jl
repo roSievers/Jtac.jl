@@ -6,7 +6,8 @@ struct Activation{BC}
   f :: Function
 end
 
-Pack.format(:: Type{<: Activation}) = Util.NamedValueFormat{Activation}()
+@pack {<: Activation} in NamedValueFormat{Activation}
+
 
 """
     Activation(f, broadcast = true)
@@ -45,7 +46,7 @@ like `Array{Float32}` or `CuArray{Float32}`, is indicated as type parameter.
 """
 abstract type Backend{T} end
 
-Pack.format(:: Type{<: Backend}) = Util.NamedValueFormat{Backend}()
+@pack {<: Backend} in NamedValueFormat{Backend}
 
 """
     istrainable(backend)
@@ -131,7 +132,7 @@ Neural network layer.
 """
 abstract type Layer{B <: Backend} end
 
-Pack.format(:: Type{<: Layer}) = Pack.TypedFormat{Pack.MapFormat}()
+@pack {<: Layer} in TypedFormat{MapFormat}
 
 """
 Elementary neural network layer that is not composed of other layers.
@@ -231,7 +232,7 @@ struct Dense{T} <: PrimitiveLayer{DefaultBackend{T}}
   bias :: Bool # (trainable) bias?
 end
 
-Pack.@binarray Dense [:w, :b]
+@pack {<: Dense} (w, b) in BinArrayFormat
 
 """
     Dense(ni, no, f = identity; [bias, rng])
@@ -319,7 +320,7 @@ struct Conv{T} <: PrimitiveLayer{DefaultBackend{T}}
   s :: Tuple{Int, Int}  # stride
 end
 
-Pack.@binarray Conv [:w, :b]
+@pack {<: Conv} (w, b) in BinArrayFormat
 
 """
     Conv(ci, co, f = identity; window = 3, pad = 0, stride = 1, [bias, rng])
@@ -427,7 +428,7 @@ struct Batchnorm{T} <: PrimitiveLayer{DefaultBackend{T}}
   f :: Activation
 end
 
-Pack.@binarray Batchnorm [:mean, :var, :bias, :scale]
+@pack {<: Batchnorm} (mean, var, bias, scale) in BinArrayFormat
 
 """
     Batchnorm(c, f = identity)

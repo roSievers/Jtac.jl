@@ -29,7 +29,10 @@ module Pack
   import TranscodingStreams: TOKEN_END
   import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
 
-  include("pack.jl")
+  include("pack/pack.jl")
+  include("pack/macro.jl")
+
+  export @pack
 end
 
 
@@ -65,7 +68,8 @@ module Util
          isregistered,
          lookup,
          lookupname,
-         resolve
+         resolve,
+         NamedValueFormat
 
   module Bench
     using Statistics, Printf
@@ -94,6 +98,7 @@ module Game
   using ..Jtac
   using ..Util
   import ..Pack
+  import ..Pack: @pack
 
   include("game/game.jl")
 
@@ -149,6 +154,7 @@ module Target
   using ..Util
   using ..Game
   import ..Pack
+  import ..Pack: @pack
 
   include("target.jl")
 
@@ -198,6 +204,7 @@ module Model
   using ..Game
   using ..Target
   import ..Pack
+  import ..Pack: @pack
 
   include("model/model.jl")
 
@@ -302,6 +309,7 @@ module Player
   using ..Target
   using ..Model
   import ..Pack
+  import ..Pack: @pack
 
   include("player/mcts.jl")
   include("player/player.jl")
@@ -339,11 +347,13 @@ module Training
 
   using ..Jtac
   using ..Util
-  using ..Pack
   using ..Game
   using ..Target
   using ..Model
   using ..Player
+
+  import ..Pack
+  import ..Pack: @pack
 
   include("training/dataset.jl")
 
