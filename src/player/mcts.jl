@@ -836,7 +836,7 @@ function mctsstep!( node :: Node
   # Expand leaf
   node.player = Game.activeplayer(game)
   if Game.isover(game)
-    node.value = Game.status(game) * node.player
+    node.value = Int(Game.status(game)) * node.player
   else
     actions = Game.legalactions(game)
     expandnode!(node, actions, cache)
@@ -899,7 +899,7 @@ function mcts( game :: G
   # set the node size to 0 and insert the game result as value.
   if Game.isover(game)
     resize!(root, 0)
-    root.value = status(game)
+    root.value = Int(Game.status(game))
     return root
   end
 

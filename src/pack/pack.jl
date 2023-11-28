@@ -836,6 +836,26 @@ construct(:: Type{<: Dict}, pairs, :: MapFormat) = Dict(pairs)
 keytype(:: Type{<: Dict{K, V}}, _) where {K, V} = K
 valuetype(:: Type{<: Dict{K, V}}, _) where {K, V} = V
 
+#
+# Auxiliary structfor valuetype injection
+#
+# Currently used for ArrayFormat
+#
+
+"""
+Auxiliary structure that can be used to inject the [`valuetype`](@ref) method of
+some type into a call to [`unpack`](@ref).
+"""
+struct ValueTypeOf{T}
+  value
+end
+
+construct(:: Type{ValueTypeOf{T}}, val, :: Format) where {T} = ValueTypeOf{T}(val)
+valuetype(:: Type{ValueTypeOf{T}}, index) where {T} = valuetype(T, index)
+construct(:: Type{ValueTypeOf{T}}, val, :: VectorFormat) where {T} = ValueTypeOf{T}(val)
+construct(:: Type{ValueTypeOf{T}}, val, :: MapFormat) where {T} = ValueTypeOf{T}(val)
+
+
 
 #
 # BinVector format
@@ -890,8 +910,8 @@ function pack(io :: IO, value, :: ArrayFormat) :: Nothing
 end
 
 function unpack(io :: IO, :: Type{T}, :: ArrayFormat) :: T where {T}
-  V = Vector{eltype(T)}
-  val = unpack(io, ArrayValue{V})
+  val = unpack(io, ArrayValue{ValueTypeOf{T}})
+  val = ArrayValue(val.datatype, val.size, val.data.value)
   construct(T, val, ArrayFormat())
 end
 
@@ -899,8 +919,9 @@ end
 
 format(:: Type{<: AbstractArray}) = ArrayFormat()
 
-function construct(:: Type{A}, val, :: ArrayFormat) where {A <: AbstractArray}
-  convert(A, reshape(val.data, val.size...))
+function construct(:: Type{T}, val, :: ArrayFormat) where {T <: AbstractArray}
+  data = collect(val.data)
+  convert(T, reshape(data, val.size...))
 end
 
 
@@ -932,15 +953,15 @@ function pack(io :: IO, value, :: BinArrayFormat)
 end
 
 function unpack(io :: IO, :: Type{T}, :: BinArrayFormat) :: T where {T}
-  V = Vector{eltype(T)}
-  val = unpack(io, BinArrayValue{V})
+  val = unpack(io, BinArrayValue{Vector{UInt8}})
   construct(T, val, BinArrayFormat())
 end
 
 # ND Array support
 
-function construct(:: Type{A}, val, :: BinArrayFormat) where {A <: AbstractArray}
-  convert(A, reshape(val.data, val.size...))
+function construct(:: Type{T}, val, :: BinArrayFormat) where {F, T <: AbstractArray{F}}
+  data = reinterpret(F, val.data)
+  convert(T, reshape(data, val.size...))
 end
 
 #

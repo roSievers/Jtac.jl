@@ -269,12 +269,10 @@ constructed with the help of a model.
 """
 struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
-
   power :: Int
   policy :: MCTSPolicy
   selector :: ActionSelector
   rootselector :: ActionSelector
-
   name :: String
 end
 

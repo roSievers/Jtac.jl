@@ -100,7 +100,7 @@ function compete( players
 
   parallelforeach(matches; threads, ntasks = n) do (i, j)
     p1, p2 = players[i], players[j]
-    k = pvp(p1, p2; instance, draw_after) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+    k = Int(pvp(p1, p2; instance, draw_after)) + 2 # convert -1, 0, 1 to indices 1, 2, 3
     lock(lk) do
       results[i, j, k] += 1
       verbose && report(p1, p2, k)

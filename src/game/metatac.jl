@@ -10,7 +10,7 @@ mutable struct MetaTac <: AbstractGame
   region_status_cache :: Vector{Status}
 end
 
-MetaTac() = MetaTac(zeros(Int, 81), 1, 0, Status(), [Status() for i=1:9])
+MetaTac() = MetaTac(zeros(Int, 81), 1, 0, Game.undecided, [Game.undecided for i=1:9])
 
 isaugmentable(:: Type{MetaTac}) = true
 
@@ -98,7 +98,7 @@ status(game :: MetaTac) :: Status = game.status_cache
 
 # Returns ( false, * ) => Game is not over yet
 # Returns ( true, {-1, 0, 1} ) => Game is over and we return the winner
-function tic_tac_toc_status(game :: MetaTac, outer_index) :: Tuple{ Bool, Int }
+function tic_tac_toc_status(game :: MetaTac, outer_index) :: Tuple{Bool, Int}
   start_index = combined_index(outer_index, 1)
   single_board = game.board[start_index:start_index+8]
   tic_tac_toc_status(single_board)
@@ -108,16 +108,16 @@ end
 # We need to additionaly verify, that there are legal actions left
 function tic_tac_toc_status(board :: Vector{Status}) :: Status
   matrix = map(board) do s
-    isover(s) ? s : 0
+    isover(s) ? Int(s) : 0
   end
   matrix = reshape(matrix, (3, 3))
   s = tic_tac_toc_status(matrix)
   if isover(s)
     s
   elseif all(isover, board) #all(isover.(board))
-    Status(0)
+    Game.draw
   else
-    Status()
+    Game.undecided
   end
 end
 
@@ -137,9 +137,9 @@ function tic_tac_toc_status(board :: Matrix{Int}) :: Status
   elseif board[1, 3] == board[2, 2] == board[3, 1] != 0
     Status(board[2, 2])
   elseif all(x -> x != 0, board)
-    Status(0)
+    Game.draw
   else
-    Status()
+    Game.undecided
   end
 end
 
@@ -190,7 +190,7 @@ function hash(game :: MetaTac)
   Base.hash((game.board, game.active_player, game.focus))
 end
 
-function draw(io :: IO, game :: MetaTac) :: Nothing
+function visualize(io :: IO, game :: MetaTac) :: Nothing
 
   board = reshape(game.board, (9,9))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
@@ -230,5 +230,5 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MetaTac)
   else
     println(io, s, "player $(activeplayer(game)) moving:")
   end
-  draw(io, game)
+  visualize(io, game)
 end

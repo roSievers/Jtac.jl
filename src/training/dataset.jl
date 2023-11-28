@@ -15,17 +15,18 @@ Create an empty label data object. Can be populated and modified via
 """
 LabelData() = LabelData([])
 
-Pack.@untyped LabelData
+Pack.format(:: Type{LabelData}) = Pack.BinArrayFormat()
+Pack.destruct(l :: LabelData, :: Pack.BinArrayFormat) = reduce(hcat, l.data)
 
-# Enable efficient packing
-# Pack.fieldnames(:: Type{LabelData}) = [:matrix]
-# Pack.fieldtypes(:: Type{LabelData}) = [Pack.BinArray{Float32}]
-# Pack.fieldvalues(l :: LabelData) = [Pack.BinArray(reduce(hcat, l.data))]
-# Pack.construct(:: Type{LabelData}, mat) = LabelData(collect.(eachcol(mat.data)))
+function Pack.construct(:: Type{LabelData}, val, :: Pack.BinArrayFormat)
+  data = reinterpret(Float32, val.data)
+  data = reshape(data, val.size...)
+  LabelData(collect.(eachcol(data)))
+end
 
 # Base methods
-Base.length(ld :: LabelData) = Base.length(ld.data)
-Base.copy(ld :: LabelData) = LabelData(copy(ld.data))
+Base.length(l :: LabelData) = Base.length(l.data)
+Base.copy(l :: LabelData) = LabelData(copy(l.data))
 
 Base.append!(ld :: LabelData, ld2 :: LabelData) = append!(ld.data, ld2.data)
 Base.push!(ld :: LabelData, args...) = push!(ld.data, args...)
@@ -54,7 +55,7 @@ mutable struct DataSet{G <: AbstractGame}
   target_labels :: Vector{LabelData}
 end
 
-Pack.@typed DataSet
+@pack {<: DataSet}
 
 """
     DataSet(G, targets)

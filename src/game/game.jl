@@ -1,31 +1,19 @@
 
-# -------- Status ------------------------------------------------------------ #
-
-# TODO: MAKE STATUS AN ENUM !!
-const Status = Int
-
 """
-    Status()
-    Status(val)
-
-Create a representation of the game status. Calling the function without
-arguments stands for a game status that is still undecided. Calling it with
-argument `val`, which can be 1, -1, or 0, indicates a game won by the first or
-second player, or a draw.
+Enum that represents the status of a game. Can be `loss`, `draw`, `win`, or
+`undecided`.
 """
-Status(value :: Int) = value
-Status() = 42
+@enum Status loss=-1 draw=0 win=1 undecided=42
 
-isover(s :: Status) = (s != 42)
+isover(s :: Status) = (s != undecided)
 
 const ActionIndex = Int # for code readability
-
 
 """
 Abstract type for board games with two competing players that play in turns.
 
 In order to guarantee basic functionality, the following minimal interface
-should be implemented by any concrete subtype `G` of `AbstractGame`:
+must be implemented by any concrete subtype `G` of `AbstractGame`:
 - `status(game :: G)`: Return the game status. See [`Status`](@ref).
 - `activeplayer(game :: G)`: Return the active player indicator (-1 or 1).
 - `legalactions(game :: G)`: Return a vector of legal action indices.
@@ -44,8 +32,8 @@ input for neural networks (see [`Model.NeuralModel`](@ref)).
 type `G`.
 
 Further methods may be specialized to improve performance or functionality.
-- `array!(buffer, games :: Vector{G})`: In-place mutating version of `array` for
-vectors of games. 
+- `array!(buffer, games :: Vector{G})`: In-place mutating version of `array` \
+for vectors of games. 
 - `randominstance(:: Type{G})`: Return a random instance of game type `G`.
 - `isaugmentable(:: Type{G}) / augment(game :: G)`: Support for data \
 augmentation by exploiting game symmetries.
@@ -58,10 +46,10 @@ models.
 """
 abstract type AbstractGame end
 
-Pack.format(:: Type{<: AbstractGame}) = Pack.MapFormat()
+@pack {<: AbstractGame} in MapFormat
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
- 
+
 Base.copy(:: AbstractGame) = error("not implemented") 
 Base.size(:: Type{<: AbstractGame}) = error("not implemented")
 Base.size(:: G) where {G <: AbstractGame} = size(G)
@@ -70,6 +58,8 @@ Base.size(:: G) where {G <: AbstractGame} = size(G)
     status(game)
 
 Status of the game `game`.
+
+See also [`Status`](@ref).
 """
 status(game :: AbstractGame) = error("not implemented")
 
@@ -95,7 +85,7 @@ legalactions(:: AbstractGame) :: Vector{ActionIndex} = error("not implemented")
 Modify `game` by applying `action`, or all actions in the iterable `actions`.
 Returns `game`.
 
-See also [`randommove!(game)`](@ref).
+See also [`randommove!`](@ref).
 """
 function move!(:: AbstractGame, :: ActionIndex) :: AbstractGame
   error("not implemented")
@@ -109,7 +99,8 @@ end
 """
     isover(game)
 
-Returns `true` if the game `game` is finished and `false` otherwise.
+Returns `true` if the game `game` has finished and `false` if it is still
+undecided.
 """
 isover(game :: AbstractGame) = isover(status(game))
 
@@ -294,15 +285,15 @@ end
 
 
 """
-    draw([io,] game)
+    visualize([io,] game)
 
 Draw a unicode representation of `game`.
 """
-function draw(io :: IO, game :: AbstractGame)
-  error("drawing $(typeof(game)) not implemented.")
+function visualize(io :: IO, game :: AbstractGame)
+  error("visualizing $(typeof(game)) not implemented.")
 end
 
-draw(game) = draw(stdout, game)
+visualize(game :: AbstractGame) = visualize(stdout, game)
 
 """
     name(G)

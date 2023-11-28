@@ -122,13 +122,13 @@ module Game
          randommatch, 
          array,
          branch,
-         draw
+         visualize
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")
-  include("game/nim.jl")
-  include("game/nim2.jl")
-  include("game/morris.jl")
+  # include("game/nim.jl")
+  # include("game/nim2.jl")
+  # include("game/morris.jl")
 
   export TicTacToe,
          MNKGame,

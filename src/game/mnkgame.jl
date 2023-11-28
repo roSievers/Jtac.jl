@@ -14,7 +14,7 @@ end
 const TicTacToe = MNKGame{3, 3, 3}
 
 MNKGame{M, N, K}() where {M, N, K} =
-  MNKGame{M, N, K}(zeros(Int, M * N), 1, Status(), 0)
+  MNKGame{M, N, K}(zeros(Int, M * N), 1, Game.undecided, 0)
 
 function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   MNKGame{M, N, K}(
@@ -116,9 +116,9 @@ function tic_tac_mnk_status( game :: MNKGame{M, N, K}
 
   # Check if there are empty spaces left.
   if game.move_count == M*N
-    Status(0)
+    Game.draw
   else
-    Status()
+    Game.undecided
   end
 
 end
@@ -188,7 +188,7 @@ end
 hash(game :: MNKGame) = Base.hash(game.board)
 
 
-function draw(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
+function visualize(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   board = reshape(game.board, (M,N))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
 
@@ -206,7 +206,7 @@ function draw(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   end
 end
 
-draw(game :: MNKGame) = draw(stdout, game)
+visualize(game :: MNKGame) = visualize(stdout, game)
 
 function Base.show(io :: IO, game :: MNKGame{M, N, K}) where {M, N, K}
   moves = count(!isequal(0), game.board)

@@ -152,7 +152,7 @@ end
 Base.length(:: DefaultValueTarget) = 1
 
 function label(:: DefaultValueTarget{G}, ctx :: LabelContext{G}) where {G}
-  value = activeplayer(ctx.game) * ctx.outcome
+  value = activeplayer(ctx.game) * Int(ctx.outcome)
   Float32[value]
 end
 
