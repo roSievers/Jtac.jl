@@ -1,12 +1,12 @@
 
 
 """
-    parallelforeach(f, items; ntasks, threads)
+    pforeach(f, items; ntasks, threads)
 
 Run `f(item)` for each `item` in `items`. If `threads = true`, threading via
 `ntasks` tasks is used. If `threads = false`, `ntasks` async tasks are used.
 """
-function parallelforeach(f, items :: AbstractVector; ntasks, threads)
+function pforeach(f, items :: AbstractVector; ntasks, threads)
   ch = Channel{eltype(items)}(length(items))
   foreach(item -> put!(ch, item), items)
   close(ch)

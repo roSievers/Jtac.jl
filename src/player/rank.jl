@@ -22,23 +22,6 @@ function planmatches(nmatches, nplayers, active)
   Random.shuffle(matches)
 end
 
-"""
-    parallelforeach(f, items; ntasks, threads)
-
-Run `f(item)` for each `item` in `items`. If `threads = true`, threading via
-`ntasks` tasks is used. If `threads = false`, `ntasks` async tasks are used.
-"""
-function parallelforeach(f, items :: AbstractVector; ntasks, threads)
-  ch = Channel{eltype(items)}(length(items))
-  foreach(item -> put!(ch, item), items)
-  close(ch)
-  if threads
-    Threads.foreach(f, ch; ntasks)
-  else
-    asyncmap(f, ch; ntasks)
-  end
-  nothing
-end
 
 """
   compete(players, n [, active]; <keyword arguments>)
@@ -98,7 +81,7 @@ function compete( players
     println()
   end
 
-  parallelforeach(matches; threads, ntasks = n) do (i, j)
+  Util.pforeach(matches; threads, ntasks = n) do (i, j)
     p1, p2 = players[i], players[j]
     k = Int(pvp(p1, p2; instance, draw_after)) + 2 # convert -1, 0, 1 to indices 1, 2, 3
     lock(lk) do

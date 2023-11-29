@@ -221,9 +221,6 @@ function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGam
   (value = r.value, policy = anneal(policy, p.temperature))
 end
 
-# TODO: introduce Model.childmodel -> takes direct child, while
-# Model.basemodel traverses to the final child
-
 Model.ntasks(p :: IntuitionPlayer) = Model.ntasks(p.model)
 Model.basemodel(p :: IntuitionPlayer) = basemodel(p.model)
 Model.childmodel(p :: IntuitionPlayer) = childmodel(p.model)

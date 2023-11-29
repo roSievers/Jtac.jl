@@ -1,13 +1,19 @@
 
-# TODO: rewrite this
 """
-Julia package that implements the Alpha Zero learning design in a modular
-manner.
+Julia package that implements the Alpha Zero learning paradigm for two-player
+boardgames in a modular manner. It exports the following components:
 
-The package exports implementations of various two-player board games (like
-tic-tac-toe), functions for creating neural networks that evaluate the states of
-games, and functionality to generate datasets through selfplay via a Monte-Carlo
-Tree Search player assisted by a neural model.
+* [`Pack`](@ref): Generic serialization module on top of the msgpack format.
+* [`Game`](@ref): Module that defines interfaces for two-player boardgames and \
+  provides  reference implementations for tic-tac-toe and meta tic-tac-toe.
+* [`Model`](@ref): Module that defines interfaces for value and policy predictors that \
+  operate on game states.
+* [`Player`](@ref): Module that defines interfaces for and implements boardgame agents \
+  on top of models.
+* [`Target`](@ref): Module that adds support for model predictions other than the \
+  value and policy of a given game state.
+* [`Training`](@ref): Module that implements the generation of and training on labeled \
+  data that is created during matches between players.
 """
 module Jtac
 
@@ -20,10 +26,7 @@ using Random,
 import NNlib
 
 """
-Jtac serialization module.
-
-Provides fast serialization and deserialization of basic struct types via the
-msgpack format.
+Generic serialization module that is based on the msgpack format.
 """
 module Pack
   import TranscodingStreams: TOKEN_END
@@ -39,8 +42,9 @@ end
 """
 Jtac utility module.
 
-Contains various utility functions for the rest of the library, ranging
-from symmetry operations and named values to benchmarking tools.
+Contains utility functions for the remaining library, for example symmetry
+operations on matrices, an implementation for named values, and various
+benchmarking tools.
 """
 module Util
   # TODO: remove ProgressMeter!
@@ -51,7 +55,7 @@ module Util
 
   include("util/util.jl")
 
-  export parallelforeach,
+  export pforeach,
          showindented,
          stepper
 
@@ -86,11 +90,12 @@ end # module Util
 """
 Jtac game module.
 
-Defines the interface that any game type `G <: Game.AbstractGame` has
-to implement. Also provides proof-of-concept implementations of the game
-Tic-Tac-Toe ([`Game.TicTacToe`](@ref)), its generalization to general grids
-([`Game.MNKGame`](@ref)), as well as the (much more interesting) variant
-meta Tic-Tac-Toe ([`Game.MetaTac`](@ref)).
+Defines the interface that supported any game type `G <: Game.AbstractGame` has
+to implement.
+
+Also provides simple implementations of the game Tic-Tac-Toe ([`Game.TicTacToe`]
+(@ref)), its generalization to general grids ([`Game.MNKGame`](@ref)), as well
+as the more complex variant meta Tic-Tac-Toe ([`Game.MetaTac`](@ref)).
 """
 module Game
   using Random, Statistics, LinearAlgebra
@@ -141,10 +146,10 @@ end
 
 
 """
-Jtac target module.    
+Jtac target module.
 
-Defines prediction targets that Jtac models can be trained on (see
-[`Target.AbstractTarget`](@ref)).
+Defines prediction targets that Jtac models can be trained for. See
+[`Target.AbstractTarget`](@ref) for more information.
 """
 module Target
 
@@ -170,13 +175,9 @@ end
 """
 Jtac model module.
 
-In Jtac, models are responsible for game state evaluations. Given a game state,
-models predict a scalar value and a policy vector to assess the current state
-and the available options for action.
-
-Models are the driving engines behind players (see `Player.AbstractPlayer`),
-which live at a higher level of abstraction and which implement additional logic
-like Monte-Carlo-Tree search (see [`Player.MCTSPlayer`](@ref)).
+Models are responsible for basic game state evaluations. Given a game state,
+models predict a scalar value and a policy vector to assess the quality of the
+current state and the available options for action.
 
 This module defines the interface for abstract Jtac models (see
 [`Model.AbstractModel`](@ref)) and provides the following concrete model
@@ -186,13 +187,17 @@ implementations:
   If plugged into an [`MCTSPlayer`](@ref), this model leads to the classical
   rollout-based Monte-Carlo tree search algorithm.
 - [`Model.NeuralModel`](@ref): A neural network based model. This model type \
-  is special in at least two ways: First, it can be trained on recorded data \
-  (see the module `Training` for more information). Second, it can also learn \
+  is special in two ways: it can be trained on recorded data \
+  (see the module `Training` for more information), and it can also learn \
   to predict other targets than the value and policy for a game state.
 - [`Model.AsyncModel`](@ref): Wrapper model that makes batched evaluation
   available to [`Model.NeuralModel`](@ref)s in asynchronous contexts.
 - [`Model.AssistedModel`](@ref): Wrapper model that equipps a given model with
   an assistant (like an analytical solver for certain states of a game).
+
+Models are the intutitive brain of players ([`Player.AbstractPlayer`](@ref)),
+which live at a higher level of abstraction and can implement additional logic,
+like Monte-Carlo-Tree search in case of the [`Player.MCTSPlayer`](@ref).
 """
 module Model
 
@@ -273,11 +278,10 @@ module Model
   Predefined neural model architectures.
 
   Most relevant are [`Zoo.ZeroConv`](@ref) and [`Zoo.ZeroRes`](@ref), which
-  are modeled after the convolutional and residual architectures of the Alpha
-  Zero publications.
+  follow the convolutional and residual architectures of the Alpha Zero
+  publications.
   """
   module Zoo
-
     using ...Jtac
     using ...Game
     using ..Model
@@ -295,7 +299,16 @@ module Model
 end # module Model
 
 """
-TODO: document this module    
+Jtac player module
+
+Players, subtypes of [`Player.AbstractPlayer`](@ref), are agents in a boardgame.
+This module defines an interface for players and provides several player
+implementations.
+
+The most important players are [`Player.IntuitionPlayer`](@ref), which lets
+an [`Model.AbstractModel`](@ref) directly decide on the policy, and the
+[`Player.MCTSPlayer`](@ref), which combines model "intuition" with a classical
+Monte-Carlo tree search (inspired by the Alpha Zero paradigm).
 """
 module Player
 
@@ -338,7 +351,11 @@ end
 
 
 """
-TODO: document this module 
+Jtac training module.
+
+Provides tools to generate prediction labels via observing matches between
+[`Player.AbstractPlayer`](@ref)s, and to then train [`Model.NeuralModel`](@ref)s
+on the recorded data.
 """
 module Training
 
@@ -378,8 +395,7 @@ module Training
 end # module Training
 
 
-export Util,
-       Pack,
+export Pack,
        Game,
        Model,
        Player,

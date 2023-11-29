@@ -214,7 +214,7 @@ function recordbranching( G :: Type{<: AbstractGame}
     ds = [playbranching() for _ in 1:n]
   else
     ds = Vector{DataSet{G}}(undef, n)
-    parallelforeach(1:n; ntasks, threads) do index
+    Util.pforeach(1:n; ntasks, threads) do index
       ds[index] = playbranching()
     end
   end
@@ -293,7 +293,7 @@ function record( p :: Union{P, Channel{P}}
     callback_move(move)
   end
 
-  main_loop(player) = parallelforeach(1:ntasks; ntasks, threads) do _
+  main_loop(player) = Util.pforeach(1:ntasks; ntasks, threads) do _
     while isopen(ch)
       ds = nothing
       try ds = record(

@@ -1024,7 +1024,8 @@ struct TypeValue
   params :: Vector{Val{TypeParamFormat}}
 end
 
-# TODO: check if there is a way to find the type of a bitstype type parameter!
+# TODO: check if there is a way to find the type of a bitstype type parameter
+# (like N in Array{N, F})!
 """
     TypeValue(T)
 

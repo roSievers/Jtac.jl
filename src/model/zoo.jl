@@ -1,23 +1,45 @@
 
-# -------- Linear Neural Model ----------------------------------------------- #
+"""
+    Shallow(G; kwargs...)
 
+Create a shallow [`NeuralModel`](@ref) for games of type `G`.
+
+The remaining arguments `kwargs` are passed to the constructor of
+[`NeuralModel`](@ref).
+"""
 function Shallow(G :: Type{<: AbstractGame}; kwargs...)
   NeuralModel(G, Model.Pointwise(); kwargs...)
 end
 
 
-# -------- Multilayer Perceptron --------------------------------------------- #
+"""
+    MLP(G, f; widths = [64], kwargs...)
 
-function MLP(G :: Type{<: AbstractGame}, hidden, f = "relu"; kwargs...)
-  widths = [ prod(size(G)), hidden...]
+Create a multilayer-perceptron [`NeuralModel`](@ref) for games of type `G`.
+The widths of the hidden layers are specified by the iterable `widths`. The
+activation function is determined by `f`.
+
+The remaining arguments `kwargs` are passed to the constructor of
+[`NeuralModel`](@ref).
+"""
+function MLP(G :: Type{<: AbstractGame}, f = "relu"; widths = [64], kwargs...)
+  widths = [ prod(size(G)), widths...]
   layers = [ Model.Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
 
   NeuralModel(G, Model.Chain(layers); kwargs...)
 end
 
 
-# -------- Shallow Convolutional Network ------------------------------------ #
+"""
+    ShallowConv(G, f; filters = 64, kwargs...)
 
+Create a shallow convolutional [`NeuralModel`](@ref) for games of type `G`.
+The number of convolutional filters is specified by `filters`. The activation
+function is determined by `f`.
+
+The remaining arguments `kwargs` are passed to the constructor of
+[`NeuralModel`](@ref).
+"""
 function ShallowConv( G :: Type{<: AbstractGame}
                     , f = "relu"
                     ; filters = 64
@@ -29,15 +51,27 @@ end
 
 # -------- Architecture used for Alpha Zero ---------------------------------- #
 
+"""
+    zero_res_block(G, filters)
+
+Create one residual Alpha Zero block (`conv -> batchnorm -> conv -> batchnorm`)
+that suits game type `G` and has `filters` many filters.
+"""
 function zero_res_block(G :: Type{<: AbstractGame}, filters :: Int)
   Model.@residual (size(G)[1:2]..., filters) :relu begin
     Conv(filters, window = 3, pad = 1, stride = 1)
-    Batchnorm("relu")
+    Batchnorm(:relu)
     Conv(filters, window = 3, pad = 1, stride = 1)
     Batchnorm()
   end
 end
 
+"""
+    zero_conv_block(G, filters)
+
+Create one convolutional Alpha Zero block (`conv -> batchnorm`) that suits game
+type `G` and has `filters` many filters.
+"""
 function zero_conv_block(G :: Type{<: AbstractGame}, ci :: Int, co :: Int)
   Model.@chain (size(G)[1:2]..., ci) begin
     Conv(co, window = 3, pad = 1, stride = 1)
@@ -45,6 +79,12 @@ function zero_conv_block(G :: Type{<: AbstractGame}, ci :: Int, co :: Int)
   end
 end
 
+"""
+    zero_vhead(G, filters)
+
+Return the value head of the Alpha Zero architecture for games of type `G` with
+`filters` filters.
+"""
 function zero_vhead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
@@ -55,6 +95,12 @@ function zero_vhead(G :: Type{<: AbstractGame}, filters)
   end
 end
 
+"""
+    zero_phead(G, filters)
+
+Return the policy head of the Alpha Zero architecture for games of type `G` with
+`filters` filters.
+"""
 function zero_phead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
@@ -64,6 +110,13 @@ function zero_phead(G :: Type{<: AbstractGame}, filters)
   end
 end
 
+"""
+    zero_head(G, target, filters)
+
+Return a head that suits a given `target` (see [`Target.AbstractTarget`](@ref)),
+modeled modeled after the Alpha Zero policy head for games of type `G` with
+`filters` filters.
+"""
 function zero_head(G :: Type{<: AbstractGame}, target, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
@@ -73,6 +126,17 @@ function zero_head(G :: Type{<: AbstractGame}, target, filters)
   end
 end
 
+
+"""
+    ZeroConv(G; blocks, filters, targets, kwargs...)  
+
+Create a [`NeuralModel`](@ref) for game type `G` in the convolutional Alpha
+Zero architecture. The number of blocks and filters is specified by the
+respective keyword arguments `blocks` and `filters`.
+
+Additional targets can be assigned via `targets` (see [`Target.AbstractTarget`]).
+The function [`zero_head`](@ref) is used to determine suitable target heads.
+"""
 function ZeroConv( G :: Type{<: AbstractGame}
                  ; blocks = 6
                  , filters = 256
@@ -94,6 +158,17 @@ function ZeroConv( G :: Type{<: AbstractGame}
   NeuralModel(G, trunk; heads, targets, kwargs...)
 end
 
+
+"""
+    ZeroRes(G; blocks, filters, targets, kwargs...)  
+
+Create a [`NeuralModel`](@ref) for game type `G` in the residual Alpha Zero
+architecture. The number of blocks and filters is specified by the respective
+keyword arguments `blocks` and `filters`.
+
+Additional targets can be assigned via `targets` (see [`Target.AbstractTarget`]).
+The function [`zero_head`](@ref) is used to determine suitable target heads.
+"""
 function ZeroRes( G :: Type{<: AbstractGame}
                 ; blocks = 6
                 , filters = 256
@@ -114,69 +189,3 @@ function ZeroRes( G :: Type{<: AbstractGame}
   NeuralModel(G, trunk; heads, targets, kwargs...)
 end
 
-
-## TODO: the following code must be rewritten
-#
-# function zero_shrink( model :: NeuralModel{G, false}
-#                     ; blocks = nothing
-#                     , filters = nothing ) where {G <: AbstractGame}
-
-#   orig_blocks = length(model.trunk.layers)
-#   orig_filters = size(model.trunk.layers[1].layers[1].w.data, 4)
-
-#   blocks = isnothing(blocks) ? orig_blocks : blocks
-#   filters = isnothing(filters) ? orig_filters : filters
-
-#   @assert 1 <= blocks <= length(model.trunk.layers)
-#   @assert 1 <= filters <= size(model.trunk.layers[1].layers[1].w.data, 4)
-
-#   m = copy(model)
-#   resize!(m.trunk.layers, blocks)
-
-#   # trunk blocks
-#   for (i, block) in enumerate(m.trunk.layers)
-
-#     for layer in Model.layers(block)
-#       _shrink_primitive!(layer, orig_filters, filters, i == 1)
-#     end
-
-#   end
-
-
-#   # heads
-#   for head in m.heads
-#     outlen = prod(Model.outsize(m.trunk, size(G)))
-#     _shrink_head!(head, filters, outlen)
-#   end
-
-#   m
-# end
-
-# function _shrink_primitive!(l :: Model.Conv, _, filters, first)
-#   l.b.data = l.b.data[:,:,1:filters,:]
-#   if first
-#     l.w.data = l.w.data[:,:,:,1:filters]
-#   else
-#     l.w.data = l.w.data[:,:,1:filters,1:filters]
-#   end
-#   nothing
-# end
-
-# function _shrink_primitive!(l :: Model.Batchnorm, orig_filters, filters, _)
-#   tmp = copy(l.params.data)
-#   l.params.data = tmp[1:2filters]
-#   l.params.data[(filters+1):2filters] = tmp[orig_filters+1:orig_filters + filters]
-#   l.moments.mean = isnothing(l.moments.mean) ? nothing : l.moments.mean[:,:,1:filters,:]
-#   l.moments.var = isnothing(l.moments.var) ? nothing : l.moments.var[:,:,1:filters,:]
-#   nothing
-# end
-
-# _shrink_head!(l :: Model.CompositeLayer, args...) = _shrink_head!(Model.layers(l)[1], args...)
-
-# function _shrink_head!(l :: Model.Conv, filters, _)
-#   l.w.data = l.w.data[:,:,1:filters,:]
-# end
-
-# function _shrink_head!(l :: Model.Dense, _, trunk_outlen)
-#  l.w.data = l.w.data[:,1:trunk_outlen]
-# end
