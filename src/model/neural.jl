@@ -267,7 +267,7 @@ end
 
 function Base.show(io :: IO, :: MIME"text/plain", m :: NeuralModel{G, B}) where {G, B}
   print(io, "NeuralModel{$(Game.name(G))}(")
-  show(io, B()); println(")")
+  show(io, B()); println(io, ")")
   print(io, " trunk: "); show(io, m.trunk); println(io)
   print(io, " heads:")
   for (name, head) in zip(m.target_names, m.target_heads)

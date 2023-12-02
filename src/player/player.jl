@@ -508,7 +508,7 @@ function Base.show( io :: IO
   print(io, " policy: $(p.policy)\n")
   print(io, " selector: $(p.selector)\n")
   print(io, " rootselector: $(p.rootselector)\n")
-  print(io, " model: ");
+  print(io, " model: ")
   showindented(io, mime, p.model, indent = 1, indentfirst = false)
 end
 
