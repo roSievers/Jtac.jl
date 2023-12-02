@@ -4,7 +4,9 @@ module FluxExt
 import Flux
 
 using Jtac
+import Jtac.Util: register!
 import Jtac.Game: AbstractGame
+
 import Jtac.Model: Activation,
                    Backend,
                    DefaultBackend,
@@ -14,7 +16,7 @@ import Jtac.Model: Activation,
                    NeuralModel
 
 """
-Neural network layer backend built upon the julia package Flux.jl.
+Neural network layer backend based on the julia package Flux.jl.
 """
 struct FluxBackend{T} <: Backend{T} end
 
@@ -280,9 +282,9 @@ end
 ##
   
 function __init__()
-  Util.register!(Backend, FluxBackend{Array{Float32}}(), :flux, :flux32)
-  Util.register!(Backend, FluxBackend{Array{Float16}}(), :flux16)
-  Util.register!(Backend, FluxBackend{Array{Float64}}(), :flux64)
+  register!(Backend, FluxBackend{Array{Float32}}(), :flux, :flux32)
+  register!(Backend, FluxBackend{Array{Float16}}(), :flux16)
+  register!(Backend, FluxBackend{Array{Float64}}(), :flux64)
 end
 
 end
