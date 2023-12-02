@@ -26,7 +26,7 @@ using Random,
 import NNlib
 
 """
-Generic serialization module that is based on the msgpack format.
+Generic serialization module based on the msgpack format.
 """
 module Pack
   import TranscodingStreams: TOKEN_END
@@ -42,9 +42,9 @@ end
 """
 Jtac utility module.
 
-Contains utility functions for the remaining library, for example symmetry
-operations on matrices, an implementation for named values, and various
-benchmarking tools.
+Contains utility functions for the library. For example, implements symmetry
+operations on matrices, named values (used for activation names or neural
+network backends), and various benchmarking tools.
 """
 module Util
   # TODO: remove ProgressMeter!
@@ -72,8 +72,9 @@ module Util
          isregistered,
          lookup,
          lookupname,
-         resolve,
-         NamedValueFormat
+         resolve
+
+  export NamedValueFormat
 
   module Bench
     using Statistics, Printf
@@ -90,12 +91,13 @@ end # module Util
 """
 Jtac game module.
 
-Defines the interface that supported any game type `G <: Game.AbstractGame` has
-to implement.
+Defines the interface that any game type `G <: Game.AbstractGame` must implement
+to be supported by Jtac.
 
-Also provides simple implementations of the game Tic-Tac-Toe ([`Game.TicTacToe`]
-(@ref)), its generalization to general grids ([`Game.MNKGame`](@ref)), as well
-as the more complex variant meta Tic-Tac-Toe ([`Game.MetaTac`](@ref)).
+Also provides reference implementations of the game Tic-Tac-Toe
+([`Game.TicTacToe`](@ref)), its generalization to general grids
+([`Game.MNKGame`](@ref)), as well as the more complex variant meta Tic-Tac-Toe
+([`Game.MetaTac`](@ref)).
 """
 module Game
   using Random, Statistics, LinearAlgebra
@@ -175,9 +177,9 @@ end
 """
 Jtac model module.
 
-Models are responsible for basic game state evaluations. Given a game state,
-models predict a scalar value and a policy vector to assess the quality of the
-current state and the available options for action.
+Models are responsible for game state evaluations. Given a game state, models
+predict a scalar value and a policy vector to assess the quality of the current
+state and the available options for action.
 
 This module defines the interface for abstract Jtac models (see
 [`Model.AbstractModel`](@ref)) and provides the following concrete model
@@ -195,9 +197,9 @@ implementations:
 - [`Model.AssistedModel`](@ref): Wrapper model that equipps a given model with
   an assistant (like an analytical solver for certain states of a game).
 
-Models are the intutitive brain of players ([`Player.AbstractPlayer`](@ref)),
+Models are the "intutitive brain" of players ([`Player.AbstractPlayer`](@ref)),
 which live at a higher level of abstraction and can implement additional logic,
-like Monte-Carlo-Tree search in case of the [`Player.MCTSPlayer`](@ref).
+like Monte-Carlo tree search in case of the [`Player.MCTSPlayer`](@ref).
 """
 module Model
 

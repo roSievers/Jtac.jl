@@ -223,6 +223,7 @@ macro pack(args...)
     push!(body, valuetype, valueformat)
   end
 
+  @assert !isempty(body) "Pack.@pack has received no packing instructions"
   Expr(:block, body...) |> esc
 end
 

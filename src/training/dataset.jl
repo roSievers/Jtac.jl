@@ -55,7 +55,7 @@ mutable struct DataSet{G <: AbstractGame}
   target_labels :: Vector{LabelData}
 end
 
-@pack {<: DataSet}
+@pack {<: DataSet} in TypedFormat{MapFormat}
 
 """
     DataSet(G, targets)
