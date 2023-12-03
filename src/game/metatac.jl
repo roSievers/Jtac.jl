@@ -1,4 +1,7 @@
-# The total board is made up of 9 single boards
+
+"""
+Meta tic tac toe implementation.  
+"""
 mutable struct MetaTac <: AbstractGame
   board :: Vector{Int}
   active_player :: Int

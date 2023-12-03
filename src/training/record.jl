@@ -27,21 +27,21 @@ struct StopRecording <: Exception end
 
 
 """
-    stop_match()
-    stop_match(n)
+    stopmatch()
+    stopmatch(n)
 
 Can be used in the `callback_move` argument for the function [`record`](@ref)
-in order to stop recording a game. The method `stop_match(n)` is a function that
-takes an argument `k` and calls `stop_match()` when `k > n`.
+in order to stop recording a game. The method `stopmatch(n)` is a function that
+takes an argument `k` and calls `stopmatch()` when `k > n`.
 
 ## Usage
 The following call of `record` will cancel matches that take more
 than 50 moves.
 
-    record(args...; callback_move = Player.stop_match(50), kwargs...)
+    record(args...; callback_move = Player.stopmatch(50), kwargs...)
 """
-stop_match() = throw(StopMatch())
-stop_match(n :: Int) = k -> (k > n && stop_match())
+stopmatch() = throw(StopMatch())
+stopmatch(n :: Int) = k -> (k > n && stop_match())
 
 """
     record(player, n = 1; <keyword arguments>)
@@ -54,7 +54,7 @@ be wrapped in a `Channel{AbstractPlayer}`.
 - `instance`: Initial game state provider. Defaults to `() -> Game.instance(G)` \
 where `G` is the game type of `player`.
 - `branch`: Function applied to each game state after a first selfplay. It can \
-return [`nothing`](@ref) or a branched game state, which is then used as roots \
+return `nothing` or a branched game state, which is then used as roots \
 for new matches (without recursive branching). See also [`Game.branch`](@ref).
 - `merge = true`: Whether to return one merged dataset or `n` separate ones.
 - `augment`: Whether to apply data augmentation to the generated dataset.

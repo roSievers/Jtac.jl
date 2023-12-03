@@ -2,23 +2,23 @@
 """
 Quantity that models try to predict, given the current game state.
 
-Essential targets, which must be provided by all models, are the value of
-the current state and the policy recommendation for the next action (see
-[`DefaultValueTarget`](@ref) and [`DefaultPolicyTarget`](@ref) for default
-implementations).
+Mandatory targets, which must be predictable by all models, are the value of
+the current state and the policy recommendation for the next action.
+The types [`DefaultValueTarget`](@ref) and [`DefaultPolicyTarget`](@ref) provide
+default implementations for these targets.
 
-Besides value and policy targets, many other properties are reasonable
-candidates for prediction. For example, possible targets are the next move of
-the enemy or some characteristic of the final game state (like the number or
-value of black / white pieces in chess). More specialized targets like these are
-not provided in Jtac by default, but can easily be implemented via the target
-api described below.
+Other properties of a game state are reasonable candidates for prediction,
+as well. For example, possible targets are the next move of the enemy or some
+characteristic of the final game state (like the number or value of black /
+white pieces in chess). More specialized targets like these are not provided
+in Jtac by default, but can easily be implemented via the target api described
+below.
 
 Targets other than the default ones are mainly intended to be used to enhance
 trainable models, like the [`Model.NeuralModel`](@ref). To this end, labels
 for specified targets can be generated during self-play (see [`Target.label`]
-(@ref) and [`Player.record`](@ref)) and can be stored in datasets accessible to
-training (see [`Training.Dataset`](@ref)).
+(@ref) and [`Training.record`](@ref)) and can be stored in datasets accessible to
+training (see [`Training.DataSet`](@ref)).
 
 # Implementation
 
@@ -88,7 +88,7 @@ defaultlossfunction(:: AbstractTarget) = :sumabs2
 
 Returns the name of the default output activation function for `target`. This
 activation function is used if no alternative is explicitly specified when
-constructing a [`NeuralModel`](@ref).
+constructing a [`Model.NeuralModel`](@ref).
 
 If not implemented for subtypes of `AbstractTarget`, it defaults to `:identity`.
 """

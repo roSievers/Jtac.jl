@@ -1,9 +1,23 @@
 
+"""
+Model that queries an assistant model before predicting value and policy targets.
+"""
 struct AssistedModel{G <: AbstractGame} <: AbstractModel{G}
   model :: AbstractModel
   assistant :: AbstractModel
 end
 
+"""
+    AssistedModel(model, assistant)
+
+Create an assisted model with assistant `assistant`. For each game state
+evaluation via [`apply`](@ref), the [`assist`](@ref) function is called on
+`assistant`. Targets not returned by the [`assist`](@ref) call are evaluated
+by `model`.
+
+Assisted models make most sense if `assistant` is, e.g., an analytical solver
+that can scan the game state for particularly powerful moves.
+"""
 function AssistedModel( model :: AbstractModel{H}
                       , assistant :: AbstractModel{F}
                       ) where {H , F}

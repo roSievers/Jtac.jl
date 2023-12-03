@@ -156,6 +156,9 @@ end
 # msgpack: all (except date and extension)
 #
 
+"""
+Format that can be used to unpack arbitrary msgpack values.
+"""
 struct AnyFormat <: Format end
 
 """

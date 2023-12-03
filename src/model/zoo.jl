@@ -134,8 +134,9 @@ Create a [`NeuralModel`](@ref) for game type `G` in the convolutional Alpha
 Zero architecture. The number of blocks and filters is specified by the
 respective keyword arguments `blocks` and `filters`.
 
-Additional targets can be assigned via `targets` (see [`Target.AbstractTarget`]).
-The function [`zero_head`](@ref) is used to determine suitable target heads.
+Additional targets can be assigned via `targets` (see
+[`Target.AbstractTarget`](@ref)). The function [`zero_head`](@ref) is used to
+determine suitable target heads.
 """
 function ZeroConv( G :: Type{<: AbstractGame}
                  ; blocks = 6
@@ -166,8 +167,9 @@ Create a [`NeuralModel`](@ref) for game type `G` in the residual Alpha Zero
 architecture. The number of blocks and filters is specified by the respective
 keyword arguments `blocks` and `filters`.
 
-Additional targets can be assigned via `targets` (see [`Target.AbstractTarget`]).
-The function [`zero_head`](@ref) is used to determine suitable target heads.
+Additional targets can be assigned via `targets` (see
+[`Target.AbstractTarget`](@ref)). The function [`zero_head`](@ref) is used to
+determine suitable target heads.
 """
 function ZeroRes( G :: Type{<: AbstractGame}
                 ; blocks = 6

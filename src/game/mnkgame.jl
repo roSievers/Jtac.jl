@@ -4,6 +4,9 @@
 # n: height
 # k: stones in a row required to win a game.
 
+"""
+Generalization of TicTacToe to arbitrary grids.
+"""
 mutable struct MNKGame{M, N, K} <: AbstractGame
   board :: Vector{Int} # We may want https://github.com/JuliaArrays/StaticArrays.jl
   active_player :: Int
@@ -11,6 +14,9 @@ mutable struct MNKGame{M, N, K} <: AbstractGame
   move_count :: Int
 end
 
+"""
+Classical tic tac toe. Alias for `MNKGame{3, 3, 3}`.
+"""
 const TicTacToe = MNKGame{3, 3, 3}
 
 MNKGame{M, N, K}() where {M, N, K} =

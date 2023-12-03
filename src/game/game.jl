@@ -7,6 +7,9 @@ Enum that represents the status of a game. Can be `loss`, `draw`, `win`, or
 
 isover(s :: Status) = (s != undecided)
 
+"""
+Alias for [`Int`](@ref).
+"""
 const ActionIndex = Int # for code readability
 
 """
@@ -18,31 +21,31 @@ must be implemented by any concrete subtype `G` of `AbstractGame`:
 - `activeplayer(game :: G)`: Return the active player indicator (-1 or 1).
 - `legalactions(game :: G)`: Return a vector of legal action indices.
 - `move!(game :: G, action)`: Apply the action defined by action index \
-`action` to `game`.
+  `action` to `game`.
 - `instance(G)`: Return an (empty) instance of `G`. Defaults to `G()`.
 - `Base.copy(game :: G)`: Return a copy of `game`.
 
 For neural network support, the following methods must additionally be
 implemented:
 - `policylength(:: Type{G})`: Length of the game policy vector. Equals the \
-maximal possible action index.
+  maximal possible action index.
 - `array(game :: G)`: Return a 3d array representation of `game`. Used as \
-input for neural networks (see [`Model.NeuralModel`](@ref)).
+  input for neural network models (see [`Model.NeuralModel`](@ref)).
 - `Base.size(:: Type{G})`: The size of the array representation of games of \
-type `G`.
+  type `G`.
 
 Further methods may be specialized to improve performance or functionality.
 - `array!(buffer, games :: Vector{G})`: In-place mutating version of `array` \
-for vectors of games. 
+  for vectors of games. 
 - `randominstance(:: Type{G})`: Return a random instance of game type `G`.
 - `isaugmentable(:: Type{G}) / augment(game :: G)`: Support for data \
-augmentation by exploiting game symmetries.
+  augmentation by exploiting game symmetries.
 - `isover(game :: G)`: Check whether the game is over or not. May be faster \
-than calculating the game status via `status(game)`.
-- `hash(game :: G)`: A hash function that is used for [`Model.CachingModel`](@ref) \
-models.
+  than calculating the game status via `status(game)`.
+- `hash(game :: G)`: A hash function that is required for caching games \
+  efficiently (see [`Model.CachingModel`](@ref)).
 - `moves(game :: G)`: Count the number of moves that have been applied to \
-`game`.
+  `game`.
 """
 abstract type AbstractGame end
 
@@ -77,6 +80,15 @@ activeplayer(game :: AbstractGame) = error("not implemented")
 Vector of actions that are legal at the game state `game`.
 """
 legalactions(:: AbstractGame) :: Vector{ActionIndex} = error("not implemented")
+
+"""
+    isactionlegal(game, action)
+
+Check if `action` is a legal action for `game`.
+"""
+function isactionlegal(game :: AbstractGame, action :: ActionIndex)
+  action in legalactions(game)
+end
 
 """
     move!(game, action)
@@ -224,8 +236,7 @@ end
 Modify `game` by taking random actions until the active player changes. Returns
 `game`.
 
-See also [`Player.turn!`](@ref), [`randomaction!`](@ref), and
-[`randommatch!`](@ref).
+See also [`randomaction`](@ref), and [`randommatch!`](@ref).
 """
 function randomturn!(game :: AbstractGame)
   active = activeplayer(game)
@@ -261,15 +272,6 @@ See [`randommatch!`](@ref) for a mutating version. See also
 """
 function randommatch(game :: AbstractGame, callback :: Function = _ -> nothing)
   randommatch!(copy(game), callback)
-end
-
-"""
-    isactionlegal(game, action)
-
-Check if `action` is a legal action for `game`.
-"""
-function isactionlegal(game :: AbstractGame, action :: ActionIndex)
-  action in legalactions(game)
 end
 
 """
@@ -340,7 +342,7 @@ end
 
 Return a branching function that branches `game` via `steps` random steps with
 a probability of `prob`. If the game is not branched, the branching function
-returns [`nothing`](@ref). Otherwise, the branched game is returned.
+returns `nothing`. Otherwise, the branched game is returned.
 """
 function branch(; prob, steps = 1)
   game -> begin

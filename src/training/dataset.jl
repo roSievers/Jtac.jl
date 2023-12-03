@@ -44,7 +44,7 @@ Base.convert(:: Type{Vector{Vector{Float32}}}, ld :: LabelData) = ld.data
 Structure that contains a list of games and prediction target labels for
 learning.
 
-Dataset are usually created when an [`MCTSPlayer`](@ref) plays matches against
+Dataset are usually created when an [`Player.MCTSPlayer`](@ref) plays matches against
 itself, during which the target labels are evaluated on the resulting game
 states (see [`Target.label`](@ref)).
 """

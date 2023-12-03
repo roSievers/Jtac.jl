@@ -382,7 +382,7 @@ Return a default optimizer object for the backend `backend`. Should correspond
 to stochastic gradient descent with learning rate `0.01` and momentum `0.9`.
 
 Must be implemented by trainable backends together with [`setup`](@ref) and
-[`step`](@ref).
+[`step!`](@ref).
 """
 function defaultoptimizer(backend :: Backend)
   error("Training is not supported for this backend")

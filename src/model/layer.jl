@@ -69,6 +69,7 @@ arraytype(:: Array{F}) where {F} = Array{F}
 Returns the array type that the backend operates on.
 """
 arraytype(:: Backend{T}) where {T} = T
+arraytype(name :: Union{Symbol, String}) = arraytype(getbackend(name))
 
 """
 Default backend implementation. Relies on NNlib.jl and supports forward passes

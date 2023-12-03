@@ -1,15 +1,7 @@
 
 using LinearAlgebra
 
-import CUDA
-
-function timeit(f, trials)
-  dt = @elapsed CUDA.@sync for _ in 1:trials
-    f()
-  end
-end
-
-function layer_data(sz, batchsize)
+function layerdata(sz, batchsize)
   a = "relu"
   chain = Model.Chain(
     [ Model.Conv(sz, sz, a, pad = 1)
@@ -26,181 +18,87 @@ function layer_data(sz, batchsize)
   ]
 end
 
-function layer_cpu(sz = 256; batchsize = sz, trials = 100)
-  layers = layer_data(sz, batchsize)
+function layers(sz = 256; batchsize = sz, trials = 100, backend = :default)
+  T = Model.arraytype(backend)
+  layers = layerdata(sz, batchsize)
+
   @printf "%15s  %7s  %11s\n" "operation" "runtime" "inputs / ms"
   println("  ", join(repeat("-", 38)))
   for (key, (get_data, get_layer)) in layers
     @printf "%15s  " key
     flush(stdin)
     data = get_data()
+    data = convert(T, data)
     layer = get_layer()
+    layer = Model.adapt(backend, layer)
+
     # precompile
     layer(data)
     # measure
-    dt = @elapsed for _ in 1:trials layer(data) end
+    dt = @elapsed for _ in 1:trials
+      # conversion should trigger synchronization for e.g. CUDA
+      convert(Array{Float32}, layer(data))
+    end
     dt = dt / batchsize / trials * 1000
     # report
     @printf "%7.2g  %11.2f\n" dt 1/dt
   end
 end
 
-# TODO: Restructure this! Make it dependent on backend instead of cpu/gpu split?
-function layer_gpu(sz = 256; batchsize = sz, trials = 100)
-  @assert CUDA.functional() "No CUDA support detected"
-  layers = layer_data(sz, batchsize)
-  @printf "%22s  %7s  %10s\n" "operation (backend)" "runtime" "inputs / ms"
-  println("  ", join(repeat("-", 43)))
+function model( model :: Model.NeuralModel{G}
+              ; trials = 1000
+              , batchsizes = [16, 32, 64, 128, 256, 512]
+              , backend = :default ) where {G <: AbstractGame}
 
-  upload_data = layers[1][2][1]()
-  for at in ["knet", "cuda"]
+  T = Model.arraytype(backend)
+  model = Model.adapt(backend, model)
 
-    # set gpu backend
-    Model.atype_gpu!(at)
-
-    # upload task
-    @printf "%15s (%4s)  " "upload" at
-    flush(stdin)
-    Model.to_gpu(upload_data)
-    dt = @elapsed CUDA.@sync for _ in 1:trials Model.to_gpu(upload_data) end
-    dt = dt / batchsize / trials * 1000
-    @printf "%7.2g  %11.2f\n" dt 1/dt
-    GC.gc(); CUDA.reclaim()
-
-    # download task
-    @printf "%15s (%4s)  " "download" at
-    flush(stdin)
-    download_data = Model.to_gpu(upload_data)
-    Model.to_cpu(download_data)
-    dt = @elapsed CUDA.@sync for _ in 1:trials Model.to_cpu(download_data) end
-    dt = dt / batchsize / trials * 1000
-    @printf "%7.2g  %11.2f\n" dt 1/dt
-    GC.gc(); CUDA.reclaim()
-  end
-
-  println()
-
-  for (key, (get_data, get_layer)) in layers
-    for at in ["knet", "cuda"]
-      # set gpu backend
-      Model.atype_gpu!(at)
-
-      @printf "%15s (%4s)  " key at
-      flush(stdin)
-      data = get_data() |> Model.to_gpu
-      layer = get_layer() |> Model.to_gpu
-
-      # precompile
-      layer(data)
-
-      # measure
-      dt = @elapsed CUDA.@sync for _ in 1:trials layer(data) end
-      dt = dt / batchsize / trials * 1000
-      @printf "%7.2g  %11.2f\n" dt 1/dt
-      GC.gc(); CUDA.reclaim()
-    end
-  end
-end
-
-function model_gpu(model; trials = 1000, batchsizes = [16, 32, 64, 128, 256, 512])
-  @assert model isa Model.NeuralModel
-  cpumodel = Model.to_cpu(model)
-  G = Model.gametype(model)
   @printf "     mode (backend)  bsize     games/s  moves/s (@power 250)\n"
   println(" ", repeat("-", 60))
+
   for batchsize in batchsizes
-    games = [Game.randominstance(G) for _ in 1:batchsize]
+    games = [Game.randominstance(G) for _ in 1:batchsizes]
+    data = convert(T, Game.array(games))
 
-    for at in ["cuda", "knet"]
-      # set gpu backend
-      Model.atype_gpu!(at)
-      data = Game.array(games) |> Model.to_gpu
-      model = cpumodel |> Model.to_gpu
+    model(data) # warmup
+    dt = @elapsed for _ in 1:trials
+      # conversion should trigger synchronization for e.g. CUDA
+      convert(Array{Float32}, model(data))
+    end
+    dt = dt / batchsize / trials
+    sps = 1/dt
+    mps = sps / 250
+    @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "direct" backend batchsize sps mps
 
-      # raw model throughput
-      model(data)
-      dt = @elapsed for _ in 1:trials
-        res = model(data)
-        res = Model.to_cpu.(res)
-      end
-      dt = dt / batchsize / trials
-      sps = 1/dt
-      mps = sps / 250
-      @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "raw" at batchsize sps mps
+    model(games) # warmup
+    dt = @elapsed for _ in 1:trials
+      # conversion should trigger synchronization for e.g. CUDA
+      convert(Array{Float32}, model(games))
+    end
+    dt = dt / batchsize / trials
+    sps = 1/dt
+    mps = sps / 250
+    @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "direct + conversion" backend batchsize sps mps  end
 
-      # model throughput with prior conversion and upload
-      model(games)
-      dt = @elapsed for _ in 1:trials
-        res = model(games)
-        res = Model.to_cpu.(res)
-      end
-      dt = dt / batchsize / trials
-      sps = 1/dt
-      mps = sps / 250
-      @printf "%12s (%4s)    %3d  %10.2f  %7.2f\n" "raw+upload" at batchsize sps mps
+    # async model throughput
+    amodel = Model.Async(model, batchsize = batchsize)
+    res = Vector(undef, batchsize)
 
-      # async
-      amodel = Model.Async(model, batchsize = batchsize)
+    @sync for (i, game) in enumerate(games) # warmup
+      @async res[i] = Model.apply(amodel, game)
+    end
 
-      # async model throughput
-      res = Vector(undef, batchsize)
-      @sync for (i, game) in enumerate(games)
+    dt = @elapsed for _ in 1:trials
+      @elapsed @sync for (i, game) in enumerate(games)
         @async res[i] = Model.apply(amodel, game)
       end
-
-      dt = @elapsed for _ in 1:trials
-        res = Vector(undef, batchsize)
-        foreach_async(1:length(games)) do i
-          res[i] = Model.apply(amodel, games[i])
-        end
-      end
-      dt = dt / batchsize / trials
-      sps = 1/dt
-      mps = sps / 250
-      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
-      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async" at batchsize sps mps bs
-
-      GC.gc(); CUDA.reclaim()
-
-#      # async
-#      amodel = Model.Async(model, batchsize = batchsize, spawn = false, dynamic = false)
-#
-#      # async model throughput
-#      res = Vector(undef, batchsize)
-#      @sync for (i, game) in enumerate(games)
-#        @async res[i] = Model.apply(amodel, game)
-#      end
-#
-#      dt = @elapsed for _ in 1:trials
-#        res = Vector(undef, batchsize)
-#        foreach_spawn(1:length(games)) do i
-#          res[i] = Model.apply(amodel, games[i])
-#        end
-#      end
-#      dt = dt / batchsize / trials
-#      sps = 1/dt
-#      mps = sps / 250
-#      bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
-#      @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async+spawn" at batchsize sps mps bs
-#
-#      GC.gc(); CUDA.reclaim()
-      println()
     end
-  end
 
-end
-
-function foreach_async(f, it)
-  @sync for i in it
-    @async f(i)
-  end
-end
-
-function foreach_spawn(f, it, threads = Threads.nthreads())
-  n = div(length(it), threads)
-  partitions = Iterators.partition(it, n)
-  @sync for p in partitions
-    Threads.@spawn asyncmap(f, p)
+    dt = dt / batchsize / trials
+    sps = 1/dt
+    mps = sps / 250
+    bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+    @printf "%12s (%4s)    %3d  %10.2f  %7.2f (avg. batchsize %.2f)\n" "async" backend batchsize sps mps bs
   end
 end
 
