@@ -31,17 +31,18 @@ struct StopRecording <: Exception end
     stopmatch(n)
 
 Can be used in the `callback_move` argument for the function [`record`](@ref)
-in order to stop recording a game. The method `stopmatch(n)` is a function that
-takes an argument `k` and calls `stopmatch()` when `k > n`.
+in order to stop recording a game. The method `stopmatch(n)` returns a function
+that takes an argument `k` and calls `stopmatch()` when `k > n`.
 
-## Usage
+# Usage
 The following call of `record` will cancel matches that take more
 than 50 moves.
 
     record(args...; callback_move = Player.stopmatch(50), kwargs...)
 """
 stopmatch() = throw(StopMatch())
-stopmatch(n :: Int) = k -> (k > n && stop_match())
+stopmatch(n :: Int) = k -> (k > n && stopmatch())
+
 
 """
     record(player, n = 1; <keyword arguments>)
@@ -62,7 +63,7 @@ for new matches (without recursive branching). See also [`Game.branch`](@ref).
 recorded. Derived from the player by default.
 - `anneal = n -> 1.0`: The temperature at move `n` with which the policy \
 obtained via [`Player.think`](@ref) is annealed before sampling the next move.
-- `callback`: Function that is called afer each completed match.
+- `callback`: Function that is called after each completed match.
 - `callback_move`: Function that is called after each individual move.
 - `ntasks = Player.ntasks(player)`: Number of async tasks used for playing.
 - `threads = false`: Whether to use threads or async tasks if `ntasks > 1`.
@@ -72,7 +73,7 @@ obtained via [`Player.think`](@ref) is annealed before sampling the next move.
 # Record 20 self play matches of an classical MCTS player with power 250
 G = Game.TicTacToe
 player = Player.MCTSPlayer(power = 250)
-dataset = Training.record(player, 20, game = G, branch = Game.branch(prob = 0.25))
+dataset = Training.record(player, 20, instance = G, branch = Game.branch(prob = 0.25))
 
 # Record 10 self play matches of MCTS player with shallow predictor network and
 # power 50. After move 4, always use the action with maximal policy weight.
@@ -137,7 +138,7 @@ function record( p :: Union{P, Channel{P}}
     
     catch err
       if err isa StopMatch
-        (outcome = 0, games = G[], policies = Vector{Float32}[])
+        (outcome = Game.draw, games = G[], policies = Vector{Float32}[])
       else
         throw(err)
       end
@@ -203,7 +204,7 @@ function recordbranching( G :: Type{<: AbstractGame}
     if augment
       traces = mapreduce(augmenttrace, vcat, traces)
     end
-    datasets = [recordtargets(G, targets, trace) for trace in traces]
+    datasets = DataSet{G}[recordtargets(G, targets, trace) for trace in traces]
 
     callback()
     Base.merge(datasets)
@@ -284,7 +285,6 @@ function record( p :: Union{P, Channel{P}}
                ; callback_move = _ -> nothing
                , ntasks = Model.ntasks(p)
                , threads = false
-               , merge = true
                , kwargs...
                ) where {G <: AbstractGame, P <: AbstractPlayer{G}}
 
@@ -299,10 +299,10 @@ function record( p :: Union{P, Channel{P}}
       try ds = record(
         player,
         1;
+        kwargs...,
         merge = true,
         ntasks = 1,
         callback_move = cb,
-        kwargs...
       )
       catch err
         err isa StopRecording && break
@@ -318,7 +318,7 @@ function record( p :: Union{P, Channel{P}}
   end
 
   with_BLAS_threads(1) do
-      main_loop(p)
+    main_loop(p)
   end
 end
 

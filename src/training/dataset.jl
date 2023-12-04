@@ -108,21 +108,32 @@ function isconsistent(d :: DataSet)
 end
 
 """
+    save(io, dataset)
     save(name, dataset)
 
-Save `dataset` under filename `name`. Dataset caches are not saved.
+Save `dataset` to the iostream `io`. If a path `name` is given, save it as a
+file (with preferred extension ".jtd").
 """
-function save(fname :: String, d :: DataSet)
-  open(io -> Pack.pack_compressed(io, d), fname, "w")
+function save(io :: IO, d :: DataSet) :: Nothing
+  Pack.pack(io, d, Pack.StreamFormat(ZstdCompressorStream))
+end
+
+function save(fname :: AbstractString, d :: DataSet) :: Nothing
+  open(io -> save(io, d), fname, "w")
 end
 
 """
+    load(io)
     load(name)
 
-Load a dataset for games from file `name`.
+Load a dataset from the iostream `io` or file `name`.
 """
-function load(fname :: String)
-  open(io -> Pack.unpack_compressed(io, DataSet), fname)
+function load(io :: IO) :: DataSet
+  Pack.unpack(io, DataSet, Pack.StreamFormat(ZstdDecompressorStream))
+end
+
+function load(fname :: String) :: DataSet
+  open(io -> load(io), fname)
 end
 
 function Base.getindex(d :: DataSet, I)
@@ -141,7 +152,7 @@ function Base.append!( a :: DataSet{G}
 end
 
 function Base.merge(ds :: Vector{DataSet{G}}) where {G <: AbstractGame}
-  @assert length(ds) > 0 "Cannot merge empty vector of datasets"
+  # @assert length(ds) > 0 "Cannot merge empty vector of datasets"
   dataset = DataSet(G, ds[1].target_names, ds[1].targets)
   foreach(d -> append!(dataset, d), ds)
   dataset

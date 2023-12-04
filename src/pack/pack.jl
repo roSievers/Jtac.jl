@@ -1188,8 +1188,9 @@ StreamFormat(S) = StreamFormat{S, DefaultFormat}()
 
 function pack(io :: IO, value, :: StreamFormat{S, F}) where {S, F}
   stream = S(io)
-  pack(stream, value, F)
+  pack(stream, value, F())
   write(stream, TOKEN_END)
+  flush(stream)
 end
 
 function unpack(io :: IO, :: StreamFormat{S, F}) where {S, F <: Format}

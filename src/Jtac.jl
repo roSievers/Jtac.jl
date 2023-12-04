@@ -30,7 +30,6 @@ Generic serialization module based on the msgpack format.
 """
 module Pack
   import TranscodingStreams: TOKEN_END
-  import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
 
   include("pack/pack.jl")
   include("pack/macro.jl")
@@ -364,6 +363,8 @@ module Training
   using Random, Statistics, LinearAlgebra
   using Printf
 
+  import CodecZstd: ZstdCompressorStream, ZstdDecompressorStream
+
   using ..Jtac
   using ..Util
   using ..Game
@@ -389,8 +390,8 @@ module Training
   export LossFunction, LossContext
 
   export loss,
-         set_optimizer!,
-         train_step!,
+         setup,
+         step!,
          train!,
          train_contest!
 
