@@ -86,6 +86,20 @@ function Game.move!(game :: AbstractGame, p :: AbstractPlayer)
   Game.move!(game, decide(p, game))
 end
 
+"""
+    move(game, player)
+
+Return a new game resulting from letting `player` take one action in `game`.
+
+See also [`move`](@ref), [`turn!`](@ref), [`decide`](@ref), and
+[`decidechain`](@ref).
+"""
+move(args...; kwargs...) = Game.move(args...; kwargs...)
+
+function Game.move(game :: AbstractGame, p :: AbstractPlayer)
+  Game.move(game, decide(p, game))
+end
+
 
 """
     turn!(game, player)
@@ -445,44 +459,36 @@ function decidechain( p :: MCTSPlayer{G}
   root = rootnode()
   active = Game.activeplayer(game)
 
-  # record the indices that were chosen at the different game states of the
-  # chain
-  history = Pair{G, Int}[]
+  # record the game states that have been part of the chain
+  history = Set{G}([copy(game)])
 
   # act as long as the game is not finished and it is our turn
   while !Game.isover(game) && Game.activeplayer(game) == active
     remaining_power = round(Int, sum(root.visits))
     power = cap_power ? p.power - remaining_power : p.power
 
-    root = mcts(game, p.model, power; p.selector, p.rootselector, root)
+    root = mcts(
+     game,
+     p.model,
+     power;
+     p.selector,
+     p.rootselector,
+     root,
+     exclude = history,
+    )
     pol = getpolicy(p.policy, root)
 
-    # filter out actions that are forbidden because they were picked in the same
-    # chain before
-    forbidden = [idx for (state, idx) in history if isequivalent(game, state)]
-    pol[forbidden] .= 0f0
-    s = sum(pol)
-
-    if s <= 1f-8
-      error("Loop prevention in `decidechain` ruled out all feasible actions")
-    end
-
     # get the index of the next action
-    pol .= pol ./ s
     index = sample(pol)
-    
-    # remember the index, so that it cannot be picked if we arrive at the same
-    # game state again
-    push!(history, copy(game) => index)
 
     # move the root to the chosen child and forget the past
     root = root.children[index]
     root.parent = nothing
 
     # apply and record the action
-    action = legalactions(game)[index]
-    move!(game, action)
-    push!(actions, action)
+    move!(game, root.action)
+    push!(actions, root.action)
+    push!(history, copy(game))
   end
 
   actions

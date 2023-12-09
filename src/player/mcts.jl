@@ -1,3 +1,19 @@
+
+"""
+Struct that can be used as key in dictionaries or sets to efficiently match game
+states that are functionally equivalent.
+"""
+struct GameKey{G <: AbstractGame}
+  game :: G
+end
+
+Base.hash(gkey :: GameKey) = Game.hash(gkey.game)
+
+function Base.isequal(a :: GameKey{G}, b :: GameKey{G}) where {G <: AbstractGame}
+  Game.isequivalent(a.game, b.game)
+end
+
+
 """
 Node type that stores information related to MCTS simulations.
 """
@@ -80,114 +96,30 @@ rootnode() = Node(nothing, 0, 0)
 
 
 """
-    expandnode!(node, actions)
+    expandnode!(node, actions, game, exclude)
 
-Expand the node `node` given action indices `actions`.
+Expand the node `node` given action indices `actions` at game state `game`. If
+an action leads to a game state marked in the [`GameKey`](@ref) set `exclude`,
+this action is excluded (and removed from the vector `actions`).
 
-This method resizes `node` to `length(actions)` and initializes as many
-children. Previously stored children are lost.
+This method resizes `node` to `length(actions)` (after filtering) and
+initializes as many children. Previously stored children are lost.
 """
-function expandnode!(node :: Node, actions)
+function expandnode!(node :: Node, actions, game :: AbstractGame, exclude)
+  if !isempty(exclude)
+    filter!(actions) do action
+      key = GameKey(Game.move(game, action))
+      !(key in exclude)
+    end
+  end
   n = length(actions)
   resize!(node, n)
-  @inbounds for index in 1:n
+  for index in 1:n
     child = Node(node, index, actions[index])
     node.children[index] = child
   end
   nothing
 end
-
-
-"""
-Structure with the capacity to cache a fixed number of nodes.
-
-`NodeCache`s can be used in successive calls to `mcts` in order to reduce the
-number of node allocations. Since they do not grow dynamically, they must be
-constructed with a sufficiently large capacity. A pessimistic upper bound
-for a game of type `G` is `policylength(G) * power`, where `power` is the
-MCTS power.
-"""
-struct NodeCache{G <: AbstractGame} 
-  free :: Vector{Node}
-  used :: Vector{Node}
-end
-
-"""
-    NodeCache(G, capacity)
-
-Create a `NodeCache` for game type `G` that stores `capacity` nodes.
-"""
-function NodeCache(G, capacity)
-  n = Game.policylength(G)
-  free = map(1:capacity) do id
-    children = Vector{Node}()
-    data = [
-      Vector{Float32}(),
-      Vector{Float32}(),
-      Vector{Float32}(),
-    ]
-    sizehint!(children, n)
-    sizehint!.(data, n)
-    Node(0, 0, 0, nothing, children, 0f0, data...)
-  end
-  used = Node[]
-  sizehint!(used, capacity)
-  
-  NodeCache{G}(free, used)
-end
-
-"""
-    reset!(nodecache)
-
-Reset a nodecache.
-"""
-function reset!(nc :: NodeCache)
-  foreach(nc.used) do node
-    node.player = 0
-    node.action = 0
-    node.index = 0
-    node.parent = nothing
-    node.value = 0
-    resize!(node, 0)
-  end
-  append!(nc.free, nc.used)
-  empty!(nc.used)
-end
-
-"""
-    rootnode(nodecache)
-
-Draw a root node from `nodecache`.
-"""
-function rootnode(nc :: NodeCache)
-  @assert !isempty(nc.free) "NodeCache capacity exceeded"
-  node = pop!(nc.free)
-  push!(nc.used, node)
-  node
-end
-
-
-"""
-    expandnode!(node, actions, nodecache)
-
-Expand `node` via `actions`. All children are drawn from `nodecache`.
-"""
-function expandnode!(node :: Node, actions, nc :: NodeCache)
-  n = length(actions)
-  @assert length(nc.free) >= n "NodeCache capacity exceeded"
-  resize!(node, n)
-  @inbounds for index in 1:n
-    child = pop!(nc.free)
-    child.index = index
-    child.parent = node
-    child.action = actions[index]
-    node.children[index] = child
-    push!(nc.used, child)
-  end
-  nothing
-end
-
-expandnode!(node :: Node, actions, :: Nothing) = expandnode!(node, actions)
 
 
 """
@@ -810,21 +742,21 @@ end
 
 
 """
-    mctsstep!(node, game, model, selector, cache = nothing)
+    mctsstep!(node, game, model, selector; exclude, buffer)
 
 Conduct a single MCTS step at the game state `game` and record the results
 in `node`.
 
 First, `selector` is used to find a node that is still unexpanded. This leaf
 node is expanded and initialized via `model`. The value estimated by `model` is
-then backpropagated towards the root of `node`. The argument `cache` can be
-a [`NodeCache`](@ref) whose buffered nodes are then used for the expansion of nodes.
+then backpropagated towards the root of `node`. The argument `exclude` can be
+used to exclude game states when expanding nodes.
 """
 function mctsstep!( node :: Node
                   , game :: G
                   , model
                   , selector :: ActionSelector
-                  ; cache = nothing
+                  ; exclude = Set{GameKey{G}}()
                   , buffer = Float32[] ) where {G}
 
   # Do not modify the original game state
@@ -844,14 +776,22 @@ function mctsstep!( node :: Node
     node.value = Int(Game.status(game)) * node.player
   else
     actions = Game.legalactions(game)
-    expandnode!(node, actions, cache)
-    prior = Model.apply(model, game, targets = [:value, :policy])
-    node.value = prior.value
-    policy = @view prior.policy[actions]
-    node.policy .= policy ./ (sum(policy) + 1f-6)
-    # Symmetry breaking
-    for index in 1:length(actions)
-      node.policy[index] += 1f-6 * rand(Float32)
+    expandnode!(node, actions, game, exclude)
+    if isempty(actions)
+      # this happens if the expansion has failed and means one of two things:
+      # 1) either legalactions(game) was empty to begin with, or
+      # 2) all legal actions were filtered via `exclude`.
+      # In both cases the game is considered to be lost
+      node.value = - node.player
+    else
+      prior = Model.apply(model, game, targets = [:value, :policy])
+      node.value = prior.value
+      policy = @view prior.policy[actions]
+      node.policy .= policy ./ (sum(policy) + 1f-6)
+      # Symmetry breaking
+      for index in 1:length(actions)
+        node.policy[index] += 1f-6 * rand(Float32)
+      end
     end
   end
 
@@ -872,6 +812,39 @@ function mctsstep!( node :: Node
   end
 end
 
+"""
+    censornode!(node, game, exclude)
+
+Remove all game states contained in `exclude` from `node` (and its children).
+The game state `game` has to be known, since `node` does not store it.
+"""
+function censornode!(node, game, exclude)
+  if !isleaf(node)
+    # find the child indices to be censored
+    tocensor = filter(1:length(node.children)) do index
+      child = node.children[index]
+      child_game = Game.move(game, child.action)
+      key = GameKey(child_game)
+      if !(key in exclude)
+        censornode!(child, child_game, exclude)
+        false
+      else
+        true
+      end
+    end
+
+    # delete censored children
+    deleteat!(node.children, tocensor)
+    deleteat!(node.policy, tocensor)
+    deleteat!(node.qvalues, tocensor)
+    deleteat!(node.visits, tocensor)
+
+    # remap the indices
+    for index in 1:length(node.children)
+      node.children[index].index = index
+    end
+  end
+end
 
 """
     mcts(game, model, power; kwargs...)
@@ -884,8 +857,8 @@ derived from `model`. Returns the root node at `game`.
 simulations may be reused.
 * `selector = PUCT()`: The action selector at non-root nodes.
 * `rootselector = selector`: The action selector at the root node.
-* `cache = nothing`: An optional [`NodeCache`](@ref) to reduce node \
-allocations in case of repeated calls.
+* `exclude = Set{G}()`: Set of game states that are excluded when expanding
+  nodes. This can be used to prevent loops.
 """
 function mcts( game :: G
              , model
@@ -893,7 +866,10 @@ function mcts( game :: G
              ; root = rootnode()
              , selector = PUCT()
              , rootselector = selector
-             , cache = nothing ) where {G}
+             , exclude :: Set{G} = Set{G}() ) where {G}
+
+  # Prepare the set of game states to exclude when expanding nodes
+  exclude = Set{GameKey{G}}(GameKey(g) for g in exclude)
 
   # Since the rootselector is randomized, act on a copy
   rootselector = copy(rootselector)
@@ -911,9 +887,12 @@ function mcts( game :: G
   # If the root node is a leaf, expand it first. The selector does not matter
   # here since we do not need to descent.
   if isleaf(root)
-    mctsstep!(root, game, model, selector; cache, buffer)
+    mctsstep!(root, game, model, selector; exclude, buffer)
     budget = power - 1
   else
+    # If the root node is not a leaf, it may be that it contains children that
+    # violate the `exclude` condition. Remove these children from the tree.
+    censornode!(root, game, exclude)
     budget = power
   end
 
@@ -923,7 +902,7 @@ function mcts( game :: G
     child = root.children[index]
     childgame = Game.move!(copy(game), child.action)
     for _ in 1:visits
-      mctsstep!(child, childgame, model, selector; cache, buffer)
+      mctsstep!(child, childgame, model, selector; exclude, buffer)
     end
     budget -= visits
   end

@@ -100,7 +100,7 @@ end
 Modify `game` by applying `action`, or all actions in the iterable `actions`.
 Returns `game`.
 
-See also [`randommove!`](@ref).
+See also [`move`](@ref) and [`randommove!`](@ref).
 """
 function move!(:: AbstractGame, :: ActionIndex) :: AbstractGame
   error("not implemented")
@@ -110,6 +110,17 @@ function move!(game :: AbstractGame, actions)
   foreach(action -> move!(game, action), actions)
   game
 end
+
+"""
+    move(game, action)
+    move(game, actions)
+
+Return the game state that results if `action` or `actions` are applied to
+`game`. Does not alter `game`.
+
+See also [`move!`](@ref).
+"""
+move(game :: AbstractGame, action) = move!(copy(game), action)
 
 """
     isover(game)

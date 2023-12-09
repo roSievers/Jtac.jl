@@ -237,7 +237,7 @@ automatically.
 See also [`load`](@ref). Note that saving and then again loading a
 [`NeuralModel`](@ref) may change the backend.
 """
-function save(fname, model :: AbstractModel; format = DefaultFormat())
+function save(fname :: String, model :: AbstractModel; format = DefaultFormat())
   format = resolve(Format, format)
   if extension(fname) != extension(format)
     fname = fname * "." * String(extension(format))
@@ -252,10 +252,13 @@ Method to be extended by format implementations.
 """
 save(fname, :: AbstractModel, :: Format) = error("Not implemented")
 
-function save(fname, model :: AbstractModel, :: DefaultFormat)
-  open(io -> Pack.pack(io, model), fname, "w")
+function save(io :: IO, model :: AbstractModel, :: DefaultFormat)
+  Pack.pack(io, model)
 end
 
+function save(fname :: AbstractString, model :: AbstractModel, fmt :: DefaultFormat)
+  open(io -> save(io, model, fmt), fname, "w")
+end
 
 """
     load(filename; [format, kwargs...])
@@ -290,6 +293,10 @@ Method to be extended by format implementations.
 """
 load(fname, :: Format) = error("Not implemented")
 
-function load(fname, :: DefaultFormat)
-  open(io -> Pack.unpack(io, AbstractModel), fname, "r")
+function load(io :: IO, :: DefaultFormat)
+  Pack.unpack(io, AbstractModel)
+end
+
+function load(fname :: AbstractString, fmt :: DefaultFormat)
+  open(io -> load(io, fmt), fname, "r")
 end
