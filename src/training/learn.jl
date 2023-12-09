@@ -419,7 +419,7 @@ end
 
 Print a header row that announces the loss components in ctx.
 """
-function printlossheader(ctx :: LossContext)
+function printlossheader(ctx :: LossContext; generation = nothing)
   targets = map(ctx.target_names) do name
     str = string(name)[1:min(end, 8)]
     Printf.@sprintf("%8s", str)
@@ -428,26 +428,32 @@ function printlossheader(ctx :: LossContext)
     str = string(name)[1:min(end, 8)]
     Printf.@sprintf("%8s", str)
   end
-  strs = ["#", "   epoch", targets..., regs..., "     total", "    length"]
+  genstr = isnothing(generation) ? "" : "  gen"
+  strs = ["#", genstr, "   epoch", targets..., regs..., "   total", "  length"]
   println(join(strs, " "))
 end
 
 """
-    printlossvalues(model, data, ctx; [batchsize, color, epoch])
+    printlossvalues(model, data, ctx, gen; [batchsize, color, epoch])
 
 Print the loss values of `model` applied to `data` in the loss context `ctx`.
 """
 function printlossvalues( model
                         , data
                         , ctx :: LossContext
-                        ; batchsize = 1024
+                        ; generation = nothing
+                        , batchsize = 1024
                         , color = :normal
                         , epoch = 0 )
 
   lc = losscomponents(model, data, ctx; batchsize)
   losses = map(x -> @sprintf("%8.3f", x), values(lc))
   lossstr = join(losses, " ")
-  str = @sprintf("%8d %s %8.3f %8d\n", epoch, lossstr, sum(lc), length(data))
+  if isnothing(generation)
+    str = @sprintf("  %8d %s %8.3f %8d\n", epoch, lossstr, sum(lc), length(data))
+  else
+    str = @sprintf("  %5d %8d %s %8.3f %8d\n", generation, epoch, lossstr, sum(lc), length(data))
+  end
   printstyled(str; color)
 end
 
@@ -478,7 +484,7 @@ momentum `0.9`.
 - `batchsize = 64`: Batchsize for the gradient descent steps.
 - `shuffle = true`: Whether to shuffle `data` for each epoch.
 - `partial = true`: Whether to train over incomplete batches.
-- `callback`: Function that is called after each training step.
+- `callback_batch`: Function that is called after each training step.
 - `callback_epoch`: Function that is called after each epoch.
 - `verbose = true`: Whether to print progress information and loss values.
 
@@ -512,16 +518,17 @@ function learn!( model :: NeuralModel{G, B}
                , batchsize = 64
                , shuffle = true
                , partial = true
-               , callback = _ -> nothing
+               , callback_batch = _ -> nothing
                , callback_epoch = _ -> nothing
                , verbose = true
+               , generation = nothing
                ) where {G, T <: AbstractArray, B <: Backend{T}}
 
   @assert length(ds) > 0 "Training dataset is empty"
 
   model = trainingmodel(model)
   if verbose
-    printlossheader(ctx)
+    printlossheader(ctx; generation)
   end
 
   opt_setup = setup(model, ctx, opt)
@@ -531,12 +538,12 @@ function learn!( model :: NeuralModel{G, B}
 
     if verbose
       steps = ceil(Int, length(ds) / batchsize)
-      step, finish = Util.stepper("# Learning...", steps)
+      step, finish = Util.stepper("# learning...", steps)
     end
 
     for cache in DataBatches(T, ds, batchsize; shuffle, partial)
       step!(model, cache, ctx, opt_setup)
-      callback(totalsteps += 1)
+      callback_batch(totalsteps += 1)
       if verbose
         step()
       end
@@ -545,10 +552,10 @@ function learn!( model :: NeuralModel{G, B}
     if verbose
       finish()
       if !isnothing(testset)
-        printlossvalues(model, ds, ctx; epoch, batchsize, color = 245)
-        printlossvalues(model, testset, ctx; epoch, batchsize)
+        printlossvalues(model, ds, ctx; generation, epoch, batchsize, color = 245)
+        printlossvalues(model, testset, ctx; generation, epoch, batchsize)
       else
-        printlossvalues(model, ds, ctx; epoch, batchsize, color = 245)
+        printlossvalues(model, ds, ctx; epoch, generation, batchsize, color = 245)
       end
     end
 
@@ -569,4 +576,36 @@ function learn!( model :: NeuralModel{G, B}
 
   ctx = LossContext(model, ds; losses, reg, targets, weights)
   learn!(model, ds, ctx; kwargs...)
+end
+
+
+
+function learn!( model :: NeuralModel
+               , gen_data :: Function
+               ; generations = 10
+               , callback_gen = (_) -> nothing
+               , kwargs... )
+
+  setup = nothing
+  for generation in 1:generations
+    ds = gen_data(generation)
+    if isnothing(setup)
+      setup = learn!(model, ds; generation, kwargs...)
+    else
+      setup = learn!(model, ds; opt = setup, generation, kwargs...)
+    end
+    callback_gen(generation)
+  end
+end
+
+function learn!(model, args...; kwargs...)
+  model = Model.trainingmodel(model)
+  @assert !isnothing(model) """
+  Model that was passed to `Training.learn!` does not possess a trainable child.
+  """
+  learn!(model, args...; kwargs...)
+end
+
+function learn!(f :: Function, model, args...; kwargs...)
+  learn!(model, f, args...; kwargs...)
 end

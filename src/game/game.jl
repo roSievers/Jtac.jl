@@ -5,6 +5,8 @@ Enum that represents the status of a game. Can be `loss`, `draw`, `win`, or
 """
 @enum Status loss=-1 draw=0 win=1 undecided=42
 
+@pack Status in AliasFormat{Int}
+
 isover(s :: Status) = (s != undecided)
 
 """

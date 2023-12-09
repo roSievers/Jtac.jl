@@ -430,12 +430,12 @@ end
 
 function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
   root = mcts(game, p.model, p.power; p.selector, p.rootselector)
-  pol = getpolicy(p.policy, root)
-  value = sum(pol .* root.qvalues) # TODO: this can be done better by completing the q-values?
+  policy = getpolicy(p.policy, root)
+  value = sum(policy .* root.qvalues) # TODO: this can be done better by completing the q-values?
 
   actions = legalactions(game)
   buffer = zeros(Float32, policylength(game))
-  buffer[actions] .= pol
+  buffer[actions] .= policy
 
   (value = value, policy = policy)
 end

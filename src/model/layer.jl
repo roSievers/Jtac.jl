@@ -566,10 +566,12 @@ function showcomposite(io :: IO, c :: CompositeLayer{DefaultBackend{T}}) where {
   end
   print(io, "$name($(length(ls)), ")
   for l in ls[1:end-1]
-    isnothing(l) ? print(io, "..") : show(io, l)
+    name = l |> typeof |> nameof
+    name == :Nothing ? print(io, "..") : print(io, name)
     print(io, " -> ")
   end
-  print(io, ls[end])
+  name = ls[end] |> typeof |> nameof
+  print(io, name)
   print(io, ")")
 end
 

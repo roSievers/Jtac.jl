@@ -233,7 +233,7 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MNKGame{M, N, K}) wher
   else
     println(io, s, "player $(activeplayer(game)) moving:")
   end
-  draw(io, game)
+  visualize(io, game)
 end
 
 

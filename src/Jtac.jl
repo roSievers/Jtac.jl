@@ -409,24 +409,34 @@ end # module Training
 
 using .Util, .Model, .Training
 
-function __init__()
-  register!(Activation, identity, :id, :identity)
-  register!(Activation, NNlib.relu, :relu)
-  register!(Activation, NNlib.selu, :selu)
-  register!(Activation, NNlib.elu, :elu)
-  register!(Activation, NNlib.tanh_fast, :tanh)
-  register!(Activation, NNlib.sigmoid_fast, :sigmoid)
-  register!(Activation, Activation(NNlib.softmax, broadcast = false), :softmax)
+register!(Activation, identity, :id, :identity)
+register!(Activation, NNlib.relu, :relu)
+register!(Activation, NNlib.selu, :selu)
+register!(Activation, NNlib.elu, :elu)
+register!(Activation, NNlib.tanh_fast, :tanh)
+register!(Activation, NNlib.sigmoid_fast, :sigmoid)
+register!(Activation, Activation(NNlib.softmax, broadcast = false), :softmax)
 
-  register!(Backend, DefaultBackend{Array{Float32}}(), :default, :default32)
-  register!(Backend, DefaultBackend{Array{Float16}}(), :default16)
-  register!(Backend, DefaultBackend{Array{Float64}}(), :default64)
+register!(Backend, DefaultBackend{Array{Float32}}(), :default, :default32)
+register!(Backend, DefaultBackend{Array{Float16}}(), :default16)
+register!(Backend, DefaultBackend{Array{Float64}}(), :default64)
 
-  register!(Format, DefaultFormat(), :jtm)
+register!(Format, DefaultFormat(), :jtm)
 
-  register!(LossFunction, (x, y) -> sum(abs, x .- y), :sumabs)
-  register!(LossFunction, (x, y) -> sum(abs2, x .- y), :sumabs2)
-  register!(LossFunction, (x, y) -> -sum(y .* log.(x .+ 1f-7)), :crossentropy)
+register!(LossFunction, (x, y) -> sum(abs, x .- y), :sumabs)
+register!(LossFunction, (x, y) -> sum(abs2, x .- y), :sumabs2)
+register!(LossFunction, (x, y) -> -sum(y .* log.(x .+ 1f-7)), :crossentropy)
+
+
+include("precompile.jl")
+
+import PrecompileTools: @compile_workload
+
+@compile_workload begin
+  precompilecontent(Game.TicTacToe)
+  precompilecontent(Game.MetaTac)
+  precompilecontent(Game.TicTacToe, configure = Model.configure(async = true))
+  precompilecontent(Game.MetaTac, configure = Model.configure(async = true))
 end
 
 

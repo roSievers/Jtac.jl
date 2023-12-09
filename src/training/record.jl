@@ -63,7 +63,7 @@ for new matches (without recursive branching). See also [`Game.branch`](@ref).
 recorded. Derived from the player by default.
 - `anneal = n -> 1.0`: The temperature at move `n` with which the policy \
 obtained via [`Player.think`](@ref) is annealed before sampling the next move.
-- `callback`: Function that is called after each completed match.
+- `callback_match`: Function that is called after each completed match.
 - `callback_move`: Function that is called after each individual move.
 - `ntasks = Player.ntasks(player)`: Number of async tasks used for playing.
 - `threads = false`: Whether to use threads or async tasks if `ntasks > 1`.
@@ -175,9 +175,14 @@ function recordbranching( G :: Type{<: AbstractGame}
                         , ntasks :: Int
                         , threads = false
                         , augment = Game.isaugmentable(G)
-                        , callback = () -> nothing
+                        , callback_match = () -> nothing
                         , instance = () -> Game.instance(G)
-                        , branch = Game.branch(prob = 0, steps = 1) )
+                        , branch = Game.branch(prob = 0, steps = 1)
+                        , verbose = true )
+
+  if verbose
+    step, finish = Util.stepper("# recording...", n)
+  end
 
   # Extend the provided play function by random branching 
   playbranching = () -> begin
@@ -206,9 +211,13 @@ function recordbranching( G :: Type{<: AbstractGame}
     end
     datasets = DataSet{G}[recordtargets(G, targets, trace) for trace in traces]
 
-    callback()
+    callback_match()
+    if verbose
+      step()
+    end
     Base.merge(datasets)
   end
+
 
   # Call playbranching n times, either serially or in parallel
   if ntasks == 1 || n == 1
@@ -218,6 +227,10 @@ function recordbranching( G :: Type{<: AbstractGame}
     Util.pforeach(1:n; ntasks, threads) do index
       ds[index] = playbranching()
     end
+  end
+
+  if verbose
+    finish()
   end
 
   ds

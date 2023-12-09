@@ -8,7 +8,7 @@ number of output neurons `nout`. If `head = nothing`, return a single
 """
 function createhead(head, insize, nout)
   if isnothing(head)
-    head = Dense(prod(insize), nout, :id)
+    head = Dense(prod(insize), nout, identity)
   end
   @assert isvalidinputsize(head, insize) "Head is incompatible with trunk"
   @assert prod(outputsize(head, insize)) == nout "Head is incompatible with target"
@@ -31,7 +31,7 @@ trained or only used for inference.
 
 ---
 
-    NeuralModel(G, trunk; [targets, heads, activations, backend])
+    NeuralModel(G, trunk; [targets, heads, activations, backend, kwargs...])
 
 Create a `NeuralModel` for games of type `G` with neural network trunk layer
 `trunk`.
@@ -42,6 +42,7 @@ Create a `NeuralModel` for games of type `G` with neural network trunk layer
 * `activations`: Named tuple of activations for the specified `targets`. Falls
   back to the activations returned by [`Target.defaultactivation`](@ref).
 * `backend`: The backend of the neural layers. Derived from `trunk` by default.
+* `kwargs`: Additional keyword arguments are passed to [`Model.configure`](@ref).
 
 Heads that are not specified default to single dense layers. Activations that
 are not specified default to `:identity`.
@@ -51,7 +52,7 @@ function NeuralModel( :: Type{G}
                     ; targets = (;)
                     , heads = (;)
                     , activations = (;)
-                    , backend = nothing
+                    , kwargs...
                     ) where {G, B <: DefaultBackend{Array{Float32}}}
 
   @assert isvalidinputsize(trunk, size(G)) "Trunk incompatible with gametype $G"
@@ -95,7 +96,7 @@ function NeuralModel( :: Type{G}
     Layer{B}[heads...],
     Activation[activations...],
   )
-  isnothing(backend) ? model : adapt(backend, model)
+  configure(model; kwargs...)
 end
 
 """
@@ -293,8 +294,12 @@ Returns the array type of the backend of the neural model `model`.
 """
 arraytype(model :: NeuralModel) = arraytype(getbackend(model))
 
-function save(fname, model :: NeuralModel, :: DefaultFormat)
+function save(io :: IO, model :: NeuralModel, :: DefaultFormat)
   model = adapt(:default, model)
-  open(io -> Pack.pack(io, model), fname, "w")
+  Pack.pack(io, model)
+end
+
+function save(fname :: AbstractString, model :: NeuralModel, fmt :: DefaultFormat)
+  open(io -> save(io, model, fmt), fname, "w")
 end
 

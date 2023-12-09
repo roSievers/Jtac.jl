@@ -26,12 +26,9 @@ end
 """
   compete(players, n [, active]; <keyword arguments>)
 
-Create game results for a number of `n` games between players at positions `i`
-and `j` in the collection `players` if at least one of `i` or `j` is in
-`active`. 
-
-The matches start with `game`, which is infered automatically from
-`players` if possible. `callback()` is called after each of the `n` matches.
+Simulate game results for a number of `n` matches between players at positions
+`i` and `j` in the collection `players` if at least one of `i` or `j` is in
+`active`.
 
 The return value is a result array of dimensions `(l, l, 3)`, where `l
 = length(players)`. The entry at indices `[i,j,k]` stands for the number of
@@ -47,6 +44,8 @@ if the game type `G` can be inferred automatically.
 - `draw_after`: Number of moves after which the game is stopped and counted as \
 a draw.
 - `verbose`: Print current ranking after each match.
+- `only_active`: If `true`, only matches where *both* players are active are \
+  conducted.
 """
 function compete( players
                 , n :: Int
@@ -55,7 +54,8 @@ function compete( players
                 , callback = () -> nothing
                 , verbose = false
                 , threads = false
-                , draw_after = typemax(Int) )
+                , draw_after = typemax(Int)
+                , only_active = false )
 
   if instance isa Type{<: AbstractGame}
     G = instance

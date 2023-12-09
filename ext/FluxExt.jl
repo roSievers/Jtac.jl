@@ -230,7 +230,7 @@ function FluxProxyModel(model :: Model.NeuralModel, ctx)
   FluxProxyModel(model.trunk.layer, Tuple(heads), Tuple(activations))
 end
 
-Training.defaultoptimizer(:: FluxBackend) = Flux.Momentum(0.01, 0.9)
+Training.defaultoptimizer(:: FluxBackend) = Flux.Momentum(0.001, 0.9)
 
 function Training.setup( model :: NeuralModel{G, <: FluxBackend}
                        , ctx :: Training.LossContext

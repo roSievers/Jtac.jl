@@ -24,4 +24,12 @@ function __init__()
   register!(Backend, DefaultBackend{CuArray{Float64}}(), :cuda64, :cu64)
 end
 
+# import PrecompileTools: @compile_workload
+
+# @compile_workload begin
+#   backend = DefaultBackend{CuArray{Float32}}()
+#   # Jtac.precompilecontent(Game.TicTacToe, configure = Model.configure(; backend))
+#   # Jtac.precompilecontent(Game.MetaTac, configure = Model.configure(; backend))
+# end
+
 end

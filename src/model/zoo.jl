@@ -1,18 +1,5 @@
 
 """
-    Shallow(G; kwargs...)
-
-Create a shallow [`NeuralModel`](@ref) for games of type `G`.
-
-The remaining arguments `kwargs` are passed to the constructor of
-[`NeuralModel`](@ref).
-"""
-function Shallow(G :: Type{<: AbstractGame}; kwargs...)
-  NeuralModel(G, Model.Pointwise(); kwargs...)
-end
-
-
-"""
     MLP(G, f; widths = [64], kwargs...)
 
 Create a multilayer-perceptron [`NeuralModel`](@ref) for games of type `G`.
@@ -22,7 +9,7 @@ activation function is determined by `f`.
 The remaining arguments `kwargs` are passed to the constructor of
 [`NeuralModel`](@ref).
 """
-function MLP(G :: Type{<: AbstractGame}, f = "relu"; widths = [64], kwargs...)
+function MLP(G :: Type{<: AbstractGame}, f = :relu; widths = [64], kwargs...)
   widths = [ prod(size(G)), widths...]
   layers = [ Model.Dense(widths[j], widths[j+1], f) for j in 1:length(widths) - 1 ]
 
@@ -41,7 +28,7 @@ The remaining arguments `kwargs` are passed to the constructor of
 [`NeuralModel`](@ref).
 """
 function ShallowConv( G :: Type{<: AbstractGame}
-                    , f = "relu"
+                    , f = :relu
                     ; filters = 64
                     , kwargs... )
 
@@ -75,7 +62,7 @@ type `G` and has `filters` many filters.
 function zero_conv_block(G :: Type{<: AbstractGame}, ci :: Int, co :: Int)
   Model.@chain (size(G)[1:2]..., ci) begin
     Conv(co, window = 3, pad = 1, stride = 1)
-    Batchnorm("relu")
+    Batchnorm(:relu)
   end
 end
 
@@ -89,8 +76,8 @@ function zero_vhead(G :: Type{<: AbstractGame}, filters)
   shape = (size(G)[1:2]..., filters)
   Model.@chain shape begin
     Conv(32, window = 1, pad = 0, stride = 1)
-    Batchnorm("relu")
-    Dense(256, "relu")
+    Batchnorm(:relu)
+    Dense(256, :relu)
     Dense(1)
   end
 end
