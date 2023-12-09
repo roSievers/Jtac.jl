@@ -5,7 +5,7 @@ Abstract type for models that evaluate game states.
 Models can be applied to game states via `apply(model, game)`, which returns a
 named tuple of infered properties about `game`. Each of these properties
 corresponds to a [`Target.AbstractTarget`](@ref). All models evaluate value
-targets (key `:value`) and policy targets (key `:policy`), which are used for
+targets (key `:value`) and policy targets (key `:policy`), which are necessary for
 Monte-Carlo tree search (MCTS). When exploring the tree, the proposed `policy`
 is used to prioritize actions. When reaching an unexplored game state, the
 returned `value` is used for backpropagation to inform and improve the policy.

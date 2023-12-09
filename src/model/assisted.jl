@@ -1,13 +1,14 @@
 
-"""
-Model that queries an assistant model before predicting value and policy targets.
-"""
 struct AssistedModel{G <: AbstractGame} <: AbstractModel{G}
   model :: AbstractModel
   assistant :: AbstractModel
 end
 
 """
+Model that queries an assistant model before predicting value and policy targets.
+
+---
+
     AssistedModel(model, assistant)
 
 Create an assisted model with assistant `assistant`. For each game state

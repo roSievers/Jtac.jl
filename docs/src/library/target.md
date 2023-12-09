@@ -1,6 +1,7 @@
 
 # Target
 ```@docs
+Target
 Target.AbstractTarget
 ```
 

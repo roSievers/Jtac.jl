@@ -5,11 +5,17 @@ function random_onehot(length)
   policy
 end
 
-"""
-This model returns value 0 and a random one-hot policy for each game state.
-"""
 struct RandomModel{G} <: AbstractModel{G} end
 
+"""
+This model returns value 0 and a random one-hot policy for each game state.
+
+---
+
+    RandomModel(G)
+
+Create a `RandomModel` compatible to game type `G`.
+"""
 RandomModel(G :: Type{<: AbstractGame}) = RandomModel{G}()
 
 function apply( m :: RandomModel

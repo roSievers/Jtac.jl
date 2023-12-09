@@ -25,6 +25,14 @@ using Random,
 
 import NNlib
 
+export Pack,
+       Game,
+       Model,
+       Player,
+       Target,
+       Training
+
+
 """
 Generic serialization module based on the msgpack format.
 """
@@ -185,18 +193,18 @@ This module defines the interface for abstract Jtac models (see
 implementations:
 - [`Model.RolloutModel`](@ref): A model that always proposes a uniform policy \
   and a value obtained by simulating the game outcome via random actions. \
-  If plugged into an [`MCTSPlayer`](@ref), this model leads to the classical
+  If plugged into an [`Player.MCTSPlayer`](@ref), this model leads to the classical
   rollout-based Monte-Carlo tree search algorithm.
 - [`Model.NeuralModel`](@ref): A neural network based model. This model type \
   is special in two ways: it can be trained on recorded data \
-  (see the module `Training` for more information), and it can also learn \
-  to predict other targets than the value and policy for a game state.
+  (see the module `Training`), and it can also learn to predict other targets \
+  than the value and policy for a game state (see the module `Target`).
 - [`Model.AsyncModel`](@ref): Wrapper model that makes batched evaluation
   available to [`Model.NeuralModel`](@ref)s in asynchronous contexts.
 - [`Model.AssistedModel`](@ref): Wrapper model that equipps a given model with
   an assistant (like an analytical solver for certain states of a game).
 
-Models are the "intutitive brain" of players ([`Player.AbstractPlayer`](@ref)),
+Models provide the intuition for players ([`Player.AbstractPlayer`](@ref)),
 which live at a higher level of abstraction and can implement additional logic,
 like Monte-Carlo tree search in case of the [`Player.MCTSPlayer`](@ref).
 """
@@ -397,13 +405,6 @@ module Training
 
 end # module Training
 
-
-export Pack,
-       Game,
-       Model,
-       Player,
-       Target,
-       Training
 
 using .Util, .Model, .Training
 

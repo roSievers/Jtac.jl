@@ -191,7 +191,7 @@ expandnode!(node :: Node, actions, :: Nothing) = expandnode!(node, actions)
 
 
 """
-Abstract type that embodies a mapping from `Node`s to policy vectors.
+Extractor of poliy vectors from the results of MCTS runs.
 """
 abstract type MCTSPolicy end
 
@@ -263,10 +263,6 @@ end
 Base.show(io :: IO, :: VisitCount) = print(io, "VisitCount()")
 Base.show(io :: IO, ::MIME"text/plain", :: VisitCount) = print(io, "VisitCount()")
 
-"""
-MCTS policy design that returns the improved policy estimate from the Gumbel
-Alpha Zero publication (Danihelka, Guez, Schrittwieser, Silver 2022).
-"""
 struct ImprovedPolicy <: MCTSPolicy
   c_visit :: Float32
   c_scale :: Float32
@@ -274,6 +270,11 @@ struct ImprovedPolicy <: MCTSPolicy
 end
 
 """
+MCTS policy design that returns the improved policy estimate from the Gumbel
+Alpha Zero publication (Danihelka, Guez, Schrittwieser, Silver 2022).
+
+---
+
     ImprovedPolicy(; visit_offset = 50, scale = 0.1, mixed = true)
 
 Create an `ImprovedPolicy` design with the given parameters.
@@ -397,9 +398,6 @@ function Base.show(io :: IO, ::MIME"text/plain", policy :: Anneal)
 end
 
 
-"""
-MCTS policy that distorts another MCTS policy by adding Lognormal noise.
-"""
 struct Lognormal <: MCTSPolicy
   policy :: MCTSPolicy
   dilution :: Float32
@@ -409,6 +407,10 @@ end
 Pack.@only Lognormal [:policy, :dilution]
 
 """
+MCTS policy that distorts another MCTS policy by adding Lognormal noise.
+
+---
+
     Lognormal(policy, dilution)
 
 Create a MCTS policy design that distorts `policy` by adding a fraction of
@@ -451,10 +453,6 @@ function Base.show(io :: IO, ::MIME"text/plain", policy :: Lognormal)
 end
 
 
-"""
-MCTS policy that distorts another MCTS policy by adding Gumbel(0, 1) noise in
-the logit-domain.
-"""
 struct Gumbel <: MCTSPolicy
   policy :: MCTSPolicy
   noise :: Vector{Float32}
@@ -463,6 +461,11 @@ end
 Pack.@only Gumbel [:policy]
 
 """
+MCTS policy that distorts another MCTS policy by adding Gumbel(0, 1) noise in
+the logit-domain.
+
+---
+
     Gumbel(policy = ImprovedPolicy())
 
 Create an MCTS policy design that distorts `policy` by adding `Gumbel(0, 1)`
@@ -573,19 +576,19 @@ Currently, there is no interface to support randomization at non-root nodes.
 """
 randomize!(:: ActionSelector) = error("To be implemented")
 
+
 """
 Selector that samples action indices from the policy returned by an
-`MCTSPolicy`.
+[`Player.MCTSPolicy`](@ref).
+
+---
+
+    SampleSelector(policy)
+
+Wrap an MCTS policy design `policy` into a `SampleSelector` action selector.
 """
 struct SampleSelector <: ActionSelector
   policy :: MCTSPolicy
-
-  @doc """
-      SampleSelector(policy)
-
-  Wrap an MCTS policy design `policy` into a `SampleSelector` action selector.
-  """
-  SampleSelector(policy) = new(policy)
 end
 
 Base.copy(sel :: SampleSelector) = SampleSelector(copy(sel.policy))
@@ -621,16 +624,15 @@ end
 """
 Selector that picks the action with the highes weight in the policy returned by
 an `MCTSPolicy`.
+
+---
+
+    MaxSelector(policy)
+
+Wrap an MCTS policy design `policy` into a `MaxSelector` action selector.
 """
 struct MaxSelector <: ActionSelector
   policy :: MCTSPolicy
-
-  @doc """
-      MaxSelector(policy)
-
-  Wrap an MCTS policy design `policy` into a `MaxSelector` action selector.
-  """
-  MaxSelector(policy) = new(policy)
 end
 
 Base.copy(sel :: MaxSelector) = MaxSelector(copy(sel.policy))
@@ -650,16 +652,17 @@ function Base.show(io :: IO, ::MIME"text/plain", sel :: MaxSelector)
   print(io, ")")
 end
 
-"""
-Selector that maximizes the PUCT with a given `exploration` parameter.
-
-The PUCT is always calculated with respect to the model policy prior.
-"""
 struct PUCT <: ActionSelector
   exploration :: Float32
 end
 
 """
+Selector that maximizes the PUCT with a given `exploration` parameter.
+
+The PUCT is always calculated with respect to the model policy prior.
+
+---
+
     PUCT(exploration = 1.41)
 
 Return a `PUCT` selector with exploration parameter `exploration`.
@@ -701,15 +704,16 @@ function Base.show(io :: IO, ::MIME"text/plain", sel :: PUCT)
 end
 
 
-"""
-Select actions that lets the visit counts of a node increase proportional to the
-policy returned by an MCTS policy design.
-"""
 struct VisitPropTo <: ActionSelector
   policy :: MCTSPolicy
 end
 
 """
+Select actions that lets the visit counts of a node increase proportional to the
+policy returned by an MCTS policy design.
+
+---
+
     VisitPropTo(policy = ImprovedPolicy())
 
 Return an `VisitPropTo` selector that chooses actions proportional to the
@@ -741,17 +745,18 @@ function Base.show(io :: IO, ::MIME"text/plain", sel :: VisitPropTo)
 end
 
 
-"""
-Sequential halving root selector.
-
-This selector cannot be applied to non-root nodes.
-"""
 struct SequentialHalving <: ActionSelector
   policy :: MCTSPolicy
   nactions :: Int
 end
 
 """
+Sequential halving root selector.
+
+This selector cannot be applied to non-root nodes.
+
+---
+
     SequentialHalving(policy = Gumbel(), nactions)
 
 Sequential halving root selector that considers (at most) `nactions` actions

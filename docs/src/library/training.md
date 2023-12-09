@@ -1,4 +1,7 @@
 # Training
+```@docs
+Training
+```
 
 ## Datasets
 ```@docs

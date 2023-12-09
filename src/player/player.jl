@@ -156,9 +156,6 @@ function Base.show(io :: IO, p :: RandomPlayer{G}) where {G}
 end
 
 
-"""
-A player that returns the policy proposed by a model (with possible annealing).
-"""
 struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
   temperature :: Float32
@@ -166,12 +163,17 @@ struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
 end
 
 """
+A player that returns the policy proposed by a model (with possible annealing).
+
+---
+
     IntuitionPlayer(model; [temperature, name])
     IntuitionPlayer(player; [temperature, name])
 
-Intuition player that uses `model` to generate policies which are annealed by
-`temperature` before making a decision. If a player `player` is passed, the
-intuition player shares this player's model.
+Create an intuition player powered by the model `model`.
+
+The retured policies are the model policy proposals annealed by `temperature`.
+If a player `player` is passed, the intuition player shares this player's model.
 """
 function IntuitionPlayer( model :: AbstractModel{G}
                         ; temperature = 1.
@@ -260,10 +262,6 @@ function Base.show( io :: IO
 end
 
 
-"""
-A player that relies on Markov chain tree search (MCTS) results that are
-constructed with the help of a model.
-"""
 struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
   power :: Int
@@ -274,19 +272,25 @@ struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
 end
 
 """
+A player that relies on Markov chain tree search (MCTS) results that are
+constructed with assistance of a [`Model.AbstractModel`](@ref).
+
+---
+
     MCTSPlayer(model = RolloutModel(); kwargs...)
     MCTSPlayer(player; kwargs...)
 
-MCTS player powered by a model `model`, which can also be derived from `player`.
+Create an `MCTSPlayer` powered by the model `model`.
 
 By default, a classical PUCT-based MCTS player is created. For an `MCTSPlayer`
 constructor with Gumbel Alpha Zero inspired presets, see
-[`MCTSPlayerGumbel`](@ref).
+[`MCTSPlayerGumbel`](@ref). If a player `player` is passed, the `MCTSPlayer`
+shares this player's model.
 
 ## Arguments
-- `power = 100`: The number of model queries the player can use per move.
+- `power = 100`: The number of model queries the player can make per move.
 - `policy = VisitCount()`: The final policy extracted from the root node.
-- `selector = PUCT()`: The action selector during the mcts run at non-root \
+- `selector = PUCT()`: The action selector during the MCTS run at non-root \
 nodes.
 - `rootselector = selector`: The action selector at root nodes.
 - `temperature`: Convenience option that replaces `policy` by \
@@ -425,9 +429,9 @@ end
 """
     decidechain(mcts_player, game; cap_power = false)
 
-Let an MCTS player `mcts_player` decide an action chain at `game`.
+Let an [`MCTSPlayer`](@ref) `mcts_player` decide an action chain for `game`.
 
-If the chain consists of several moves, the player reuses the mcts expansions
+If the chain consists of several moves, the player reuses the MCTS expansions
 of the previous decision. Passing `cap_power = true` causes the player to always
 use a total power of `mcts_player.power`, even when previous expansions are
 available.
@@ -513,16 +517,16 @@ function Base.show( io :: IO
 end
 
 
-
-"""
-A player that queries for interaction (via the command line) before making
-a decision.
-"""
 struct HumanPlayer <: AbstractPlayer{AbstractGame}
   name :: String
 end
 
 """
+A player that queries for interaction (via the command line) before making
+a decision.
+
+---
+
     HumanPlayer([; name])
 
 Human player with name `name`, defaulting to "you".

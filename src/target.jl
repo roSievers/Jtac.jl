@@ -7,18 +7,11 @@ the current state and the policy recommendation for the next action.
 The types [`DefaultValueTarget`](@ref) and [`DefaultPolicyTarget`](@ref) provide
 default implementations for these targets.
 
-Other properties of a game state are reasonable candidates for prediction,
-as well. For example, possible targets are the next move of the enemy or some
-characteristic of the final game state (like the number or value of black /
-white pieces in chess). More specialized targets like these are not provided
-in Jtac by default, but can easily be implemented via the target api described
-below.
-
-Targets other than the default ones are mainly intended to be used to enhance
-trainable models, like the [`Model.NeuralModel`](@ref). To this end, labels
-for specified targets can be generated during self-play (see [`Target.label`]
-(@ref) and [`Training.record`](@ref)) and can be stored in datasets accessible to
-training (see [`Training.DataSet`](@ref)).
+Other targets are used to enhance trainable models, like the
+[`Model.NeuralModel`](@ref). To this end, labels for specified targets can be
+generated during self-play (see [`Target.label`](@ref) and
+[`Training.record`](@ref)) and can be stored in datasets accessible to training
+(see [`Training.DataSet`](@ref)).
 
 # Implementation
 

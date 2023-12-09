@@ -15,11 +15,8 @@ function createhead(head, insize, nout)
   head
 end
 
-
-"""
-Neural network model. Depending on the layer backend, the neural model can be
-trained or only used for inference during selfplay.
-"""
+# TODO: Due to weird Documenter.jl behavior, types with constructors of the same
+# name should not get their own docstring
 struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
   trunk :: Layer{B}
   targets :: Vector{AbstractTarget{G}}
@@ -29,6 +26,11 @@ struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
 end
 
 """
+Neural network model. Depending on the layer backend, the neural model can be
+trained or only used for inference.
+
+---
+
     NeuralModel(G, trunk; [targets, heads, activations, backend])
 
 Create a `NeuralModel` for games of type `G` with neural network trunk layer
@@ -38,8 +40,8 @@ Create a `NeuralModel` for games of type `G` with neural network trunk layer
 * `targets`: Named tuple of [`AbstractTarget`] that the network should support.
 * `heads`: Named tuple of neural layer heads for the specified `targets`.
 * `activations`: Named tuple of activations for the specified `targets`. Falls
-  back to the activations returned by [`Target.defaultactivation`].
-* `backend`: The backend of the neural layers.
+  back to the activations returned by [`Target.defaultactivation`](@ref).
+* `backend`: The backend of the neural layers. Derived from `trunk` by default.
 
 Heads that are not specified default to single dense layers. Activations that
 are not specified default to `:identity`.

@@ -1,6 +1,7 @@
 
 # Pack
 ```@docs
+Pack
 Pack.pack
 Pack.unpack
 Pack.@pack

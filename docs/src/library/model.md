@@ -1,6 +1,7 @@
 # Model
 
 ```@docs
+Model
 Model.AbstractModel
 ```
 

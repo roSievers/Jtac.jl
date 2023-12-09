@@ -1,6 +1,7 @@
 
 # Game
 ```@docs
+Game
 Game.AbstractGame
 Game.Status
 ```

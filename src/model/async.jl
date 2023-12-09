@@ -1,8 +1,8 @@
 
-"""
-Asynchronous model wrapper that allows for a model to be called on a batch of
-games in parallel when the single calls take place in an async context.
-"""
+# """
+# Asynchronous model wrapper that allows for a model to be called on a batch of
+# games in parallel when the single calls take place in an async context.
+# """
 mutable struct AsyncModel{G <: AbstractGame} <: AbstractModel{G}
   model      :: NeuralModel{G}
   ch         :: Channel
@@ -22,6 +22,11 @@ end
 @pack {<: AsyncModel} AsyncModel(model; batchsize, buffersize, spawn, dynamic)
 
 """
+Asynchronous model wrapper that allows for a model to be called on a batch of
+games in parallel when the single calls take place in an async context.
+
+---
+
     AsyncModel(model; kwargs...)
 
 Wrap `model` into an `AsyncModel` model.

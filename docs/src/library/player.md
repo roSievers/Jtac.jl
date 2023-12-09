@@ -1,6 +1,7 @@
 
 # Player
 ```@docs
+Player
 Player.AbstractPlayer
 ```
 
@@ -17,11 +18,35 @@ Player.ntasks
 Player.gametype
 ```
 
-## Implementations
+## MCTS players
 ```@docs
-Player.RandomPlayer
-Player.IntuitionPlayer
 Player.MCTSPlayer
 Player.MCTSPlayerGumbel
+```
+### Policy extraction
+```@docs
+Player.MCTSPolicy
+Player.ModelPolicy
+Player.VisitCount
+Player.ImprovedPolicy
+Player.Anneal
+Player.Lognormal
+Player.Gumbel
+```
+
+### Action selection
+```@docs
+Player.ActionSelector
+Player.SampleSelector
+Player.MaxSelector
+Player.PUCT
+Player.VisitPropTo
+Player.SequentialHalving
+```
+
+## Other players
+```@docs
+Player.IntuitionPlayer
 Player.HumanPlayer
+Player.RandomPlayer
 ```

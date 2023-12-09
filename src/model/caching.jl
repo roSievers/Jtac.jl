@@ -1,10 +1,4 @@
 
-
-"""
-Model wrapper that enables game state caching. This wrapper is intended for
-accelerating MCTS playouts where previously evaluated game states are queried
-repeatedly.
-"""
 mutable struct CachingModel{G <: AbstractGame} <: AbstractModel{G}
   model :: AbstractModel{G}
   cachesize :: Int
@@ -18,6 +12,12 @@ end
 @pack {<: CachingModel} CachingModel(model; cachesize)
 
 """
+Model wrapper that enables game state caching. This wrapper is intended for
+accelerating MCTS playouts where previously evaluated game states are queried
+repeatedly.
+
+---
+
     CachingModel(model; cachesize)
 
 Wraps `model` in a caching layer that checks if a game to be evaluated has
