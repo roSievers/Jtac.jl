@@ -7,6 +7,7 @@ version = "0.2.0"
 CodecZstd = "6b39b394-51ab-5f42-8807-6242bab2b4c2"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -14,15 +15,15 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 
 [weakdeps]
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CudaExt = "847916c7-5323-501f-9bf0-c12909433953"
 CudaFluxExt = "e2b26ad4-15e3-57e1-a25c-f212a5e059a6"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 FluxExt = "9e123790-cb65-549d-b4bc-107fba12e63f"
 
 [extensions]
-CudaExt = ["CUDA"]
-CudaFluxExt = ["CUDA", "FluxExt"]
+CudaExt = ["cuDNN"]
+CudaFluxExt = ["cuDNN", "FluxExt"]
 FluxExt = ["Flux"]
 
 [compat]
