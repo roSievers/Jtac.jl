@@ -192,7 +192,7 @@ function augment( game :: MNKGame{M, N, K}
 end
 
 hash(game :: MNKGame) = Base.hash(game.board)
-
+isequivalent(a :: MNKGame, b :: MNKGame) = all(a.board .== b.board)
 
 function visualize(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   board = reshape(game.board, (M,N))

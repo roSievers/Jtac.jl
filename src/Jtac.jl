@@ -136,7 +136,8 @@ module Game
          randommatch, 
          array,
          branch,
-         visualize
+         visualize,
+         isequivalent
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")

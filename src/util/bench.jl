@@ -102,96 +102,96 @@ function model( model :: Model.NeuralModel{G}
   end
 end
 
-function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn = false)
-  @assert batchsize <= ntasks
-  @assert model isa Model.NeuralModel
-  cpumodel = Model.to_cpu(model)
-  G = Model.gametype(model)
-  model = cpumodel |> Model.to_gpu
+# function record_gpu(model; ntasks = 64, matches = 1, batchsize = ntasks, spawn = false)
+#   @assert batchsize <= ntasks
+#   @assert model isa Model.NeuralModel
+#   cpumodel = Model.to_cpu(model)
+#   G = Model.gametype(model)
+#   model = cpumodel |> Model.to_gpu
 
-  amodel = Model.Async(model, batchsize = batchsize, dynamic = false, spawn = spawn)
-  player = Player.MCTSPlayer(amodel, power = 250)
+#   amodel = Model.Async(model, batchsize = batchsize, dynamic = false, spawn = spawn)
+#   player = Player.MCTSPlayer(amodel, power = 250)
 
-  moves = 0
-  peak = 0
-  finished = 0
+#   moves = 0
+#   peak = 0
+#   finished = 0
 
-  data_ch = Channel{Data.DataSet{G}}(100)
-  move_ch = Channel{Bool}(1000)
-  move_cb = _ -> (put!(move_ch, true); yield())
+#   data_ch = Channel{Data.DataSet{G}}(100)
+#   move_ch = Channel{Bool}(1000)
+#   move_cb = _ -> (put!(move_ch, true); yield())
 
-  update = t -> begin
-    dt = t - start_time
-    mps = moves / dt
-    if mps > peak
-      peak = mps
-    end
-    @printf "\e[2K\e[1G%.2f m/s (%d / %.2f)  |  %d game(s) finished" mps moves dt finished
-  end
+#   update = t -> begin
+#     dt = t - start_time
+#     mps = moves / dt
+#     if mps > peak
+#       peak = mps
+#     end
+#     @printf "\e[2K\e[1G%.2f m/s (%d / %.2f)  |  %d game(s) finished" mps moves dt finished
+#   end
 
-  # precompilation
+#   # precompilation
 
-  Model.apply(model, G())
-  start_time = time()
-  dss = []
+#   Model.apply(model, G())
+#   start_time = time()
+#   dss = []
 
-  @sync begin
-    @async while isopen(move_ch)
-      try take!(move_ch) catch _ break end
-      moves += 1
-    end
-    @async while isopen(data_ch)
-      sleep(0.25)
-      update(time())
-    end
-    @async begin
-      try
-        Player.record( player, data_ch
-                     , ntasks = ntasks
-                     ; callback_move = move_cb
-                     , merge = false, augment = false)
-      catch err
-        if isopen(data_ch)
-          display(err)
-        end
-      finally
-        close(move_ch)
-        close(data_ch)
-      end
-    end
+#   @sync begin
+#     @async while isopen(move_ch)
+#       try take!(move_ch) catch _ break end
+#       moves += 1
+#     end
+#     @async while isopen(data_ch)
+#       sleep(0.25)
+#       update(time())
+#     end
+#     @async begin
+#       try
+#         Player.record( player, data_ch
+#                      , ntasks = ntasks
+#                      ; callback_move = move_cb
+#                      , merge = false, augment = false)
+#       catch err
+#         if isopen(data_ch)
+#           display(err)
+#         end
+#       finally
+#         close(move_ch)
+#         close(data_ch)
+#       end
+#     end
 
-    @async begin
-      try
-        while finished < matches
-          ds = take!(data_ch)
-          push!(dss, ds)
-          finished += 1
-        end
-      catch err
-        display(err)
-      finally
-        Model.dynamicmode!(amodel, true) # prevents async model blocking
-        close(data_ch)
-        close(move_ch)
-      end
-    end
-  end
+#     @async begin
+#       try
+#         while finished < matches
+#           ds = take!(data_ch)
+#           push!(dss, ds)
+#           finished += 1
+#         end
+#       catch err
+#         display(err)
+#       finally
+#         Model.dynamicmode!(amodel, true) # prevents async model blocking
+#         close(data_ch)
+#         close(move_ch)
+#       end
+#     end
+#   end
 
-  states_per_game = length.(dss)
-  avg = mean(states_per_game)
-  std = var(states_per_game) |> sqrt
-  min = minimum(states_per_game)
-  max = maximum(states_per_game)
+#   states_per_game = length.(dss)
+#   avg = mean(states_per_game)
+#   std = var(states_per_game) |> sqrt
+#   min = minimum(states_per_game)
+#   max = maximum(states_per_game)
 
-  bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
+#   bs = sum(amodel.profile.batchsize) / length(amodel.profile.batchsize)
 
-  println()
-  @printf "peak: %.2f\n" peak
-  @printf "average batchsize: %.2f\n" bs
-  @printf "%.2f ± %.2f states per game (min: %d, max: %d)\n" avg std min max
+#   println()
+#   @printf "peak: %.2f\n" peak
+#   @printf "average batchsize: %.2f\n" bs
+#   @printf "%.2f ± %.2f states per game (min: %d, max: %d)\n" avg std min max
 
-  nothing
-end
+#   nothing
+# end
 
 
 function throughput(model, trials = 1000)
@@ -251,76 +251,11 @@ function throughput(model, trials = 1000)
     @printf " (avg. batchsize %d)\n" bsize
     amodel = nothing
     GC.gc()
-
-    # async-like 
-    descr = "async-like model:  "
-    dt = @elapsed async_like(trials, model, games)
-    sps = batchsize * trials/dt
-    mps = sps / 250
-    @printf "  %s %.2f states/s" descr sps
-    @printf " (%.2f m/s at power 250)\n" mps
-    println()
-
   end
-end
-
-function async_like(trials, model, games)
-  bs = length(games)
-  ch = Channel(bs)
-
-  t = @async begin
-    G = Model.gametype(model)
-    while true
-      games = G[]
-      conds = Threads.Condition[]
-      while length(games) < bs
-        game, c = take!(ch)
-        push!(games, game)
-        push!(conds, c)
-        yield()
-      end
-      @assert length(games) == bs
-      val, pol = model(games)
-      v, p = Model.to_cpu(val), Model.to_cpu(pol)
-      for i in 1:length(conds)
-        c = conds[i]
-        lock(c) do
-          notify(c, (value = v[i], policy = p[:, i]))
-        end
-      end
-    end
-  end
-
-  n = length(games)
-  gamesets = [games[16i-15:16i] for i in 1:div(n, 16)]
-  for _ in 1:trials
-    i = 1
-    res = Vector(undef, n)
-    @sync begin
-      map(gamesets) do games
-        @async begin
-          map(games) do game
-            @async begin
-              c = Threads.Condition()
-              put!(ch, (game, c))
-              lock(c) do
-                res[i] = wait(c)
-                i += 1
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-  close(ch)
-  yield()
-  @assert Base.istaskdone(t)
 end
 
 
 function record(player, n; augment = false, kwargs...)
-
   start_time = time()
   moves = 0
   games = 0

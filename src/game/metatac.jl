@@ -193,6 +193,12 @@ function hash(game :: MetaTac)
   Base.hash((game.board, game.active_player, game.focus))
 end
 
+function isequivalent(a :: MetaTac, b :: MetaTac)
+  all(a.board .== b.board) &&
+  a.active_player == b.active_player &&
+  a.focus == b.focus
+end
+
 function visualize(io :: IO, game :: MetaTac) :: Nothing
 
   board = reshape(game.board, (9,9))

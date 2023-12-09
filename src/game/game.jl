@@ -44,6 +44,9 @@ Further methods may be specialized to improve performance or functionality.
   than calculating the game status via `status(game)`.
 - `hash(game :: G)`: A hash function that is required for caching games \
   efficiently (see [`Model.CachingModel`](@ref)).
+- `isequivalent(a :: G, b :: G)`: Check if the game states `a` and `b` can be \
+  considered to be functionally equivalent. Used for loop detection. Defaults \
+  to `Base.isequal`.
 - `moves(game :: G)`: Count the number of moves that have been applied to \
   `game`.
 """
@@ -364,6 +367,14 @@ same hash value.
 function hash(game :: AbstractGame)
   error("hashing for game $(typeof(game)) not implemented")
 end
+
+"""
+    isequivalent(game_a, game_b)
+
+Check if two game states `game_a` and `game_b` are functionally equivalent.
+This function is used to prevent loops in [`Player.decidechain`](@ref).
+"""
+isequivalent(a :: G, b :: G) where {G <: AbstractGame} = Base.isequal(a, b)
 
 """
    moves(game)

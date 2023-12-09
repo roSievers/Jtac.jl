@@ -439,11 +439,15 @@ available.
 function decidechain( p :: MCTSPlayer{G}
                     , game :: G
                     ; cap_power = false ) where {G <: AbstractGame}
-  # TODO: make infinite loops impossible!
+
   actions = ActionIndex[]
   game = copy(game)
   root = rootnode()
   active = Game.activeplayer(game)
+
+  # record the indices that were chosen at the different game states of the
+  # chain
+  history = Pair{G, Int}[]
 
   # act as long as the game is not finished and it is our turn
   while !Game.isover(game) && Game.activeplayer(game) == active
@@ -452,9 +456,24 @@ function decidechain( p :: MCTSPlayer{G}
 
     root = mcts(game, p.model, power; p.selector, p.rootselector, root)
     pol = getpolicy(p.policy, root)
-    
-    # select a child index that performed well
+
+    # filter out actions that are forbidden because they were picked in the same
+    # chain before
+    forbidden = [idx for (state, idx) in history if isequivalent(game, state)]
+    pol[forbidden] .= 0f0
+    s = sum(pol)
+
+    if s <= 1f-8
+      error("Loop prevention in `decidechain` ruled out all feasible actions")
+    end
+
+    # get the index of the next action
+    pol .= pol ./ s
     index = sample(pol)
+    
+    # remember the index, so that it cannot be picked if we arrive at the same
+    # game state again
+    push!(history, copy(game) => index)
 
     # move the root to the chosen child and forget the past
     root = root.children[index]
