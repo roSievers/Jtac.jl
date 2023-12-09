@@ -19,9 +19,9 @@ function Model.aligndevice!( model :: NeuralModel{G, B}
 end
 
 function __init__()
-  register!(Backend, DefaultBackend{CuArray{Float32}}(), :cu, :cu32)
-  register!(Backend, DefaultBackend{CuArray{Float16}}(), :cu16)
-  register!(Backend, DefaultBackend{CuArray{Float64}}(), :cu64)
+  register!(Backend, DefaultBackend{CuArray{Float32}}(), :cuda, :cu, :cuda32, :cu32)
+  register!(Backend, DefaultBackend{CuArray{Float16}}(), :cuda16, :cu16)
+  register!(Backend, DefaultBackend{CuArray{Float64}}(), :cuda64, :cu64)
 end
 
 end
