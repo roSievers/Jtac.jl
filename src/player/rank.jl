@@ -1,16 +1,22 @@
 
 """
-    planmatches(n, nplayers, active)
+    planmatches(n, nplayers, active, only_active = false)
 
 Returns `n` evenly distributed tuples `(i, j)`, where `1 <= i, j <= nplayers`,
-such that at least one of `i` or `j` is in `active`.
+such that at least one of `i` or `j` is in `active`. If `only_active = true`,
+both `i` and `j` must be in `active` for the match to take place.
 """
-function planmatches(nmatches, nplayers, active)
+function planmatches(nmatches, nplayers, active, only_active)
   stop = false
   matches = []
   while !stop
     for i in 1:nplayers, j in 1:nplayers
-      if i != j && (i in active || j in active)
+      if only_active
+        ismatch = i != j && (i in active && j in active)
+      else
+        ismatch = i != j && (i in active || j in active)
+      end
+      if ismatch
         push!(matches, (i, j))
         if length(matches) >= nmatches
           stop = true
@@ -67,7 +73,7 @@ function compete( players
   BLAS.set_num_threads(1)
 
   lk = ReentrantLock()
-  matches = planmatches(n, length(players), active)
+  matches = planmatches(n, length(players), active, only_active)
   results = zeros(Int, length(players), length(players), 3)
 
   count = 0
