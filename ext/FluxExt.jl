@@ -275,6 +275,11 @@ function Training.step!( model :: Model.NeuralModel{G, <: FluxBackend}
   loss
 end
 
+function Model.parameters(model :: NeuralModel{<: AbstractGame, B}) where {B <: FluxBackend}
+  trunk = model.trunk.layer
+  heads = [head.layer for head in model.target_heads]
+  Flux.params(trunk, heads...)
+end
 
 ##
 ## Register standard Flux backends
