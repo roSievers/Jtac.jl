@@ -15,15 +15,15 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 
 [weakdeps]
-cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CudaExt = "847916c7-5323-501f-9bf0-c12909433953"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CudaFluxExt = "e2b26ad4-15e3-57e1-a25c-f212a5e059a6"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 FluxExt = "9e123790-cb65-549d-b4bc-107fba12e63f"
 
 [extensions]
-CudaExt = ["cuDNN"]
-CudaFluxExt = ["cuDNN", "FluxExt"]
+CudaExt = ["CUDA"]
+CudaFluxExt = ["CUDA", "FluxExt"]
 FluxExt = ["Flux"]
 
 [compat]
@@ -33,4 +33,4 @@ julia = "^1.9"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "Flux", "cuDNN"]
+test = ["Test", "Flux", "CUDA"]
