@@ -28,8 +28,8 @@ end
 
 # @compile_workload begin
 #   backend = DefaultBackend{CuArray{Float32}}()
-#   # Jtac.precompilecontent(Game.TicTacToe, configure = Model.configure(; backend))
-#   # Jtac.precompilecontent(Game.MetaTac, configure = Model.configure(; backend))
+#   Jtac.precompilecontent(Game.TicTacToe, configure = Model.configure(; backend))
+#   Jtac.precompilecontent(Game.MetaTac, configure = Model.configure(; backend))
 # end
 
 end

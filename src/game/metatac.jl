@@ -32,8 +32,16 @@ function Base.:(==)(a::MetaTac, b::MetaTac)
       , a.active_player == b.active_player
       , a.focus == b.focus
       , a.status_cache == b.status_cache
-      , all(a.region_status_cache .== b.region_status_cache) ])
+      , all(a.region_status_cache .== b.region_status_cache)
+  ])
 end
+
+function Base.hash(game :: MetaTac)
+  Base.hash((game.board, game.active_player, game.focus))
+end
+
+Base.isequal(a :: MetaTac, b :: MetaTac) = (a == b)
+
 
 activeplayer(game :: MetaTac) :: Int = game.active_player
 
@@ -187,16 +195,6 @@ function augment(game :: MetaTac, label :: Vector{Float32})
   labels = [ reshape(mp, (81,)) for mp in matpols ]
 
   augment(game), labels
-end
-
-function Base.hash(game :: MetaTac)
-  Base.hash((game.board, game.active_player, game.focus))
-end
-
-function Base.isequal(a :: MetaTac, b :: MetaTac)
-  all(a.board .== b.board) &&
-  a.active_player == b.active_player &&
-  a.focus == b.focus
 end
 
 function visualize(io :: IO, game :: MetaTac) :: Nothing
