@@ -44,11 +44,10 @@ Further methods may be specialized to improve performance or functionality.
   augmentation by exploiting game symmetries.
 - `isover(game :: G)`: Check whether the game is over or not. May be faster \
   than calculating the game status via `status(game)`.
-- `hash(game :: G)`: A hash function that is required for caching games \
+- `Base.hash(game :: G)`: A hash function that is required for caching games \
   efficiently (see [`Model.CachingModel`](@ref)).
-- `isequivalent(a :: G, b :: G)`: Check if the game states `a` and `b` can be \
-  considered to be functionally equivalent. Used for loop detection. Defaults \
-  to `Base.isequal`.
+- `Base.isequal(a :: G, b :: G)`: Check if the game states `a` and `b` can be \
+  considered to be functionally equivalent. Necessary for loop detection.
 - `moves(game :: G)`: Count the number of moves that have been applied to \
   `game`.
 """
@@ -58,9 +57,37 @@ abstract type AbstractGame end
 
 Broadcast.broadcastable(game :: AbstractGame) = Ref(game)
 
-Base.copy(:: AbstractGame) = error("not implemented") 
-Base.size(:: Type{<: AbstractGame}) = error("not implemented")
+function Base.copy(game :: AbstractGame)
+  error("Base.copy not implemented for games of type $(typeof(game))") 
+end
+
+function Base.size(G :: Type{<: AbstractGame})
+  error("Base.size not implemented for games of type $G")
+end
+
 Base.size(:: G) where {G <: AbstractGame} = size(G)
+
+"""
+    Base.hash(game)
+
+Return a `UInt64` hash value of a game. Games that lead to the same data
+representation (see `Game.array`) with the same active player should have the
+same hash value.
+"""
+function Base.hash(game :: AbstractGame)
+  error("Base.hash not implemented for games of type $(typeof(game))")
+end
+
+"""
+    Base.isequal(game_a, game_b)
+
+Check if two game states `game_a` and `game_b` are functionally equivalent.
+This function is for example used to prevent loops in [`Player.decidechain`](@ref).
+"""
+function Base.isequal(:: G, :: G) where {G <: AbstractGame}
+  error("Base.isequal not implemented for games of type $G")
+end
+
 
 """
     status(game)
@@ -369,25 +396,6 @@ function branch(; prob, steps = 1)
     end
   end
 end
-
-"""
-    hash(game)
-
-Return a `UInt64` hash value of a game. Games that lead to the same data
-representation (see `Game.array`) with the same active player should have the
-same hash value.
-"""
-function hash(game :: AbstractGame)
-  error("hashing for game $(typeof(game)) not implemented")
-end
-
-"""
-    isequivalent(game_a, game_b)
-
-Check if two game states `game_a` and `game_b` are functionally equivalent.
-This function is used to prevent loops in [`Player.decidechain`](@ref).
-"""
-isequivalent(a :: G, b :: G) where {G <: AbstractGame} = Base.isequal(a, b)
 
 """
    moves(game)

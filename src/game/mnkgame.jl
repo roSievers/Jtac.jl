@@ -31,14 +31,15 @@ function Base.copy(s :: MNKGame{M, N, K}) :: MNKGame{M, N, K} where {M, N, K}
   )
 end
 
-isaugmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
-
 function Base.:(==)(a::MNKGame{M, N, K}, b::MNKGame{M, N, K}) where {M, N, K}
   all([ all(a.board .== b.board)
       , a.active_player == b.active_player
       , a.status == b.status
       , a.move_count == b.move_count])
 end
+
+Base.hash(game :: MNKGame) = Base.hash(game.board)
+Base.isequal(a :: MNKGame, b :: MNKGame) = (a == b)
 
 activeplayer(game :: MNKGame) :: Int = game.active_player
 
@@ -145,6 +146,8 @@ function array(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
   reshape(game.active_player .* game.board, (M, N, 1))
 end
 
+isaugmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
+
 # Augment single games
 function augment(game :: MNKGame{M, N, K}) where {M, N, K}
 
@@ -190,9 +193,6 @@ function augment( game :: MNKGame{M, N, K}
 
   augment(game), policies
 end
-
-hash(game :: MNKGame) = Base.hash(game.board)
-isequivalent(a :: MNKGame, b :: MNKGame) = all(a.board .== b.board)
 
 function visualize(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   board = reshape(game.board, (M,N))

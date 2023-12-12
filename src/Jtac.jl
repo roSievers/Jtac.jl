@@ -136,8 +136,7 @@ module Game
          randommatch, 
          array,
          branch,
-         visualize,
-         isequivalent
+         visualize
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")
@@ -298,8 +297,7 @@ module Model
 
     include("model/zoo.jl")
 
-    export Shallow,
-           MLP,
+    export MLP,
            ShallowConv,
            ZeroConv,
            ZeroRes

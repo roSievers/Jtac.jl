@@ -1,20 +1,5 @@
 
 """
-Struct that can be used as key in dictionaries or sets to efficiently match game
-states that are functionally equivalent.
-"""
-struct GameKey{G <: AbstractGame}
-  game :: G
-end
-
-Base.hash(gkey :: GameKey) = Game.hash(gkey.game)
-
-function Base.isequal(a :: GameKey{G}, b :: GameKey{G}) where {G <: AbstractGame}
-  Game.isequivalent(a.game, b.game)
-end
-
-
-"""
 Node type that stores information related to MCTS simulations.
 """
 mutable struct Node
@@ -99,8 +84,8 @@ rootnode() = Node(nothing, 0, 0)
     expandnode!(node, actions, game, exclude)
 
 Expand the node `node` given action indices `actions` at game state `game`. If
-an action leads to a game state marked in the [`GameKey`](@ref) set `exclude`,
-this action is excluded (and removed from the vector `actions`).
+an action leads to a game state contained in the set `exclude`, this action is
+excluded (and removed from the vector `actions`).
 
 This method resizes `node` to `length(actions)` (after filtering) and
 initializes as many children. Previously stored children are lost.
@@ -108,8 +93,7 @@ initializes as many children. Previously stored children are lost.
 function expandnode!(node :: Node, actions, game :: AbstractGame, exclude)
   if !isempty(exclude)
     filter!(actions) do action
-      key = GameKey(Game.move(game, action))
-      !(key in exclude)
+      !(Game.move(game, action) in exclude)
     end
   end
   n = length(actions)
@@ -756,7 +740,7 @@ function mctsstep!( node :: Node
                   , game :: G
                   , model
                   , selector :: ActionSelector
-                  ; exclude = Set{GameKey{G}}()
+                  ; exclude = Set{G}()
                   , buffer = Float32[] ) where {G}
 
   # Do not modify the original game state
@@ -824,8 +808,7 @@ function censornode!(node, game, exclude)
     tocensor = filter(1:length(node.children)) do index
       child = node.children[index]
       child_game = Game.move(game, child.action)
-      key = GameKey(child_game)
-      if !(key in exclude)
+      if !(child_game in exclude)
         censornode!(child, child_game, exclude)
         false
       else
@@ -867,9 +850,6 @@ function mcts( game :: G
              , selector = PUCT()
              , rootselector = selector
              , exclude :: Set{G} = Set{G}() ) where {G}
-
-  # Prepare the set of game states to exclude when expanding nodes
-  exclude = Set{GameKey{G}}(GameKey(g) for g in exclude)
 
   # Since the rootselector is randomized, act on a copy
   rootselector = copy(rootselector)

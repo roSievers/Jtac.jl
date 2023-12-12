@@ -189,11 +189,11 @@ function augment(game :: MetaTac, label :: Vector{Float32})
   augment(game), labels
 end
 
-function hash(game :: MetaTac)
+function Base.hash(game :: MetaTac)
   Base.hash((game.board, game.active_player, game.focus))
 end
 
-function isequivalent(a :: MetaTac, b :: MetaTac)
+function Base.isequal(a :: MetaTac, b :: MetaTac)
   all(a.board .== b.board) &&
   a.active_player == b.active_player &&
   a.focus == b.focus
