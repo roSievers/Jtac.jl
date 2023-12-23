@@ -63,8 +63,8 @@ trainingmodel(m :: AssistedModel) = trainingmodel(m.model)
 Base.copy(m :: AssistedModel) = AssistedModel(copy(m.model), copy(m.assistant))
 
 function Base.show(io :: IO, m :: AssistedModel)
-  print(io, "Assisted("); show(io, m.model); print(io, ", ")
-  show(io, m.assistant); print(io, ")")
+  print(io, "Assisted("); show(io, m.assistant); print(io, ")")
+  show(io, m.model)
 end
 
 function Base.show(io :: IO, mime :: MIME"text/plain", m :: AssistedModel)

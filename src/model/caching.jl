@@ -75,9 +75,8 @@ trainingmodel(m :: CachingModel) = trainingmodel(m.model)
 Base.copy(m :: CachingModel) = switchmodel(m, copy(m.model))
 
 function Base.show(io :: IO, m :: CachingModel{G}) where {G <: AbstractGame}
-  print(io, "Caching($(length(m.cache)), $(m.cachesize), ")
+  print(io, "Caching($(length(m.cache)), $(m.cachesize)) ")
   show(io, m.model)
-  print(io, ")")
 end
 
 function Base.show(io :: IO, mime :: MIME"text/plain", m :: CachingModel{G}) where {G <: AbstractGame}

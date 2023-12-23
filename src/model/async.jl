@@ -123,9 +123,8 @@ trainingmodel(m :: AsyncModel) = trainingmodel(m.model)
 Base.copy(m :: AsyncModel) = switchmodel(m, copy(m.model))
 
 function Base.show(io :: IO, m :: AsyncModel{G}) where {G <: AbstractGame}
-  print(io, "Async($(m.batchsize), $(m.buffersize), ")
+  print(io, "Async($(m.batchsize), $(m.dynamic ? "dynamic" : "static")) ")
   show(io, m.model)
-  print(io, ")")
 end
 
 function Base.show( io :: IO
