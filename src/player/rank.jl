@@ -214,8 +214,26 @@ function Base.string(rk :: Ranking, matrix = false)
 end
 
 function visualize(io :: IO, rk :: Ranking, matrix = false)
-  println(string(rk, matrix))
+  println(io, string(rk, matrix))
 end
 
 visualize(rk :: Ranking, args...) = visualize(stdout, rk, args...)
 
+
+function rankmodels( models
+                   , n :: Int = 100
+                   ; power = [64]
+                   , temperature = 1.0
+                   , opponents = []
+                   , kwargs... )
+  intplayers = []
+  mctsplayers = []
+  for (i, m) in enumerate(models)
+    push!(intplayers, IntuitionPlayer(m; temperature, name = "int-$i"))
+    for p in power
+      push!(mctsplayers, MCTSPlayer(m; power = p, temperature, name = "mcts$p-$i"))
+    end
+  end
+  players = [intplayers..., mctsplayers..., opponents...]
+  rank(players, n; kwargs...)
+end
