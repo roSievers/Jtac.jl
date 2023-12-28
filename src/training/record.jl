@@ -206,7 +206,7 @@ function recordbranching( G :: Type{<: AbstractGame}
     filter!(trace -> length(trace.games) > 1, traces)
 
     # Augment the datasets and record optional targets as datasets
-    if augment
+    if augment && !isempty(traces)
       traces = mapreduce(augmenttrace, vcat, traces)
     end
     datasets = DataSet{G}[recordtargets(G, targets, trace) for trace in traces]
@@ -215,7 +215,14 @@ function recordbranching( G :: Type{<: AbstractGame}
     if verbose
       step()
     end
-    Base.merge(datasets)
+
+    # If not empty (because of StopMatch exceptions), merge the datasets of
+    # different branches
+    if isempty(datasets)
+      DataSet(G, targets)
+    else
+      Base.merge(datasets)
+    end
   end
 
 
@@ -256,7 +263,7 @@ end
 """
     recordtargets(G, targets, trace)
 
-Record the prediction targets `targets` for `traces` and return the resulting
+Record the prediction targets `targets` for `trace` and return the resulting
 datasets.
 """
 function recordtargets(G :: Type{<: AbstractGame}, targets, trace)
