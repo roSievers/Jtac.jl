@@ -65,6 +65,7 @@ recorded. Derived from the player by default.
 obtained via [`Player.think`](@ref) is annealed before sampling the next move.
 - `callback_match`: Function that is called after each completed match.
 - `callback_move`: Function that is called after each individual move.
+- `draw_after`: Move threshold after which ongoing matches are declared draws.
 - `ntasks = Player.ntasks(player)`: Number of async tasks used for playing.
 - `threads = false`: Whether to use threads or async tasks if `ntasks > 1`.
 - `progress = true`: Whether to print progress information.
@@ -92,6 +93,7 @@ function record( p :: Union{P, Channel{P}}
                , merge :: Bool = true
                , callback_move :: Function = _ -> nothing
                , ntasks = Player.ntasks(fetch(p))
+               , draw_after = typemax(Int)
                , kwargs...
                ) where {G, P <: AbstractPlayer{G}}
 
@@ -106,7 +108,7 @@ function record( p :: Union{P, Channel{P}}
     policies = Vector{Float32}[]
 
     try
-      while !isover(game)
+      while !isover(game) && moves < draw_after
 
         # Get the improved policy from the player
         policy = think(fetch(p), game)
@@ -134,7 +136,12 @@ function record( p :: Union{P, Channel{P}}
 
       # Now we know how the game ended. Add value labels to the dataset.
       # Optional targets have to be recorded *after* augmentation
-      outcome = status(games[end])
+      if moves >= draw_after
+        outcome = Game.draw
+      else
+        outcome = status(games[end])
+      end
+
       (; outcome, games, policies)
     
     catch err
