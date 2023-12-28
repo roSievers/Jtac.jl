@@ -272,7 +272,7 @@ function Base.show( io :: IO
   print(io, " name: $(p.name)"); println(io)
   print(io, " temp: $(p.temperature)"); println(io)
   print(io, " model: ")
-  showindented(io, mime, p.model, indent = 1, indentfirst = false)
+  show(io, p.model)
 end
 
 
@@ -532,13 +532,12 @@ function Base.show( io :: IO
                   , p :: MCTSPlayer{G}
                   ) where {G <: AbstractGame}
   println(io, "MCTSPlayer{$(Game.name(G))}")
-  print(io, " name: $(p.name)\n")
-  print(io, " power: $(p.power)\n")
-  print(io, " policy: $(p.policy)\n")
-  print(io, " selector: $(p.selector)\n")
-  print(io, " rootselector: $(p.rootselector)\n")
+  println(io, " name: $(p.name)")
+  println(io, " power: $(p.power)")
+  println(io, " policy: $(p.policy)")
+  println(io, " selectors: $(p.selector), $(p.rootselector) (root)")
   print(io, " model: ")
-  showindented(io, mime, p.model, indent = 1, indentfirst = false)
+  show(io, p.model)
 end
 
 

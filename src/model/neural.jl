@@ -261,20 +261,23 @@ Returns the backend of the neural model `model`.
 getbackend(:: NeuralModel{G, B}) where {G, B} = B()
 
 function Base.show(io :: IO, m :: NeuralModel{G, B}) where {G, B}
-  print(io, "NeuralModel(")
-  show(io, m.trunk)
+  bname = isregistered(Backend, B()) ? lookupname(Backend, B()) : string(B)
+  print(io, "NeuralModel{$(Game.name(G))")
   print(io, ", ")
-  show(io, B())
+  show(io, bname)
+  print(io, "}(")
+  show(io, m.trunk)
   print(io, ")")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", m :: NeuralModel{G, B}) where {G, B}
-  print(io, "NeuralModel{$(Game.name(G))}(")
-  show(io, B()); println(io, ")")
-  print(io, " trunk: "); show(io, m.trunk); println(io)
-  print(io, " heads:")
+  bname = isregistered(Backend, B()) ? lookupname(Backend, B()) : B
+  print(io, "NeuralModel{$(Game.name(G)), ")
+  show(io, bname)
+  println(io, "}")
+  print(io, " trunk: "); show(io, m.trunk)
   for (name, head) in zip(m.target_names, m.target_heads)
-    println(io); print(io, "  $name: "); show(io, head)
+    println(io); print(io, " $name: "); show(io, head)
   end
 end
 

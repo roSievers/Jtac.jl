@@ -60,7 +60,6 @@ end
 
 """
     lookup(T, name)
-    lookup(T, value)
 
 Return the value with scope type `T` and name `name`.
 

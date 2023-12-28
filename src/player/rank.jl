@@ -1,67 +1,85 @@
 
 """
-    planmatches(n, nplayers, active, only_active = false)
+Structure that captures the results of matches between different players. Returned by [`compete`](@ref).
 
-Returns `n` evenly distributed tuples `(i, j)`, where `1 <= i, j <= nplayers`,
-such that at least one of `i` or `j` is in `active`. If `only_active = true`,
-both `i` and `j` must be in `active` for the match to take place.
+See also [`Ranking`](@ref).
 """
-function planmatches(nmatches, nplayers, active, only_active)
-  stop = false
+struct Results
+  players :: Vector{String}
+  outcomes :: Array{Int, 3}
+end
+
+@pack Results in MapFormat
+
+function Results(players :: Vector{<: AbstractPlayer}, outcomes)
+  Results(map(name, players), outcomes)
+end
+
+function Base.merge(rs :: Results ...)
+  players = mapreduce(r -> r.players, vcat, rs)
+  unique!(players)
+  m = length(players)
+  outcomes = zeros(Int, m, m, 3)
+  for r in rs
+    rn = length(r.players)
+    idx = map(r.players) do player
+      findfirst(isequal(player), players)
+    end
+    for i in 1:rn, j in 1:rn, k in 1:3
+      outcomes[idx[i], idx[j], k] += r.outcomes[i, j, k]
+    end
+  end
+  Results(players, outcomes)
+end
+
+"""
+    planmatches(n, players, active)
+
+Returns `n` (roughly evenly distributed) tuples `(p1, p2)`, where `p1` and `p2`
+are in `players`, such that at least one of `p1` or `p2` is in `active`.
+"""
+function planmatches(n, players, active)
   matches = []
-  while !stop
-    for i in 1:nplayers, j in 1:nplayers
-      if only_active
-        ismatch = i != j && (i in active && j in active)
-      else
-        ismatch = i != j && (i in active || j in active)
-      end
-      if ismatch
-        push!(matches, (i, j))
-        if length(matches) >= nmatches
-          stop = true
-          break
+  while true
+    for p1 in players, p2 in players
+      if p1 != p2 && (p1 in active || p2 in active)
+        push!(matches, (p1, p2))
+        if length(matches) >= n
+          return Random.shuffle(matches)
         end
       end
     end
   end
-  Random.shuffle(matches)
 end
 
 
 """
-  compete(players, n [, active]; <keyword arguments>)
+  compete(players, n; active, kwargs...)
 
 Simulate game results for a number of `n` matches between players at positions
 `i` and `j` in the collection `players` if at least one of `i` or `j` is in
 `active`.
 
-The return value is a result array of dimensions `(l, l, 3)`, where `l
-= length(players)`. The entry at indices `[i,j,k]` stands for the number of
-outcomes `k` (`1`: loss, `2`: draw, `3`: win) when player `i` played against
-`j`. When both `i` and `j` are inactive, no games are played. The entries at
-`[i, j, :]` are `0` in this case.
+The return value is of type [`Results`](@ref).
 
 # Arguments
+- `active`: Iterable of active players. Defaults to `players`.
 - `instance`: Initial game state provider. Defaults to `() -> Game.instance(G)` \
 if the game type `G` can be inferred automatically.
 - `callback`: Function called after each of the `n` matches.
 - `threads`: Whether to use threading.
 - `draw_after`: Number of moves after which the game is stopped and counted as \
 a draw.
-- `verbose`: Print current ranking after each match.
-- `only_active`: If `true`, only matches where *both* players are active are \
-  conducted.
+- `verbose`: Whether to print the current ranking after each match.
 """
 function compete( players
-                , n :: Int
-                , active = 1:length(players)
-                ; instance = gametype(players...)
+                , n :: Integer
+                ; active = players
+                , instance = gametype(players...)
                 , callback = () -> nothing
                 , verbose = false
                 , threads = false
-                , draw_after = typemax(Int)
-                , only_active = false )
+                , draw_after = typemax(Int) )
 
   if instance isa Type{<: AbstractGame}
     G = instance
@@ -73,8 +91,9 @@ function compete( players
   BLAS.set_num_threads(1)
 
   lk = ReentrantLock()
-  matches = planmatches(n, length(players), active, only_active)
-  results = zeros(Int, length(players), length(players), 3)
+  matches = planmatches(n, players, active)
+  m = length(players)
+  outcomes = zeros(Int, m, m, 3)
 
   count = 0
   report = (p1, p2, k) -> begin
@@ -82,23 +101,26 @@ function compete( players
     p1, p2 = name(p1), name(p2)
     verb = k == 3 ? ">" : (k == 1 ? "<" : "~")
     println("Match $count: $p1 $verb $p2")
-    ranking = rank(players, results)
+    ranking = rank(Results(players, outcomes))
     println(string(ranking))
     println()
   end
 
-  Util.pforeach(matches; threads, ntasks = n) do (i, j)
-    p1, p2 = players[i], players[j]
+  @show typeof(players)
+
+  Util.pforeach(matches; threads, ntasks = n) do (p1, p2)
     k = Int(pvp(p1, p2; instance, draw_after)) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+    i = findfirst(isequal(p1), players)
+    j = findfirst(isequal(p2), players)
     lock(lk) do
-      results[i, j, k] += 1
+      outcomes[i, j, k] += 1
       verbose && report(p1, p2, k)
       callback()
     end
   end
 
   BLAS.set_num_threads(t)
-  results
+  Results(players, outcomes)
 end
 
 
@@ -110,8 +132,7 @@ standard deviation via the observed Fisher information) as well as the start
 advantage and a draw bandwidth is determined.
 """
 struct Ranking
-  players :: Vector{String}
-  results :: Array{Int, 3}
+  results :: Results
 
   elo  :: Vector{Float64}
   sadv :: Float64
@@ -122,43 +143,47 @@ struct Ranking
   drawstd :: Float64
 end
 
-Pack.@untyped Ranking
-Pack.@binarray Ranking [:results]
+@pack Ranking in MapFormat
 
 """
-    rank(players, results; steps = 100)
-    rank(players, n [, active]; steps = 100, <keyword arguments>)
+    rank(results; steps = 100)
+    rank(players, n [, results...]; steps = 100, <keyword arguments>)
 
 Get a ranking of `players` based on `results` from a previous call of the
-function `compete`. Alternatively, results are generated on the fly via
-`compete` for `n` games with all corresponding keyword arguments.  The number of
-steps in the iterative maximum likelihood solver can be specified via `steps`.
+function `compete`. Alternatively, results are generated on the fly (and merged
+with optional `results`) via `compete` for `n` games with all corresponding
+keyword arguments.  The number of steps in the iterative maximum likelihood
+solver can be specified via `steps`.
 """
-function rank(players :: Vector{String}, results :: Array{Int, 3}; steps = 100)
-  elo, sadv, draw = mlestimate(results; steps = steps)
-  elostd, sadvstd, drawstd = stdestimate(results, elo, sadv, draw)
-  Ranking(players, results, elo, sadv, draw, elostd, sadvstd, drawstd)
+function rank(r :: Results; steps = 100)
+  elo, sadv, draw = mlestimate(r.outcomes; steps = steps)
+  elostd, sadvstd, drawstd = stdestimate(r.outcomes, elo, sadv, draw)
+  Ranking(r, elo, sadv, draw, elostd, sadvstd, drawstd)
 end
 
-function rank(players, results :: Array{Int, 3}; steps = 100)
-  rank(name.(players), results, steps = steps)
+rank(rs :: Results ...; kwargs...) = rank(Base.merge(rs...); kwargs...)
+
+function rank(players, n :: Integer; steps = 100, kwargs...)
+  results = compete(players, n; kwargs...)
+  rank(results; steps)
 end
 
-function rank(players, args...; steps = 100, kwargs...)
-  results = compete(players, args...; kwargs...)
-  rank(players, results; steps = steps)
+function rank(players, n :: Integer, rs :: Results ...; steps = 100, kwargs...)
+  results = compete(players, n; kwargs...)
+  results = merge(results, rs...)
+  rank(results; steps)
 end
 
 function Base.show(io :: IO, r :: Ranking)
-  p = length(r.players)
-  n = sum(r.results)
-  print(io, "Ranking($p players, $n games)")
+  m = length(r.results.players)
+  n = sum(r.results.outcomes)
+  print(io, "Ranking($m players, $n games)")
 end
 
 function Base.show(io :: IO, :: MIME"text/plain", r :: Ranking)
-  n = sum(r.results)
-  p = length(r.players)
-  println(io, "Ranking with $p players and $n games:")
+  m = length(r.results.players)
+  n = sum(r.results.outcomes)
+  println(io, "Ranking with $m players and $n games:")
   print(io, string(r, true))
 end
 
@@ -180,7 +205,9 @@ function Base.string(rk :: Ranking, matrix = false)
   # The player with highest elo will come first
   perm = sortperm(rk.elo) |> reverse
 
-  players, elo, elostd = rk.players[perm], rk.elo[perm], rk.elostd[perm]
+  players = rk.results.players[perm]
+  elo = rk.elo[perm]
+  elostd = rk.elostd[perm]
   nv = maximum(ndigits, elo)
   ns = maximum(ndigits, elostd)
 
@@ -190,7 +217,7 @@ function Base.string(rk :: Ranking, matrix = false)
 
   if matrix
 
-    res = rk.results
+    res = rk.results.outcomes
     mat = res[perm, perm, 3] - res[perm, perm, 1]
     nm = maximum(ndigits, mat)
 

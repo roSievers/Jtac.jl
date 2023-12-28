@@ -22,6 +22,8 @@ struct FluxBackend{T} <: Backend{T} end
 
 adapt(T, :: FluxBackend) = FluxBackend{T}()
 
+Model.istrainable(:: FluxBackend) = true
+
 function Base.show(io :: IO, :: FluxBackend{T}) where {T}
   print(io, "FluxBackend{$T}()")
 end
@@ -50,7 +52,7 @@ end
 ##
 
 const FluxDense = Flux.Chain{Tuple{typeof(Flux.flatten), D}} where {D <: Flux.Dense}
-const FluxResidual = Flux.Chain{Tuple{S, A}} where {S <: Flux.SkipConnection, A<: Activation}
+const FluxResidual = Flux.Chain{Tuple{S, A}} where {S <: Flux.SkipConnection, A <: Activation}
 
 wrap(T, layer :: FluxDense) = Dense{T}(layer)
 wrap(T, layer :: Flux.Conv) = Conv{T}(layer)
@@ -83,6 +85,7 @@ function Model.adapt(:: DefaultBackend{T}, d :: Dense) where {T}
   Model.Dense{T}(w, b, layer.σ, !(layer.bias == false))
 end
 
+Base.copy(d :: Dense{T}) where {T} = Dense{T}(deepcopy(d.layer))
 
 struct Conv{T} <: PrimitiveLayer{FluxBackend{T}}
   layer :: Flux.Conv
@@ -103,6 +106,8 @@ function Model.adapt(:: DefaultBackend{T}, d :: Conv) where {T}
   stride = d.layer.stride
   Model.Conv{T}(w, b, d.layer.σ, !(d.layer.bias == false), pad, stride)
 end
+
+Base.copy(d :: Conv{T}) where {T} = Conv{T}(deepcopy(d.layer))
 
 
 struct Batchnorm{T} <: PrimitiveLayer{FluxBackend{T}}
@@ -146,6 +151,8 @@ function Model.adapt(:: DefaultBackend{T}, b :: Batchnorm) where {T}
   )
 end
 
+Base.copy(d :: Batchnorm{T}) where {T} = Batchnorm{T}(deepcopy(d.layer))
+
 
 struct Chain{T} <: CompositeLayer{FluxBackend{T}}
   layer :: Flux.Chain
@@ -165,6 +172,8 @@ function Model.adapt(backend :: DefaultBackend{T}, c :: Chain) where {T}
   Model.Chain(collect(layers))
 end
 
+Base.copy(d :: Chain{T}) where {T} = Chain{T}(deepcopy(d.layer))
+
 
 struct Residual{T} <: CompositeLayer{FluxBackend{T}}
   layer :: FluxResidual
@@ -180,6 +189,8 @@ function Model.adapt(backend :: DefaultBackend{T}, r :: Residual) where {T}
   chain = Model.adapt(backend, wrap(T, r.layer.layers[1].layers))
   Model.Residual(chain, r.layer.layers[2])
 end
+
+Base.copy(d :: Residual{T}) where {T} = Residual{T}(deepcopy(d.layer))
 
 
 ##
