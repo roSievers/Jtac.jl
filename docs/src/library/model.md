@@ -78,7 +78,6 @@ Model.adapt
 ```@docs
 Model.Zoo.ZeroConv
 Model.Zoo.ZeroRes
-Model.Zoo.Shallow
 Model.Zoo.ShallowConv
 Model.Zoo.MLP
 Model.Zoo.zero_head

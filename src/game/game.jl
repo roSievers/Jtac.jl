@@ -244,8 +244,8 @@ randomaction(game :: AbstractGame) = rand(legalactions(game))
 
 Modify `game` by taking a single random action (if the game is not finished).
 
-See also [`move!`](@ref), [`randomaction`](@ref), [`randomturn!`](@ref), and
-[`randommatch!`](@ref).
+See also [`move!`](@ref), [`randommove`](@ref), [`randomaction`](@ref),
+[`randomturn!`](@ref), and [`randommatch!`](@ref).
 """
 function randommove!(game :: AbstractGame)
   isover(game) ? game : move!(game, randomaction(game))
@@ -274,6 +274,13 @@ function randommove!(game :: AbstractGame, range)
 end
 
 """
+    randommove(game, args...)
+
+Non-mutating version of [`randommove!`](@ref).
+"""
+randommove(game :: AbstractGame, args...) = randommove!(copy(game), args...)
+
+"""
     randomturn!(game)
 
 Modify `game` by taking random actions until the active player changes. Returns
@@ -288,6 +295,13 @@ function randomturn!(game :: AbstractGame)
   end
   game
 end
+
+"""
+    randomturn(game)
+
+Non-mutating version of [`randomturn!`](@ref).
+"""
+randommove(game :: AbstractGame) = randommove!(copy(game))
 
 """
     randommatch!(game)

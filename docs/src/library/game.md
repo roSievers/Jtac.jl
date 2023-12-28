@@ -14,17 +14,20 @@ Game.legalactions
 Game.isactionlegal
 Game.isover
 Game.move!
+Game.move
 Game.instance
 Game.visualize
 Game.moves
 Game.hash
 ```
 
-## Random actions
+## Randomization
 ```@docs
 Game.randomaction
 Game.randommove!
+Game.randommove
 Game.randomturn!
+Game.randomturn
 Game.randommatch!
 Game.randommatch
 Game.randominstance
