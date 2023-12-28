@@ -1,9 +1,9 @@
 
 """
 Julia package that implements the Alpha Zero learning paradigm for two-player
-boardgames in a modular manner. It exports the following components:
+boardgames in a modular manner. Issuing `using Jtac` exports these modules (and
+no other symbols):
 
-* [`Pack`](@ref): Generic serialization module on top of the msgpack format.
 * [`Game`](@ref): Module that defines interfaces for two-player boardgames and \
   provides  reference implementations for tic-tac-toe and meta tic-tac-toe.
 * [`Model`](@ref): Module that defines interfaces for value and policy predictors that \
@@ -14,6 +14,11 @@ boardgames in a modular manner. It exports the following components:
   value and policy of a given game state.
 * [`Training`](@ref): Module that implements the generation of and training on labeled \
   data that is created during matches between players.
+
+The following modules are also part of the Jtac package, but are not exported:
+* [`Pack`](@ref): Generic serialization module implementing the msgpack format.
+* [`Util`](@ref): Utility functions used throughout the library.
+* [`Bench`](@ref): Collection of benchmarking functions.
 """
 module Jtac
 
@@ -50,8 +55,10 @@ end
 Jtac utility module.
 
 Contains utility functions for the library. For example, implements symmetry
-operations on matrices, named values (used for activation names or neural
-network backends), and various benchmarking tools.
+operations on matrices as well as named values used for activation names or
+neural network backends.
+
+This module is not exported when `using Jtac` is 
 """
 module Util
   # TODO: remove ProgressMeter!
@@ -83,15 +90,6 @@ module Util
 
   export NamedValueFormat
 
-  module Bench
-    using Statistics, Printf
-    using ..Jtac
-
-    # TODO: refactor / repair bench.jl
-    # include("util/bench.jl")
-  end # module Bench
-
-  export Bench
 end # module Util
 
 
@@ -399,11 +397,22 @@ module Training
   export loss,
          setup,
          step!,
-         train!,
-         train_contest!
+         learn!
 
 end # module Training
 
+module Bench
+  using Statistics, Printf
+
+  using ..Jtac
+  using ..Game
+  using ..Target
+  using ..Model
+  using ..Player
+  using ..Training
+
+  include("util/bench.jl")
+end # module Bench
 
 using .Util, .Model, .Training
 
@@ -425,7 +434,6 @@ register!(LossFunction, (x, y) -> sum(abs, x .- y), :sumabs)
 register!(LossFunction, (x, y) -> sum(abs2, x .- y), :sumabs2)
 register!(LossFunction, (x, y) -> -sum(y .* log.(x .+ 1f-7)), :crossentropy)
 
-
 include("precompile.jl")
 
 import PrecompileTools: @compile_workload
@@ -436,6 +444,5 @@ import PrecompileTools: @compile_workload
   precompilecontent(Game.TicTacToe, configure = Model.configure(async = true))
   precompilecontent(Game.MetaTac, configure = Model.configure(async = true))
 end
-
 
 end # module Jtac
