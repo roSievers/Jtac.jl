@@ -67,6 +67,7 @@ obtained via [`Player.think`](@ref) is annealed before sampling the next move.
 - `callback_move`: Function that is called after each individual move.
 - `ntasks = Player.ntasks(player)`: Number of async tasks used for playing.
 - `threads = false`: Whether to use threads or async tasks if `ntasks > 1`.
+- `progress = true`: Whether to print progress information.
 
 # Examples
 ```julia
@@ -178,9 +179,9 @@ function recordbranching( G :: Type{<: AbstractGame}
                         , callback_match = () -> nothing
                         , instance = () -> Game.instance(G)
                         , branch = Game.branch(prob = 0, steps = 1)
-                        , verbose = true )
+                        , progress = true )
 
-  if verbose
+  if progress
     step, finish = Util.stepper("# recording...", n)
   end
 
@@ -212,7 +213,7 @@ function recordbranching( G :: Type{<: AbstractGame}
     datasets = DataSet{G}[recordtargets(G, targets, trace) for trace in traces]
 
     callback_match()
-    if verbose
+    if progress
       step()
     end
 
@@ -236,7 +237,7 @@ function recordbranching( G :: Type{<: AbstractGame}
     end
   end
 
-  if verbose
+  if progress
     finish()
   end
 

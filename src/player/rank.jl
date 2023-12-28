@@ -70,7 +70,8 @@ if the game type `G` can be inferred automatically.
 - `threads`: Whether to use threading.
 - `draw_after`: Number of moves after which the game is stopped and counted as \
 a draw.
-- `verbose`: Whether to print the current ranking after each match.
+- `progress = true`: Whether to print progress information.
+- `verbose = false`: Whether to print the current ranking after each match.
 """
 function compete( players
                 , n :: Integer
@@ -78,6 +79,7 @@ function compete( players
                 , instance = gametype(players...)
                 , callback = () -> nothing
                 , verbose = false
+                , progress = true
                 , threads = false
                 , draw_after = typemax(Int) )
 
@@ -95,6 +97,10 @@ function compete( players
   m = length(players)
   outcomes = zeros(Int, m, m, 3)
 
+  if progress
+    step, finish = Util.stepper("# competing...", length(matches))
+  end
+
   count = 0
   report = (p1, p2, k) -> begin
     count += 1
@@ -106,17 +112,24 @@ function compete( players
     println()
   end
 
-  @show typeof(players)
-
   Util.pforeach(matches; threads, ntasks = n) do (p1, p2)
     k = Int(pvp(p1, p2; instance, draw_after)) + 2 # convert -1, 0, 1 to indices 1, 2, 3
     i = findfirst(isequal(p1), players)
     j = findfirst(isequal(p2), players)
     lock(lk) do
       outcomes[i, j, k] += 1
-      verbose && report(p1, p2, k)
+      if progress
+        step()
+      end
+      if verbose
+        report(p1, p2, k)
+      end
       callback()
     end
+  end
+
+  if progress
+    finish()
   end
 
   BLAS.set_num_threads(t)

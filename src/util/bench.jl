@@ -146,7 +146,7 @@ function record(player, n; augment = false, kwargs...)
         callback_match = match_cb,
         callback_move = move_cb,
         merge = false,
-        verbose = false,
+        progress = false,
         augment = augment,
         kwargs...
       )
@@ -174,7 +174,7 @@ function learn(player, ds = nothing; batchsize = 512, epochs = 20, kwargs...)
     print("generating dummy dataset...")
     G = Model.gametype(player)
     p = MCTSPlayer(Model.RandomModel(G), power = 10)
-    ds = Training.record(p, 200, verbose = false)
+    ds = Training.record(p, 200, progress = false)
     println(" done")
   end
   println("dataset size ", length(ds))
@@ -182,7 +182,13 @@ function learn(player, ds = nothing; batchsize = 512, epochs = 20, kwargs...)
   model = copy(trainingmodel(player))
 
   # Precompile
-  learn!(model, ds[1:5], batchsize = 5, verbose = false)
+  learn!(
+    model,
+    ds[1:5],
+    batchsize = 5,
+    progress = false,
+    verbose = false
+  )
 
   epoch = 1
   time_start = time()
@@ -203,6 +209,7 @@ function learn(player, ds = nothing; batchsize = 512, epochs = 20, kwargs...)
     callback_batch,
     kwargs...,
     partial = false,
+    progress = false,
     verbose = false,
   )
 

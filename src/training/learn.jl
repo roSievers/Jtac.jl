@@ -486,7 +486,8 @@ loss context is provided, it is derived from additional keyword arguments (see
 - `partial = true`: Whether to train over incomplete batches.
 - `callback_batch`: Function that is called after each training step.
 - `callback_epoch`: Function that is called after each epoch.
-- `verbose = true`: Whether to print progress information and loss values.
+- `progress = true`: Whether to print progress information.
+- `verbose = true`: Whether to print loss values after each epoch.
 
 # Examples
 ```julia
@@ -520,6 +521,7 @@ function learn!( model :: NeuralModel{G, B}
                , partial = true
                , callback_batch = _ -> nothing
                , callback_epoch = _ -> nothing
+               , progress = true
                , verbose = true
                , generation = nothing
                ) where {G, T <: AbstractArray, B <: Backend{T}}
@@ -536,7 +538,7 @@ function learn!( model :: NeuralModel{G, B}
   totalsteps = 0
   for epoch in 1:epochs
 
-    if verbose
+    if progress
       steps = ceil(Int, length(ds) / batchsize)
       step, finish = Util.stepper("# learning...", steps)
     end
@@ -544,13 +546,15 @@ function learn!( model :: NeuralModel{G, B}
     for cache in DataBatches(T, ds, batchsize; shuffle, partial)
       step!(model, cache, ctx, opt_setup)
       callback_batch(totalsteps += 1)
-      if verbose
+      if progress
         step()
       end
     end
 
-    if verbose
+    if progress
       finish()
+    end
+    if verbose
       if !isnothing(testset)
         printlossvalues(model, ds, ctx; generation, epoch, batchsize, color = 245)
         printlossvalues(model, testset, ctx; generation, epoch, batchsize)
