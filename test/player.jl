@@ -1,82 +1,36 @@
+  @testset "Player" begin
+    G = Game.TicTacToe
+    model = Model.RolloutModel(G)
+    for player in [
+      Player.RandomPlayer(G),
+      Player.IntuitionPlayer(model, temperature = 0.25),
+      Player.MCTSPlayer(model, temperature = 0.25),
+      Player.MCTSPlayerGumbel(model, temperature = 0.25),
+    ]
+      @test Player.name(player) isa String
 
-@testset "LabelData" begin
-  ld = Training.LabelData()
-  push!(ld, rand(Float32, 5), rand(Float32, 5))
-  bytes = Pack.pack(ld)
-  ld_ = Pack.unpack(bytes, Training.LabelData)
-  @test all(v -> all(v[1] .== v[2]), zip(ld.data, ld_.data))
-end
+      p = Player.think(player, G())
+      @test p isa Vector{Float32}
+      @test length(p) == Game.policylength(G)
+      @test Player.decide(player, G()) isa Game.ActionIndex
+      @test Player.decidechain(player, G()) isa Vector{Game.ActionIndex}
+      @test Player.move!(G(), player) isa G
+      @test Player.turn!(G(), player) isa G
+      @test Player.ntasks(player) == Model.ntasks(player) == 1
+      @test Player.gametype(player) == Model.gametype(player) == G
 
-@testset "DataSet" begin
-  G = Game.TicTacToe
-  model = Model.RolloutModel(G)
-  player = Player.MCTSPlayer(Model.RolloutModel(G), power = 100)
-  ds0 = Training.DataSet(G, Target.targetnames(player), Target.targets(player))
-  ds1 = Training.DataSet(model)
-  @test Training.isconsistent(ds0)
-  @test ds0 isa Training.DataSet{G}
-  @test length(ds0) == length(ds1) == 0
-  @test Training.targets(ds1) == Model.targets(model)
-  @test Training.targetnames(ds1) == Model.targetnames(model)
-
-  ds2 = Training.record(player, 5)
-  @test ds2[1:3] isa Training.DataSet{G}
-  @test length(ds2[1:3]) == 3
-  dss = split(ds2, 4)
-  @test all(length.(dss) .<= 4)
-
-  ds3 = Training.record(player, 5, augment = false)
-  ds4 = merge([ds1, ds2])
-  @test length(ds1) + length(ds2) == length(ds4)
-  deleteat!(ds4, 5)
-  @test length(ds1) + length(ds2) == length(ds4) + 1
-end
-
-@testset "DataBatches" begin
-  G = Game.TicTacToe
-  player = Player.MCTSPlayer(Model.RolloutModel(G), power = 100)
-  ds = Training.record(player, 10, targets = (dummy = Target.DummyTarget(G),))
-
-  for T in [Array{Float32}, Array{Float64}]
-    for cache in Training.DataBatches(T, ds, 50, partial = false)
-      @test cache isa Training.DataCache
-      @test length(cache) == 50
-      @test cache.data isa T
-      @test cache.target_labels isa Vector{T}
+      bytes = Pack.pack(player)
+      player2 = Pack.unpack(bytes, Player.AbstractPlayer)
+      @test typeof(player) == typeof(player2)
     end
   end
-end
 
-@testset "Loss" begin
-  G = Game.TicTacToe
-  reg = (l1 = Training.L1Reg(), l2 = Training.L2Reg())
-  targets = (dummy = Target.DummyTarget(G), )
-  model = Model.Zoo.ZeroConv(G; filters = 8, blocks = 2, targets)
-  player = Player.MCTSPlayer(model, power = 50)
-  ds = Training.record(player, 1)
-
-  lc = Training.losscomponents(model, ds)
-  lcvp = Training.losscomponents(model, ds, targets = (:value, :policy))
-  lcreg = Training.losscomponents(model, ds; reg)
-
-  lcreg2 = Training.losscomponents(model, ds; reg, weights = (; value = 2, l1 = 2))
-
-  @test keys(lc) == (:value, :policy, :dummy)
-  @test keys(lcvp) == (:value, :policy)
-  @test keys(lcreg) == (:value, :policy, :dummy, :l1, :l2)
-  @test length(lc) == 3
-  @test length(lcvp) == 2
-  @test lc.value == lcvp.value && lc.policy == lcvp.policy
-  @test length(lcreg) == 5
-  @test 2lcreg.value == lcreg2.value && 2lcreg.l1 == lcreg2.l1
-
-  l = Training.loss(model, ds)
-  lvp = Training.loss(model, ds, targets = (:value, :policy))
-  lreg = Training.loss(model, ds; reg, batchsize = 1)
-
-  lreg2 = Training.loss(model, ds; reg, weights = (; value = 2, l1 = 2))
-  @test l ≈ sum(lc)
-  @test lvp ≈ sum(lcvp)
-  @test lreg ≈ sum(lcreg)
-  @test lreg2 ≈ sum(lcreg2)
-end
+  @testset "Ranking" begin
+    G = Game.TicTacToe
+    model = Model.RolloutModel(G)
+    players = [Player.MCTSPlayer(model; power) for power in [10, 100, 500]]
+    rk = Player.rank(players, 50)
+    @test rk isa Player.Ranking
+    rk = Player.rankmodels([model, model], 10)
+    @test rk isa Player.Ranking
+  end
