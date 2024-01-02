@@ -418,3 +418,31 @@ Return the number of actions that have been applied to `game`. Returns `0` if
 not implemented for a specific game type.
 """
 moves(:: AbstractGame) = 0
+
+
+
+"""
+    reconstructactions(games)
+
+Reconstruct the list of actions that lead to the game state sequence `games`.
+"""
+function reconstructactions(games :: Vector{<: AbstractGame})
+  actions = ActionIndex[]
+  @assert !isempty(games) "Cannot reconstruct actions for empty game sequence"
+  current = games[1]
+
+  for game in games[2:end]
+    legal_actions = legalactions(current)
+    index = findfirst(legal_actions) do action
+      isequal(move(current, action), game)
+    end
+    @assert !isnothing(index) """
+    Subsequent game states not connected via legal action
+    """
+    action = legal_actions[index]
+    push!(actions, action)
+    current = game
+  end
+
+  actions
+end

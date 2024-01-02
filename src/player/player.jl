@@ -674,12 +674,11 @@ function pvpgames( p1 :: AbstractPlayer
   while !isover(game)
     moves > draw_after && return games
 
-    if activeplayer(game) == 1
-      turn!(game, p1)
-    else
-      turn!(game, p2)
+    p = activeplayer(game) == 1 ? p1 : p2
+    for action in decidechain(p, game)
+      move!(game, action)
+      push!(games, copy(game))
     end
-    push!(games, copy(game))
     callback(game)
     moves += 1
   end
