@@ -38,7 +38,7 @@ that takes an argument `k` and calls `stopmatch()` when `k > n`.
 The following call of `record` will cancel matches that take more
 than 50 moves.
 
-    record(args...; callback_move = Player.stopmatch(50), kwargs...)
+    record(args...; callback_move = Training.stopmatch(50), kwargs...)
 """
 stopmatch() = throw(StopMatch())
 stopmatch(n :: Int) = k -> (k > n && stopmatch())
