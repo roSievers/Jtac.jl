@@ -97,16 +97,6 @@ a `DataSet`.
 targets(object) = error("not implemented")
 
 """
-    defaulttargets(G)
-
-Returns a named tuple with the default value target for `G` under name `value`
-and the default policy target for `G` under name `policy`.
-"""
-function defaulttargets(G)
-  (value = DefaultValueTarget{G}(), policy = DefaultPolicyTarget{G}())
-end
-
-"""
     targetnames(object)
 
 Returns a vector of target names associated to `object`.
@@ -175,7 +165,8 @@ defaultlossfunction(:: DefaultPolicyTarget) = :crossentropy
 """
     defaulttargets(G)
 
-Return a named tuple with the default value and policy targets for game type `G`
+Returns a named tuple with the default value target for `G` under name `value`
+and the default policy target for `G` under name `policy`.
 """
 defaulttargets(G :: Type{<: AbstractGame}) = (
   value = DefaultValueTarget(G),

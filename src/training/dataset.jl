@@ -58,14 +58,16 @@ end
 @pack {<: DataSet} in TypedFormat{MapFormat}
 
 """
+    DataSet(G)
     DataSet(G, targets)
     DataSet(G, names, targets)
 
 Initialize an empty dataset. `G` is the supported game type and `targets` a
-named tuple of the supported targets. If the target `names` are passed
-explicitly, `targets` can be any iterable with elements [`AbstractTarget`](@ref).
+named tuple of the supported targets (defaults to `Target.defaulttargets(G)`).
+If the target `names` are passed explicitly, `targets` can be any iterable with
+elements [`AbstractTarget`](@ref).
 """
-function DataSet(G :: Type{<: AbstractGame}, targets = (;))
+function DataSet(G :: Type{<: AbstractGame}, targets = Target.defaulttargets(G))
   names = collect(keys(targets))
   targets = AbstractTarget{G}[t for t in values(targets)]
   DataSet(G[], targets, names, [LabelData() for _ in 1:length(targets)])
@@ -148,10 +150,9 @@ function Base.append!( a :: DataSet{G}
   @assert a.target_names == b.target_names "Incompatible target names"
   append!(a.games, b.games)
   foreach((al, bl) -> append!(al, bl), a.target_labels, b.target_labels)
-  @assert isconsistent(a) "Dataset inconsistent after append!. This should never happen"
 end
 
-function Base.merge(ds :: Vector{DataSet{G}}) where {G <: AbstractGame}
+function Base.merge(ds :: AbstractVector{DataSet{G}}) where {G <: AbstractGame}
   # @assert length(ds) > 0 "Cannot merge empty vector of datasets"
   dataset = DataSet(G, ds[1].target_names, ds[1].targets)
   foreach(d -> append!(dataset, d), ds)
