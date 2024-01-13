@@ -479,7 +479,8 @@ loss context is provided, it is derived from additional keyword arguments (see
 # Arguments
 - `opt`: Optimizer to be used. Accepted optimizers depend on the backend. \
   Defaults to SGD with learning rate `0.001` and momentum `0.9`.
-- `testset = nothing`: Testset on which the loss is evaluated after each epoch.
+- `testsets = [data]`: Testsets on which the loss is evaluated after each \
+  epoch. Only used if `verbose = true`.
 - `epochs = 10`: Number of epochs.
 - `batchsize = 128`: Batchsize for the gradient descent steps.
 - `shuffle = true`: Whether to shuffle `data` for each epoch.
@@ -514,7 +515,8 @@ function learn!( model :: NeuralModel{G, B}
                , ds :: DataSet{G}
                , ctx :: LossContext
                ; opt = defaultoptimizer(B())
-               , testset = nothing
+               , testsets = [ds]
+               , lossset = ds
                , epochs = 10
                , batchsize = 128
                , shuffle = true
@@ -555,11 +557,8 @@ function learn!( model :: NeuralModel{G, B}
       finish()
     end
     if verbose
-      if !isnothing(testset)
-        printlossvalues(model, ds, ctx; generation, epoch, batchsize, color = 245)
-        printlossvalues(model, testset, ctx; generation, epoch, batchsize)
-      else
-        printlossvalues(model, ds, ctx; epoch, generation, batchsize, color = 245)
+      for data in testsets
+        printlossvalues(model, data, ctx; generation, epoch, batchsize)
       end
     end
 
