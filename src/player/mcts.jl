@@ -851,8 +851,8 @@ simulations may be reused.
 * `rootselector = selector`: The action selector at the root node.
 * `exclude = Set{G}()`: Set of game states that are excluded when expanding
   nodes. This can be used to prevent loops.
-* `draw_bias = 0f0`:  Bias value that induces the player to avoid draws (if `<
-  0`) \ or seek draws (if `> 0`).
+* `draw_bias = 0f0`:  Bias value that induces the player to avoid draws \
+  (if `< 0`) or seek draws (if `> 0`).
 """
 function mcts( game :: G
              , model
