@@ -380,7 +380,7 @@ module Training
   import ..Pack
   import ..Pack: @pack
 
-  include("training/dataset.jl")
+  include("training/data.jl")
 
   export save, load
 

@@ -492,7 +492,7 @@ loss context is provided, it is derived from additional keyword arguments (see
 
 # Examples
 ```julia
-import Flux # to trigger flux support
+import Flux # to trigger Flux.jl support
 
 # Generate training data
 G = Game.TicTacToe
@@ -533,6 +533,13 @@ function learn!( model :: NeuralModel{G, B}
   model = trainingmodel(model)
   if verbose
     printlossheader(ctx; generation)
+    # If no generation argument is given, assume an isolated call to learn!
+    # In this case, it is nice to see the loss values before training started
+    if isnothing(generation) 
+      for data in testsets
+        printlossvalues(model, data, ctx; generation, epoch = 0, batchsize)
+      end
+    end
   end
 
   opt_setup = setup(model, ctx, opt)
