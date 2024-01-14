@@ -726,7 +726,7 @@ end
 
 
 """
-    mctsstep!(node, game, model, selector; exclude, buffer)
+    mctsstep!(node, game, model, selector; exclude, buffer, decidingplayer)
 
 Conduct a single MCTS step at the game state `game` and record the results
 in `node`.
@@ -741,7 +741,8 @@ function mctsstep!( node :: Node
                   , model
                   , selector :: ActionSelector
                   ; exclude = Set{G}()
-                  , buffer = Float32[] ) where {G}
+                  , buffer = Float32[]
+                  , decidingplayer = 0 ) where {G}
 
   # Do not modify the original game state
   game = copy(game)
@@ -757,7 +758,12 @@ function mctsstep!( node :: Node
   # Expand leaf
   node.player = Game.activeplayer(game)
   if Game.isover(game)
-    node.value = Int(Game.status(game)) * node.player
+    status = Game.status(game)
+    if status == Game.draw
+      node.value = - decidingplayer * node.player * 0.3
+    else
+      node.value = Int(status) * node.player
+    end
   else
     actions = Game.legalactions(game)
     expandnode!(node, actions, game, exclude)
@@ -850,6 +856,7 @@ function mcts( game :: G
              , selector = PUCT()
              , rootselector = selector
              , exclude :: Set{G} = Set{G}() ) where {G}
+  decidingplayer = Game.activeplayer(game)
 
   # Since the rootselector is randomized, act on a copy
   rootselector = copy(rootselector)
@@ -867,7 +874,7 @@ function mcts( game :: G
   # If the root node is a leaf, expand it first. The selector does not matter
   # here since we do not need to descent.
   if isleaf(root)
-    mctsstep!(root, game, model, selector; exclude, buffer)
+    mctsstep!(root, game, model, selector; exclude, buffer, decidingplayer)
     budget = power - 1
   else
     # If the root node is not a leaf, it may be that it contains children that
@@ -882,7 +889,7 @@ function mcts( game :: G
     child = root.children[index]
     childgame = Game.move!(copy(game), child.action)
     for _ in 1:visits
-      mctsstep!(child, childgame, model, selector; exclude, buffer)
+      mctsstep!(child, childgame, model, selector; exclude, buffer, decidingplayer)
     end
     budget -= visits
   end
