@@ -55,17 +55,25 @@ function decide(p :: AbstractPlayer, game :: AbstractGame)
 end
 
 """
-    decidechain(player, game)
+    decidechain(player, game; max_actions)
 
 Let `player` sample a chain of actions until the active player changes.
+If `max_actions` is specified, the function will return after this number of
+actions even if the active player has not changed yet.
 
 See also [`think`](@ref) and [`decide`](@ref).
 """
-function decidechain(p :: AbstractPlayer, game :: AbstractGame)
+function decidechain( p :: AbstractPlayer
+                    , game :: AbstractGame
+                    ; max_actions = typemax(Int) )
+
   actions = ActionIndex[]
   game = copy(game)
   active = Game.activeplayer(game)
-  while Game.activeplayer(game) == active && !Game.isover(game)
+  while !Game.isover(game) &&
+        Game.activeplayer(game) == active &&
+        length(actions) < max_actions
+
     action = decide(p, game)
     move!(game, action)
     push!(actions, action)
@@ -282,6 +290,7 @@ struct MCTSPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   policy :: MCTSPolicy
   selector :: ActionSelector
   rootselector :: ActionSelector
+  draw_bias :: Float32
   name :: String
 end
 
@@ -319,6 +328,7 @@ function MCTSPlayer( model :: AbstractModel{G}
                    , selector = PUCT()
                    , rootselector = selector
                    , name = nothing 
+                   , draw_bias = 0f0
                    ) where {G <: AbstractGame}
 
   if isnothing(name)
@@ -341,6 +351,7 @@ function MCTSPlayer( model :: AbstractModel{G}
     policy,
     selector,
     rootselector,
+    draw_bias,
     name,
   )
 end
@@ -357,11 +368,12 @@ function MCTSPlayer( player :: IntuitionPlayer{G}
 end
 
 function MCTSPlayer( player :: MCTSPlayer
-                   ; power = player.power
-                   , temperature = nothing
+                   ; temperature = nothing
+                   , power = player.power
                    , policy = player.policy
                    , selector = player.selector
                    , rootselector = player.rootselector
+                   , draw_bias = player.draw_bias
                    , name = nothing )
 
   if !isnothing(temperature)
@@ -400,7 +412,8 @@ function MCTSPlayerGumbel( args...
                          , nactions = 16
                          , selector = VisitPropTo()
                          , policy = ImprovedPolicy()
-                         , name = nothing )
+                         , name = nothing
+                         , draw_bias = 0f0 )
   MCTSPlayer(
     args...;
     power,
@@ -408,6 +421,7 @@ function MCTSPlayerGumbel( args...
     policy,
     selector = VisitPropTo(),
     rootselector = SequentialHalving(nactions),
+    draw_bias,
     name,
   )
 end
@@ -419,7 +433,14 @@ function think( p :: MCTSPlayer{G}
               , policy = p.policy
               ) where {G <: AbstractGame}
 
-  root = mcts(game, p.model, p.power; p.selector, p.rootselector)
+  root = mcts(
+    game,
+    p.model,
+    p.power;
+    p.selector,
+    p.rootselector,
+    p.draw_bias
+  )
 
   actions = legalactions(game)
   buffer = zeros(Float32, policylength(game))
@@ -429,7 +450,14 @@ function think( p :: MCTSPlayer{G}
 end
 
 function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
-  root = mcts(game, p.model, p.power; p.selector, p.rootselector)
+  root = mcts(
+    game,
+    p.model,
+    p.power;
+    p.selector,
+    p.rootselector,
+    p.draw_bias
+  )
   policy = getpolicy(p.policy, root)
   value = sum(policy .* root.qvalues) # TODO: this can be done better by completing the q-values?
 
@@ -441,7 +469,7 @@ function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 end
 
 """
-    decidechain(mcts_player, game; cap_power = false)
+    decidechain(mcts_player, game; cap_power = false, max_actions)
 
 Let an [`MCTSPlayer`](@ref) `mcts_player` decide an action chain for `game`.
 
@@ -452,7 +480,9 @@ available.
 """
 function decidechain( p :: MCTSPlayer{G}
                     , game :: G
-                    ; cap_power = false ) where {G <: AbstractGame}
+                    ; cap_power = false
+                    , max_actions = typemax(Int)
+                    ) where {G <: AbstractGame}
 
   actions = ActionIndex[]
   game = copy(game)
@@ -463,18 +493,22 @@ function decidechain( p :: MCTSPlayer{G}
   history = Set{G}([copy(game)])
 
   # act as long as the game is not finished and it is our turn
-  while !Game.isover(game) && Game.activeplayer(game) == active
+  while !Game.isover(game) &&
+        Game.activeplayer(game) == active &&
+        length(actions) < max_actions
+
     remaining_power = round(Int, sum(root.visits))
     power = cap_power ? p.power - remaining_power : p.power
 
     root = mcts(
-     game,
-     p.model,
-     power;
-     p.selector,
-     p.rootselector,
-     root,
-     exclude = history,
+      game,
+      p.model,
+      power;
+      p.selector,
+      p.rootselector,
+      root,
+      exclude = history,
+      p.draw_bias,
     )
     pol = getpolicy(p.policy, root)
 
@@ -636,16 +670,16 @@ function pvp( p1 :: AbstractPlayer
   moves = 0
 
   while !isover(game)
-    # After draw_after moves, the game ends with a draw
-    moves > draw_after && return 0
-
-    if activeplayer(game) == 1
-      turn!(game, p1)
-    else
-      turn!(game, p2)
+    p = activeplayer(game) == 1 ? p1 : p2
+    max_actions = draw_after - moves
+    for action in decidechain(p, game; max_actions)
+      move!(game, action)
+      callback(game)
+      moves += 1
     end
-    callback(game)
-    moves += 1
+    if moves >= draw_after
+      return Game.draw
+    end
   end
 
   status(game)
@@ -671,16 +705,15 @@ function pvpgames( p1 :: AbstractPlayer
   games = [copy(game)]
   moves = 0
 
-  while !isover(game)
-    moves > draw_after && return games
-
+  while !isover(game) && moves < draw_after
     p = activeplayer(game) == 1 ? p1 : p2
-    for action in decidechain(p, game)
+    max_actions = draw_after - moves
+    for action in decidechain(p, game; max_actions)
       move!(game, action)
+      callback(game)
       push!(games, copy(game))
+      moves += 1
     end
-    callback(game)
-    moves += 1
   end
 
   games

@@ -726,7 +726,7 @@ end
 
 
 """
-    mctsstep!(node, game, model, selector; exclude, buffer)
+    mctsstep!(node, game, model, selector; exclude, buffer, draw_bias)
 
 Conduct a single MCTS step at the game state `game` and record the results
 in `node`.
@@ -735,13 +735,17 @@ First, `selector` is used to find a node that is still unexpanded. This leaf
 node is expanded and initialized via `model`. The value estimated by `model` is
 then backpropagated towards the root of `node`. The argument `exclude` can be
 used to exclude game states when expanding nodes.
+
+If a value `draw_bias` is specified, this value is used for backpropagation
+instead of the value `0` in case of draws.
 """
 function mctsstep!( node :: Node
                   , game :: G
                   , model
                   , selector :: ActionSelector
                   ; exclude = Set{G}()
-                  , buffer = Float32[] ) where {G}
+                  , buffer = Float32[]
+                  , draw_bias = 0f0 ) where {G}
 
   # Do not modify the original game state
   game = copy(game)
@@ -757,7 +761,12 @@ function mctsstep!( node :: Node
   # Expand leaf
   node.player = Game.activeplayer(game)
   if Game.isover(game)
-    node.value = Int(Game.status(game)) * node.player
+    status = Game.status(game)
+    if status == Game.draw
+      node.value = draw_bias * node.player
+    else
+      node.value = Int(status) * node.player
+    end
   else
     actions = Game.legalactions(game)
     expandnode!(node, actions, game, exclude)
@@ -842,6 +851,8 @@ simulations may be reused.
 * `rootselector = selector`: The action selector at the root node.
 * `exclude = Set{G}()`: Set of game states that are excluded when expanding
   nodes. This can be used to prevent loops.
+* `draw_bias = 0f0`:  Bias value that induces the player to avoid draws (if `<
+  0`) \ or seek draws (if `> 0`).
 """
 function mcts( game :: G
              , model
@@ -849,12 +860,18 @@ function mcts( game :: G
              ; root = rootnode()
              , selector = PUCT()
              , rootselector = selector
-             , exclude :: Set{G} = Set{G}() ) where {G}
+             , exclude :: Set{G} = Set{G}()
+             , draw_bias = 0f0 ) where {G}
 
   # Since the rootselector is randomized, act on a copy
   rootselector = copy(rootselector)
   randomize!(rootselector)
   buffer = Float32[]
+
+  # Bring the draw_bias in the perspective of the acting player.
+  # This value is handed down the mcts tree for backpropagation in case of
+  # a draw (instead of the value 0).
+  draw_bias = draw_bias * Game.activeplayer(game)
 
   # If the game is already over, there are no legal actions left. Thus,
   # set the node size to 0 and insert the game result as value.
@@ -867,7 +884,7 @@ function mcts( game :: G
   # If the root node is a leaf, expand it first. The selector does not matter
   # here since we do not need to descent.
   if isleaf(root)
-    mctsstep!(root, game, model, selector; exclude, buffer)
+    mctsstep!(root, game, model, selector; exclude, buffer, draw_bias)
     budget = power - 1
   else
     # If the root node is not a leaf, it may be that it contains children that
@@ -882,7 +899,7 @@ function mcts( game :: G
     child = root.children[index]
     childgame = Game.move!(copy(game), child.action)
     for _ in 1:visits
-      mctsstep!(child, childgame, model, selector; exclude, buffer)
+      mctsstep!(child, childgame, model, selector; exclude, buffer, draw_bias)
     end
     budget -= visits
   end

@@ -70,7 +70,8 @@ if the game type `G` can be inferred automatically.
 - `threads`: Whether to use threading.
 - `draw_after`: Number of moves after which the game is stopped and counted as \
 a draw.
-- `progress = true`: Whether to print progress information.
+- `progress = true`: Whether to print progress information. Only meaningful if \
+  `verbose = false`.
 - `verbose = false`: Whether to print the current ranking after each match.
 """
 function compete( players
@@ -97,7 +98,7 @@ function compete( players
   m = length(players)
   outcomes = zeros(Int, m, m, 3)
 
-  if progress
+  if progress && !verbose
     step, finish = Util.stepper("# competing...", length(matches))
   end
 
@@ -106,7 +107,7 @@ function compete( players
     count += 1
     p1, p2 = name(p1), name(p2)
     verb = k == 3 ? ">" : (k == 1 ? "<" : "~")
-    println("Match $count: $p1 $verb $p2")
+    println("Match $count of $n: $p1 $verb $p2")
     ranking = rank(Results(players, outcomes))
     println(string(ranking))
     println()
@@ -118,7 +119,7 @@ function compete( players
     j = findfirst(isequal(p2), players)
     lock(lk) do
       outcomes[i, j, k] += 1
-      if progress
+      if progress && !verbose
         step()
       end
       if verbose
@@ -128,7 +129,7 @@ function compete( players
     end
   end
 
-  if progress
+  if progress && !verbose
     finish()
   end
 
@@ -260,10 +261,22 @@ end
 visualize(rk :: Ranking, args...) = visualize(stdout, rk, args...)
 
 
+"""
+    rankmodels(models, n; power, temperature, opponents, kwargs...)
+
+Produce a ranking that compares a list of `models` by conducting `n` matches.
+
+For each model, the following players are produced:
+* `IntuitionPlayer(model; temperature)`
+* `MCTSPlayer(model; p, temperature) for p in power`
+Additional players that should be included in the ranking can be specified via
+`opponents`.
+"""
 function rankmodels( models
                    , n :: Int = 100
                    ; power = [64]
                    , temperature = 1.0
+                   , draw_bias = 0.0
                    , opponents = []
                    , kwargs... )
   intplayers = []
@@ -271,7 +284,14 @@ function rankmodels( models
   for (i, m) in enumerate(models)
     push!(intplayers, IntuitionPlayer(m; temperature, name = "int-$i"))
     for p in power
-      push!(mctsplayers, MCTSPlayer(m; power = p, temperature, name = "mcts$p-$i"))
+      player = MCTSPlayer(
+        m;
+        power = p,
+        temperature,
+        name = "mcts$p-$i",
+        draw_bias,
+      )
+      push!(mctsplayers, player)
     end
   end
   players = [intplayers..., mctsplayers..., opponents...]
