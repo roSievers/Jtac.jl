@@ -533,12 +533,9 @@ function learn!( model :: NeuralModel{G, B}
   model = trainingmodel(model)
   if verbose
     printlossheader(ctx; generation)
-    # If no generation argument is given, assume an isolated call to learn!
-    # In this case, it is nice to see the loss values before training started
-    if isnothing(generation) 
-      for data in testsets
-        printlossvalues(model, data, ctx; generation, epoch = 0, batchsize)
-      end
+    # print loss values before training took place as epoch 0
+    for data in testsets
+      printlossvalues(model, data, ctx; generation, epoch = 0, batchsize)
     end
   end
 
@@ -633,6 +630,7 @@ function learn!( model :: NeuralModel
                , kwargs... )
   setup = nothing
   for generation in 1:generations
+    # TODO: Allow gen_data to return tuple containing a train and a testset
     ds = gen_data(generation)
     if isnothing(setup)
       setup = learn!(model, ds, args...; generation, kwargs...)
