@@ -517,8 +517,10 @@ Auxiliary function that samples an index from a probability vector `probs`.
 function sample(probs :: Vector{Float32}) :: Int
   @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
   r = rand(Float32)
-  index = findfirst(x -> r <= x, cumsum(probs))
-  isnothing(index) ? length(probs) : index
+  index = findfirst(x -> r < x, cumsum(probs))
+  index = isnothing(index) ? findlast(x -> x > 0, probs) : index
+  @assert probs[index] > 0 "chosen index had zero probability"
+  index
 end
 
 function select(sel :: SampleSelector, node :: Node; buffer = Float32[])
