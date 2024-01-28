@@ -68,7 +68,7 @@ function precompilecontent(G :: Type{<: Game.AbstractGame}; models = nothing, co
       Player.think(player, Game.instance(G))
       Player.apply(player, Game.instance(G))
       Player.decide(player, Game.instance(G))
-      Player.decidechain(player, Game.instance(G))
+      Player.decideturn(player, Game.instance(G))
       Player.move(Game.instance(G), player)
       Player.move!(Game.instance(G), player)
 

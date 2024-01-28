@@ -38,7 +38,7 @@ function Base.:(==)(a::Nim, b::Nim)
 end
 
 
-activeplayer(game :: Nim) :: Int = game.active_player
+mover(game :: Nim) :: Int = game.active_player
 
 
 # Returns a list of the Indices of all legal actions

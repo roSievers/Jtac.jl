@@ -21,7 +21,7 @@ function apply( m :: RolloutModel
   @assert issubset(targets, targetnames(m))
   n = policylength(game)
   result = randommatch(game)
-  value = Int(status(result)) * activeplayer(game)
+  value = Int(status(result)) * mover(game)
 
   (; value = Float32(value), policy = ones(Float32, n) / n)
 end

@@ -43,7 +43,7 @@ end
 Base.isequal(a :: MetaTac, b :: MetaTac) = (a == b)
 
 
-activeplayer(game :: MetaTac) :: Int = game.active_player
+mover(game :: MetaTac) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
 function legalactions(game :: MetaTac) :: Vector{ActionIndex}
@@ -224,7 +224,7 @@ function Base.show(io :: IO, game :: MetaTac)
   if isover(game)
     print(io, "MetaTac($m, $(status(game)) won)")
   else
-    print(io, "MetaTac($m, $(activeplayer(game)) moving)")
+    print(io, "MetaTac($m, $(mover(game)) moving)")
   end
 end
 
@@ -235,7 +235,7 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MetaTac)
   if isover(game)
     println(io, s, "result $(status(game)):")
   else
-    println(io, s, "player $(activeplayer(game)) moving:")
+    println(io, s, "player $(mover(game)) moving:")
   end
   visualize(io, game)
 end

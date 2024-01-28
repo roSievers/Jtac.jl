@@ -120,7 +120,7 @@ module Game
 
   export status,
          instance,
-         activeplayer,
+         mover,
          isactionlegal,
          isover,
          isaugmentable,
@@ -134,7 +134,9 @@ module Game
          randommatch, 
          array,
          branch,
-         visualize
+         visualize,
+         moverlabel,
+         movelabel
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")
@@ -413,6 +415,21 @@ module Bench
 
   include("util/bench.jl")
 end # module Bench
+
+module Analysis
+
+  using Printf
+  using Crayons
+
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Target
+  using ..Model
+  using ..Player
+
+  include("analysis.jl")
+end # module Analysis
 
 using .Util, .Model, .Training
 

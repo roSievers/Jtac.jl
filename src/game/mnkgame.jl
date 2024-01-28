@@ -41,7 +41,7 @@ end
 Base.hash(game :: MNKGame) = Base.hash(game.board)
 Base.isequal(a :: MNKGame, b :: MNKGame) = (a == b)
 
-activeplayer(game :: MNKGame) :: Int = game.active_player
+mover(game :: MNKGame) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
 function legalactions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N}
@@ -220,7 +220,7 @@ function Base.show(io :: IO, game :: MNKGame{M, N, K}) where {M, N, K}
   if isover(game)
     print(io, "MNKGame{$M, $N, $K}($m, $(status(game)) won)")
   else
-    print(io, "MNKGame{$M, $N, $K}($m, $(activeplayer(game)) moving)")
+    print(io, "MNKGame{$M, $N, $K}($m, $(mover(game)) moving)")
   end
 end
 
@@ -231,7 +231,7 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MNKGame{M, N, K}) wher
   if isover(game)
     println(io, s, "result $(status(game)):")
   else
-    println(io, s, "player $(activeplayer(game)) moving:")
+    println(io, s, "player $(mover(game)) moving:")
   end
   visualize(io, game)
 end

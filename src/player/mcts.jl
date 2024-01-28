@@ -515,7 +515,9 @@ Base.copy(sel :: SampleSelector) = SampleSelector(copy(sel.policy))
 Auxiliary function that samples an index from a probability vector `probs`.
 """
 function sample(probs :: Vector{Float32}) :: Int
-  @assert all(probs .>= 0) && sum(probs) ≈ 1.0 "probability vector not proper"
+  @assert all(probs .>= 0) && sum(probs) ≈ 1.0 """
+  probability vector not proper: $probs
+  """
   r = rand(Float32)
   index = findfirst(x -> r < x, cumsum(probs))
   index = isnothing(index) ? findlast(x -> x > 0, probs) : index
@@ -761,7 +763,7 @@ function mctsstep!( node :: Node
   end
 
   # Expand leaf
-  node.player = Game.activeplayer(game)
+  node.player = Game.mover(game)
   if Game.isover(game)
     status = Game.status(game)
     if status == Game.draw
@@ -873,7 +875,7 @@ function mcts( game :: G
   # Bring the draw_bias in the perspective of the acting player.
   # This value is handed down the mcts tree for backpropagation in case of
   # a draw (instead of the value 0).
-  draw_bias = draw_bias * Game.activeplayer(game)
+  draw_bias = draw_bias * Game.mover(game)
 
   # If the game is already over, there are no legal actions left. Thus,
   # set the node size to 0 and insert the game result as value.
@@ -893,6 +895,10 @@ function mcts( game :: G
     # violate the `exclude` condition. Remove these children from the tree.
     censornode!(root, game, exclude)
     budget = power
+  end
+
+  if isempty(root.children)
+    return root
   end
 
   # This function is called on each index and visit count chosen by the root

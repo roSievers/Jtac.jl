@@ -5,6 +5,7 @@ version = "0.2.0"
 
 [deps]
 CodecZstd = "6b39b394-51ab-5f42-8807-6242bab2b4c2"
+Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
@@ -23,8 +24,8 @@ FluxExt = "9e123790-cb65-549d-b4bc-107fba12e63f"
 
 [extensions]
 CudaExt = ["CUDA"]
-FluxExt = ["Flux"]
 CudaFluxExt = ["CudaExt", "FluxExt"]
+FluxExt = ["Flux"]
 
 [compat]
 julia = "^1.9"

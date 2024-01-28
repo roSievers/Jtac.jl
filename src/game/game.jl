@@ -20,7 +20,7 @@ Abstract type for board games with two competing players that play in turns.
 In order to guarantee basic functionality, the following minimal interface
 must be implemented by any concrete subtype `G` of `AbstractGame`:
 - `status(game :: G)`: Return the game status. See [`Status`](@ref).
-- `activeplayer(game :: G)`: Return the active player indicator (-1 or 1).
+- `mover(game :: G)`: Return the moving player indicator (-1 or 1).
 - `legalactions(game :: G)`: Return a vector of legal action indices.
 - `move!(game :: G, action)`: Apply the action defined by action index \
   `action` to `game`.
@@ -50,6 +50,9 @@ Further methods may be specialized to improve performance or functionality.
   considered to be functionally equivalent. Necessary for loop detection.
 - `moves(game :: G)`: Count the number of moves that have been applied to \
   `game`.
+- `moverlabel(game :: G)`: String representation of the mover (-1 or 1).
+- `movelabel(game :: G, action)`: String representation of `action` at `game`.
+- `turnlabel(game :: G, actions)`: String representation of an action chain.
 """
 abstract type AbstractGame end
 
@@ -82,7 +85,7 @@ end
     Base.isequal(game_a, game_b)
 
 Check if two game states `game_a` and `game_b` are functionally equivalent.
-This function is for example used to prevent loops in [`Player.decidechain`](@ref).
+This function is for example used to prevent loops in [`Player.decideturn`](@ref).
 """
 function Base.isequal(:: G, :: G) where {G <: AbstractGame}
   error("Base.isequal not implemented for games of type $G")
@@ -99,12 +102,12 @@ See also [`Status`](@ref).
 status(game :: AbstractGame) = error("not implemented")
 
 """
-    activeplayer(game)
+    mover(game)
 
 Active player indicator for the game state `game`. The values 1 / -1 correspond
 to the first / second player.
 """
-activeplayer(game :: AbstractGame) = error("not implemented")
+mover(game :: AbstractGame) = error("not implemented")
 
 """
     legalactions(game)
@@ -289,8 +292,8 @@ Modify `game` by taking random actions until the active player changes. Returns
 See also [`randomaction`](@ref), and [`randommatch!`](@ref).
 """
 function randomturn!(game :: AbstractGame)
-  active = activeplayer(game)
-  while active == activeplayer(game)
+  active = mover(game)
+  while active == mover(game)
     randommove!(game)
   end
   game
@@ -419,30 +422,86 @@ not implemented for a specific game type.
 """
 moves(:: AbstractGame) = 0
 
+"""
+    moverlabel(game)
+
+Return a string representation of the current mover (-1 or 1).
+"""
+moverlabel(game) = string(mover(game))
+
+"""
+    movelabel(game, action)
+
+Return a string representation of the action `action` at game state `game`.
+"""
+movelabel(game, action) = string(action)
+
+"""
+    turnlabel(game, actions)
+
+Return a string representation of the action `action` at game state `game`.
+"""
+function turnlabel(game, actions)
+  games = Game.movegames(game, actions)
+  join(map(movelabel, games, actions), ">")
+end
 
 
 """
-    reconstructactions(games)
+    deriveaction(game_a, game_b)
 
-Reconstruct the list of actions that lead to the game state sequence `games`.
+Derive the action that moved `game_a` into `game_b`.
+Returns `nothing` if no such action exists.
 """
-function reconstructactions(games :: Vector{<: AbstractGame})
+function deriveaction(game_a, game_b)
+  actions = legalactions(game_a)
+  index = findfirst(actions) do action
+    isequal(move(game_a, action), game_b)
+  end
+  if isnothing(index)
+    nothing
+  else
+    actions[index]
+  end
+end
+
+"""
+    deriveactions(games)
+
+Derive the list of actions that lead to the game state sequence `games`.
+Throws an exception if the game states are inconsistent.
+"""
+function deriveactions(games :: Vector{<: AbstractGame})
   actions = ActionIndex[]
   @assert !isempty(games) "Cannot reconstruct actions for empty game sequence"
   current = games[1]
 
   for game in games[2:end]
-    legal_actions = legalactions(current)
-    index = findfirst(legal_actions) do action
-      isequal(move(current, action), game)
-    end
-    @assert !isnothing(index) """
+    action = deriveaction(current, game)
+    @assert !isnothing(action) """
     Subsequent game states not connected via legal action
     """
-    action = legal_actions[index]
     push!(actions, action)
     current = game
   end
 
   actions
+end
+
+"""
+    movegames(game, actions)
+
+Apply `actions` to `game` consecutively and return a vector of resulting games,
+a copy of `game` included.
+"""
+function movegames(game, actions)
+  games = [copy(game)]
+  for action in actions
+    @assert isactionlegal(games[end], action) """
+    Action $action is illegal.
+    """
+    game = move(games[end], action)
+    push!(games, game)
+  end
+  games
 end

@@ -45,7 +45,7 @@ function Base.:(==)(a::Morris, b::Morris)
 end
 
 
-activeplayer(game :: Morris) :: Int = game.active_player
+mover(game :: Morris) :: Int = game.active_player
 
 const adjacency = [
   [2, 4, 5], [1, 3, 5], [2, 5, 6], [1, 5, 7], [1, 2, 3, 4, 6, 7, 8, 9],

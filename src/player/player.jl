@@ -47,7 +47,7 @@ end
 
 Let `player` sample an action after evaluating `think(player, game)`.
 
-See also [`think`](@ref) and [`decidechain`](@ref).
+See also [`think`](@ref) and [`decideturn`](@ref).
 """
 function decide(p :: AbstractPlayer, game :: AbstractGame)
   @assert !Game.isover(game) "Cannot decide on an action in a finished game"
@@ -55,7 +55,7 @@ function decide(p :: AbstractPlayer, game :: AbstractGame)
 end
 
 """
-    decidechain(player, game; max_actions)
+    decideturn(player, game; max_actions)
 
 Let `player` sample a chain of actions until the active player changes.
 If `max_actions` is specified, the function will return after this number of
@@ -63,15 +63,15 @@ actions even if the active player has not changed yet.
 
 See also [`think`](@ref) and [`decide`](@ref).
 """
-function decidechain( p :: AbstractPlayer
-                    , game :: AbstractGame
-                    ; max_actions = typemax(Int) )
+function decideturn( p :: AbstractPlayer
+                   , game :: AbstractGame
+                   ; max_actions = typemax(Int) )
 
   actions = ActionIndex[]
   game = copy(game)
-  active = Game.activeplayer(game)
+  active = Game.mover(game)
   while !Game.isover(game) &&
-        Game.activeplayer(game) == active &&
+        Game.mover(game) == active &&
         length(actions) < max_actions
 
     action = decide(p, game)
@@ -86,7 +86,7 @@ end
 
 Modify `game` by letting `player` take one action.
 
-See also [`turn!`](@ref), [`decide`](@ref), and [`decidechain`](@ref).
+See also [`turn!`](@ref), [`decide`](@ref), and [`decideturn`](@ref).
 """
 move!(args...; kwargs...) = Game.move!(args...; kwargs...)
 
@@ -100,7 +100,7 @@ end
 Return a new game resulting from letting `player` take one action in `game`.
 
 See also [`move`](@ref), [`turn!`](@ref), [`decide`](@ref), and
-[`decidechain`](@ref).
+[`decideturn`](@ref).
 """
 move(args...; kwargs...) = Game.move(args...; kwargs...)
 
@@ -114,10 +114,10 @@ end
 
 Modify `game` by letting `player` play actions until the active player changes.
 
-See also [`move!`](@ref), [`decide`](@ref), and [`decidechain`](@ref).
+See also [`move!`](@ref), [`decide`](@ref), and [`decideturn`](@ref).
 """
 function turn!(game :: AbstractGame, p :: AbstractPlayer)
-  for action in decidechain(p, game)
+  for action in decideturn(p, game)
     move!(game, action)
   end
   game
@@ -465,11 +465,11 @@ function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
   buffer = zeros(Float32, policylength(game))
   buffer[actions] .= policy
 
-  (value = value, policy = policy)
+  (value = value, policy = buffer)
 end
 
 """
-    decidechain(mcts_player, game; cap_power = false, max_actions)
+    decideturn(mcts_player, game; cap_power = false, max_actions)
 
 Let an [`MCTSPlayer`](@ref) `mcts_player` decide an action chain for `game`.
 
@@ -478,23 +478,21 @@ of the previous decision. Passing `cap_power = true` causes the player to always
 use a total power of `mcts_player.power`, even when previous expansions are
 available.
 """
-function decidechain( p :: MCTSPlayer{G}
-                    , game :: G
-                    ; cap_power = false
-                    , max_actions = typemax(Int)
-                    ) where {G <: AbstractGame}
+function decideturn( p :: MCTSPlayer{G}
+                   , rootgame :: G
+                   ; cap_power = false
+                   , max_actions = typemax(Int)
+                   , exclude = Set{G}()
+                   ) where {G <: AbstractGame}
 
   actions = ActionIndex[]
-  game = copy(game)
+  game = copy(rootgame)
   root = rootnode()
-  active = Game.activeplayer(game)
-
-  # record the game states that have been part of the chain
-  history = Set{G}([copy(game)])
+  active = Game.mover(game)
 
   # act as long as the game is not finished and it is our turn
   while !Game.isover(game) &&
-        Game.activeplayer(game) == active &&
+        Game.mover(game) == active &&
         length(actions) < max_actions
 
     remaining_power = round(Int, sum(root.visits))
@@ -507,9 +505,25 @@ function decidechain( p :: MCTSPlayer{G}
       p.selector,
       p.rootselector,
       root,
-      exclude = history,
+      exclude,
       p.draw_bias,
     )
+
+    # this can only be empty if the mcts fails, (usually) because exclude
+    # excludes all possible actions
+    if isempty(root.children)
+      @warn """
+      decideturn was called recursively because all actions were excluded
+      """
+      return decideturn(
+        p,
+        rootgame;
+        cap_power,
+        max_actions = max_actions - length(actions),
+        exclude,
+      )
+    end
+
     pol = getpolicy(p.policy, root)
 
     # get the index of the next action
@@ -522,7 +536,7 @@ function decidechain( p :: MCTSPlayer{G}
     # apply and record the action
     move!(game, root.action)
     push!(actions, root.action)
-    push!(history, copy(game))
+    push!(exclude, copy(game))
   end
 
   actions
@@ -670,9 +684,9 @@ function pvp( p1 :: AbstractPlayer
   moves = 0
 
   while !isover(game)
-    p = activeplayer(game) == 1 ? p1 : p2
+    p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    for action in decidechain(p, game; max_actions)
+    for action in decideturn(p, game; max_actions)
       move!(game, action)
       callback(game)
       moves += 1
@@ -706,9 +720,9 @@ function pvpgames( p1 :: AbstractPlayer
   moves = 0
 
   while !isover(game) && moves < draw_after
-    p = activeplayer(game) == 1 ? p1 : p2
+    p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    for action in decidechain(p, game; max_actions)
+    for action in decideturn(p, game; max_actions)
       move!(game, action)
       callback(game)
       push!(games, copy(game))

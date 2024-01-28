@@ -38,7 +38,7 @@ function Base.:(==)(a::Nim2, b::Nim2)
       , a.actions_left == b.actions_left ])
 end
 
-activeplayer(game :: Nim2) :: Int = game.active_player
+mover(game :: Nim2) :: Int = game.active_player
 
 # Returns a list of the legal actions
 # 1: Take a token

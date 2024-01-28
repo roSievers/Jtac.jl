@@ -262,38 +262,36 @@ visualize(rk :: Ranking, args...) = visualize(stdout, rk, args...)
 
 
 """
-    rankmodels(models, n; power, temperature, opponents, kwargs...)
+    rankmodels(models, n; powers, temperature, opponents, kwargs...)
 
 Produce a ranking that compares a list of `models` by conducting `n` matches.
 
 For each model, the following players are produced:
-* `IntuitionPlayer(model; temperature)`
-* `MCTSPlayer(model; p, temperature) for p in power`
+* `IntuitionPlayer(model; temperature)` if the value `0` is in `powers`,
+* `MCTSPlayer(model; power, temperature)` for each non-zero value `power` \
+  in `powers`,
 Additional players that should be included in the ranking can be specified via
 `opponents`.
 """
 function rankmodels( models
                    , n :: Int = 100
-                   ; power = [64]
+                   ; powers = [0]
                    , temperature = 1.0
                    , draw_bias = 0.0
                    , opponents = []
                    , kwargs... )
-  intplayers = []
-  mctsplayers = []
-  for (i, m) in enumerate(models)
-    push!(intplayers, IntuitionPlayer(m; temperature, name = "int-$i"))
-    for p in power
-      player = MCTSPlayer(
-        m;
-        power = p,
-        temperature,
-        name = "mcts$p-$i",
-        draw_bias,
-      )
-      push!(mctsplayers, player)
+  powers = powers |> unique |> sort
+  players = mapreduce(vcat, enumerate(models)) do (i, model)
+    map(powers) do power
+      if power == 0
+        name = "int-$i"
+        IntuitionPlayer(model; temperature, name)
+      else
+        name = "mcts$power-$i"
+        MCTSPlayer(model; power, temperature, draw_bias, name)
+      end
     end
   end
-  players = [intplayers..., mctsplayers..., opponents...]
+  players = [players..., opponents...]
   rank(players, n; kwargs...)
 end

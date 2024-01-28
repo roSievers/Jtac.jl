@@ -79,7 +79,7 @@ end
 #
 # Comment: we seem to run into problems when trying to invert the Fisher
 # information matrix - probably, because the elo is translation-invariant
-# and we thus do not have full dimensionality in the hessian
+# and we thus do not have full dimensionality in the Hessian
 #
 # We can still use diagonal entries of the information matrix for estimates
 # of the deviation. The results seem reasonable.
