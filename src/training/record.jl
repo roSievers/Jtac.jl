@@ -97,8 +97,8 @@ function record( p :: Union{P, Channel{P}}
                , kwargs...
                ) where {G, P <: AbstractPlayer{G}}
 
-  # Bring the argument anneal in function form
-  anneal = annealf(anneal)
+  # Bring the argument anneal in proper anneal function form
+  anneal = Player.annealf(anneal)
 
   # Function that plays a single match, starting at state `game` with `moves`
   # moves. It returns a `trace`, which is a named tuple of game states, model
@@ -121,7 +121,7 @@ function record( p :: Union{P, Channel{P}}
         push!(policies, policy)
 
         # Advance the game by randomly drawing from the policy
-        temperature = Float32(anneal(moves))
+        temperature = anneal(moves)
         policy = Player.anneal(policy, temperature)
         action = Player.sample(policy)
         move!(game, action)
