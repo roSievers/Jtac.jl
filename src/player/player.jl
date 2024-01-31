@@ -639,19 +639,43 @@ function Model.gametype(p1 :: AbstractPlayer, p2 :: AbstractPlayer, players...)
 end
 
 """
-    annealf([n1 => t1, n2 => t2, ...])
+    annealf(temperature)
+    annealf([t0, n1 => t1, n2 => t2, ..., nk => tk])
+    annealf([n1 => t1, n2 => t2, ..., nk => tk])
 
-Create an anneal function that returns temperatures `t1` or `t2` or ... when the move count `n` satisfies `n <= n1` or `n <= n2` or ...
+Create an anneal function. If a float value `temperature` is provided, the constant function `_ -> temperature` is returned. In the other cases,
+the anneal function is equivalent to:
+```
+n -> if n < n1
+  t0
+elseif n1 <= n < n2
+  t1
+elseif n2 <= n < n3
+  t2
+...
+elseif nk <= n
+  tk
+end
+```
+If `t0` is not provided explicitly, it is set to zero.
 """
-annealf(f :: Function) = f
+annealf(f :: Function) = x -> Float32(f(x))
+annealf(temp :: Real) = _ -> Float32(temp)
 
 function annealf(pairs)
+  if pairs[1] isa Real
+    t0 = Float32(pairs[1])
+    pairs = pairs[2:end]
+  else
+    t0 = 1f0
+  end
   @assert all(p -> isa(p, Pair), pairs) """
-  Argument to annealf must be a list of pairs.
+  Anneal function creation (annealf) expected a list of pairs.
   """
+  pairs = sort(pairs, by=first)
   n -> begin
     index = findlast(p -> p[1] <= n, pairs)
-    isnothing(index) ? 1f0 : pairs[index][2]
+    isnothing(index) ? t0 : Float32(pairs[index][2])
   end
 end
 
@@ -691,7 +715,7 @@ function pvp( p1 :: AbstractPlayer
   while !isover(game)
     p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    temperature = Float32(anneal(moves))
+    temperature = anneal(moves)
     for action in decideturn(p, game; max_actions, temperature)
       move!(game, action)
       callback(game)
@@ -733,7 +757,7 @@ function pvpgames( p1 :: AbstractPlayer
   while !isover(game) && moves < draw_after
     p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    temperature = Float32(anneal(moves))
+    temperature = anneal(moves)
     for action in decideturn(p, game; max_actions, temperature)
       move!(game, action)
       callback(game)
