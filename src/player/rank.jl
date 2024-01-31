@@ -69,6 +69,8 @@ if the game type `G` can be inferred automatically.
 - `callback`: Function called after each of the `n` matches.
 - `threads`: Whether to use threading.
 - `draw_after`: Number of moves after which the game is stopped and counted as \
+- `anneal`: Function applied to the move counter returning a temperature for \
+  the next move.
 a draw.
 - `progress = true`: Whether to print progress information. Only meaningful if \
   `verbose = false`.
@@ -82,6 +84,7 @@ function compete( players
                 , verbose = false
                 , progress = true
                 , threads = false
+                , anneal = _ -> 1f0
                 , draw_after = typemax(Int) )
 
   if instance isa Type{<: AbstractGame}
@@ -114,7 +117,8 @@ function compete( players
   end
 
   Util.pforeach(matches; threads, ntasks = n) do (p1, p2)
-    k = Int(pvp(p1, p2; instance, draw_after)) + 2 # convert -1, 0, 1 to indices 1, 2, 3
+    status = pvp(p1, p2; instance, draw_after, anneal)
+    k = Int(status) + 2 # convert -1, 0, 1 to indices 1, 2, 3
     i = findfirst(isequal(p1), players)
     j = findfirst(isequal(p2), players)
     lock(lk) do
@@ -164,10 +168,12 @@ end
     rank(players, n [, results...]; steps = 100, <keyword arguments>)
 
 Get a ranking of `players` based on `results` from a previous call of the
-function `compete`. Alternatively, results are generated on the fly (and merged
-with optional `results`) via `compete` for `n` games with all corresponding
-keyword arguments.  The number of steps in the iterative maximum likelihood
-solver can be specified via `steps`.
+function [`compete`](@ref).
+
+Alternatively, results are generated on the fly (and merged with optional
+`results`) via `compete` for `n` games with all corresponding keyword arguments.
+The number of steps in the iterative maximum likelihood solver can be specified
+via `steps`.
 """
 function rank(r :: Results; steps = 100)
   elo, sadv, draw = mlestimate(r.outcomes; steps = steps)
@@ -186,6 +192,41 @@ function rank(players, n :: Integer, rs :: Results ...; steps = 100, kwargs...)
   results = compete(players, n; kwargs...)
   results = merge(results, rs...)
   rank(results; steps)
+end
+
+"""
+    rankmodels(models, n; powers, draw_bias, opponents, kwargs...)
+
+Produce a ranking that compares a list of `models` by conducting `n` matches.
+
+For each model (with index `i`) and `power` value in `powers`, the following players are produced:
+* `IntuitionPlayer(model; name = "int-\$i")` for `power = 0`,
+* `MCTSPlayer(model; power, draw_bias, name = mcts\$power-\$i)` for `power > 0`.
+
+Additional players that should be included in the ranking can be specified via
+`opponents`. See `[rank](@ref)` and `[compete](@ref)` for the remaining keyword arguments.
+
+"""
+function rankmodels( models
+                   , n :: Int = 100
+                   ; powers = [0]
+                   , draw_bias = 0.0
+                   , opponents = []
+                   , kwargs... )
+  powers = powers |> unique |> sort
+  players = mapreduce(vcat, enumerate(models)) do (i, model)
+    map(powers) do power
+      if power == 0
+        name = "int-$i"
+        IntuitionPlayer(model; name)
+      else
+        name = "mcts$power-$i"
+        MCTSPlayer(model; power, draw_bias, name)
+      end
+    end
+  end
+  players = [players..., opponents...]
+  rank(players, n; kwargs...)
 end
 
 function Base.show(io :: IO, r :: Ranking)
@@ -260,38 +301,3 @@ end
 
 visualize(rk :: Ranking, args...) = visualize(stdout, rk, args...)
 
-
-"""
-    rankmodels(models, n; powers, temperature, opponents, kwargs...)
-
-Produce a ranking that compares a list of `models` by conducting `n` matches.
-
-For each model, the following players are produced:
-* `IntuitionPlayer(model; temperature)` if the value `0` is in `powers`,
-* `MCTSPlayer(model; power, temperature)` for each non-zero value `power` \
-  in `powers`,
-Additional players that should be included in the ranking can be specified via
-`opponents`.
-"""
-function rankmodels( models
-                   , n :: Int = 100
-                   ; powers = [0]
-                   , temperature = 1.0
-                   , draw_bias = 0.0
-                   , opponents = []
-                   , kwargs... )
-  powers = powers |> unique |> sort
-  players = mapreduce(vcat, enumerate(models)) do (i, model)
-    map(powers) do power
-      if power == 0
-        name = "int-$i"
-        IntuitionPlayer(model; temperature, name)
-      else
-        name = "mcts$power-$i"
-        MCTSPlayer(model; power, temperature, draw_bias, name)
-      end
-    end
-  end
-  players = [players..., opponents...]
-  rank(players, n; kwargs...)
-end

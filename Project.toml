@@ -24,7 +24,7 @@ FluxExt = "9e123790-cb65-549d-b4bc-107fba12e63f"
 
 [extensions]
 CudaExt = ["CUDA"]
-CudaFluxExt = ["CudaExt", "FluxExt"]
+CudaFluxExt = ["CudaExt", "FluxExt", "CUDA", "Flux"]
 FluxExt = ["Flux"]
 
 [compat]

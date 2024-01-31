@@ -25,7 +25,7 @@ name(:: AbstractPlayer) = error("Not implemented")
 
 Let `player` think about `game` and return a policy proposal.
 """
-think(p :: AbstractPlayer, game :: AbstractGame) = error("Not implemented")
+think(:: AbstractPlayer, :: AbstractGame) = error("Not implemented")
 
 """
     apply(player, game)
@@ -38,34 +38,44 @@ See also [`think`](@ref).
 """
 apply(args...; kwargs...) = Model.apply(args...; kwargs...)
 
-function Model.apply(p :: AbstractPlayer, game :: AbstractGame)
+function Model.apply(:: AbstractPlayer, :: AbstractGame)
   error("Not implemented")
 end
 
 """
-    decide(player, game)
+    decide(player, game [; temperature])
 
-Let `player` sample an action after evaluating `think(player, game)`.
+Let `player` randomly sample an action after evaluating `think(player, game)`.
+
+If `temperature < 1`, the distribution is sharpened before sampling. Similarly,
+it is diluted if `temperature > 1`. If `temperature = 0`, the action with the
+highest policy value will always be returned.
 
 See also [`think`](@ref) and [`decideturn`](@ref).
 """
-function decide(p :: AbstractPlayer, game :: AbstractGame)
+function decide(p :: AbstractPlayer, game :: AbstractGame; temperature = 1f0)
   @assert !Game.isover(game) "Cannot decide on an action in a finished game"
-  sample(think(p, game))
+  policy = think(p, game)
+  sample(anneal(policy, Float32(temperature)))
 end
 
 """
-    decideturn(player, game; max_actions)
+    decideturn(player, game [; max_actions, temperature])
 
 Let `player` sample a chain of actions until the active player changes.
 If `max_actions` is specified, the function will return after this number of
 actions even if the active player has not changed yet.
 
+If `temperature < 1`, the distribution is sharpened before sampling. Similarly,
+it is diluted if `temperature > 1`. If `temperature = 0`, the action with the
+highest policy value will always be returned.
+
 See also [`think`](@ref) and [`decide`](@ref).
 """
 function decideturn( p :: AbstractPlayer
                    , game :: AbstractGame
-                   ; max_actions = typemax(Int) )
+                   ; max_actions = typemax(Int)
+                   , temperature = 1f0 )
 
   actions = ActionIndex[]
   game = copy(game)
@@ -74,7 +84,7 @@ function decideturn( p :: AbstractPlayer
         Game.mover(game) == active &&
         length(actions) < max_actions
 
-    action = decide(p, game)
+    action = decide(p, game; temperature)
     move!(game, action)
     push!(actions, action)
   end
@@ -82,42 +92,45 @@ function decideturn( p :: AbstractPlayer
 end
 
 """
-    move!(game, player)
+    move!(game, player [; temperature])
 
-Modify `game` by letting `player` take one action.
+Modify `game` by letting `player` sample and then apply one action with a given
+`temperature`.
 
 See also [`turn!`](@ref), [`decide`](@ref), and [`decideturn`](@ref).
 """
 move!(args...; kwargs...) = Game.move!(args...; kwargs...)
 
-function Game.move!(game :: AbstractGame, p :: AbstractPlayer)
-  Game.move!(game, decide(p, game))
+function Game.move!(game :: AbstractGame, p :: AbstractPlayer; kwargs...)
+  Game.move!(game, decide(p, game; kwargs...))
 end
 
 """
-    move(game, player)
+    move(game, player [; temperature])
 
-Return a new game resulting from letting `player` take one action in `game`.
+Create a new game state by letting `player` take one action in `game` with a
+given `temperature`.
 
 See also [`move`](@ref), [`turn!`](@ref), [`decide`](@ref), and
 [`decideturn`](@ref).
 """
 move(args...; kwargs...) = Game.move(args...; kwargs...)
 
-function Game.move(game :: AbstractGame, p :: AbstractPlayer)
-  Game.move(game, decide(p, game))
+function Game.move(game :: AbstractGame, p :: AbstractPlayer; kwargs...)
+  Game.move(game, decide(p, game; kwargs...))
 end
 
 
 """
-    turn!(game, player)
+    turn!(game, player [; temperature])
 
-Modify `game` by letting `player` play actions until the active player changes.
+Modify `game` by letting `player` play actions with a given `temperature` until
+the active player changes.
 
 See also [`move!`](@ref), [`decide`](@ref), and [`decideturn`](@ref).
 """
-function turn!(game :: AbstractGame, p :: AbstractPlayer)
-  for action in decideturn(p, game)
+function turn!(game :: AbstractGame, p :: AbstractPlayer; kwargs...)
+  for action in decideturn(p, game; kwargs...)
     move!(game, action)
   end
   game
@@ -146,8 +159,8 @@ basemodel(args...; kwargs...) = Model.basemodel(args...; kwargs...)
 playingmodel(args...; kwargs...) = Model.playingmodel(args...; kwargs...)
 trainingmodel(args...; kwargs...) = Model.trainingmodel(args...; kwargs...)
 
-Model.basemodel(p :: AbstractPlayer) = nothing
-Model.childmodel(p :: AbstractPlayer) = nothing
+Model.basemodel(:: AbstractPlayer) = nothing
+Model.childmodel(:: AbstractPlayer) = nothing
 Model.playingmodel(:: AbstractPlayer) = nothing
 Model.trainingmodel(:: AbstractPlayer) = nothing
 
@@ -173,14 +186,13 @@ name(p :: RandomPlayer) = "random"
 
 Base.copy(p :: RandomPlayer) = p
 
-function Base.show(io :: IO, p :: RandomPlayer{G}) where {G}
+function Base.show(io :: IO, :: RandomPlayer{G}) where {G}
   print(io, "RandomPlayer($G)")
 end
 
 
 struct IntuitionPlayer{G <: AbstractGame} <: AbstractPlayer{G}
   model :: AbstractModel
-  temperature :: Float32
   name :: String
 end
 
@@ -189,32 +201,28 @@ A player that returns the policy proposed by a model (with possible annealing).
 
 ---
 
-    IntuitionPlayer(model; [temperature, name])
-    IntuitionPlayer(player; [temperature, name])
+    IntuitionPlayer(model; [name])
+    IntuitionPlayer(player; [name])
 
-Create an intuition player powered by the model `model`.
-
-The retured policies are the model policy proposals annealed by `temperature`.
-If a player `player` is passed, the intuition player shares this player's model.
+Create an intuition player powered by the model `model`. If a player is passed,
+the intuition player shares this player's model.
 """
 function IntuitionPlayer( model :: AbstractModel{G}
-                        ; temperature = 1.
-                        , name = nothing
+                        ; name = nothing
                         ) where {G <: AbstractGame}
   if isnothing(name)
-    id = createid(model, temperature) 
+    id = createid(model) 
     name = "int-$id"
   end
 
-  IntuitionPlayer{G}(model, temperature, name)
+  IntuitionPlayer{G}(model, name)
 end
 
 function IntuitionPlayer( player :: AbstractPlayer{G}
-                        ; temperature = 1.
-                        , name = nothing
+                        ; name = nothing
                         ) where {G <: AbstractGame}
 
-  IntuitionPlayer(playingmodel(player); temperature, name)
+  IntuitionPlayer(playingmodel(player); name)
 end
 
 name(p :: IntuitionPlayer) = p.name
@@ -230,8 +238,7 @@ function think( p :: IntuitionPlayer{G}
   r = apply(p.model, game, targets = [:policy])
   policy[actions] = r.policy[actions]
 
-  # Return the policy after applying temperature
-  anneal(policy, p.temperature)
+  policy
 end
 
 function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGame}
@@ -242,7 +249,7 @@ function Model.apply(p :: IntuitionPlayer{G}, game :: G) where {G <: AbstractGam
   r = apply(p.model, game, targets = [:value, :policy])
   policy[actions] = r.policy[actions]
 
-  (value = r.value, policy = anneal(policy, p.temperature))
+  (value = r.value, policy = policy)
 end
 
 Model.ntasks(p :: IntuitionPlayer) = Model.ntasks(p.model)
@@ -259,7 +266,7 @@ end
 function switchmodel( p :: IntuitionPlayer{G}
                     , m :: AbstractModel{H}
                     ) where {H <: AbstractGame, G <: H} 
-  IntuitionPlayer{G}(m, p.temperature, p.name)
+  IntuitionPlayer{G}(m, p.name)
 end
 
 function Model.adapt(backend, p :: IntuitionPlayer)
@@ -269,16 +276,15 @@ end
 Base.copy(p :: IntuitionPlayer) = switchmodel(p, copy(p.model))
 
 function Base.show(io :: IO, p :: IntuitionPlayer{G}) where {G <: AbstractGame}
-  print(io, "IntuitionPlayer{$(Game.name(G))}($(p.name), $(p.temperature))")
+  print(io, "IntuitionPlayer{$(Game.name(G))}($(p.name))")
 end
 
 function Base.show( io :: IO
-                  , mime :: MIME"text/plain"
+                  , :: MIME"text/plain"
                   , p :: IntuitionPlayer{G}
                   ) where {G <: AbstractGame}
   println(io, "IntuitionPlayer{$(Game.name(G))}:")
   print(io, " name: $(p.name)"); println(io)
-  print(io, " temp: $(p.temperature)"); println(io)
   print(io, " model: ")
   show(io, p.model)
 end
@@ -300,15 +306,16 @@ constructed with assistance of a [`Model.AbstractModel`](@ref).
 
 ---
 
-    MCTSPlayer(model = RolloutModel(); kwargs...)
+    MCTSPlayer(model; kwargs...)
     MCTSPlayer(player; kwargs...)
 
-Create an `MCTSPlayer` powered by the model `model`.
+Create an `MCTSPlayer` powered by the model `model`. If a player `player` is
+passed, the `MCTSPlayer` shares this player's model. If no model or player is passed, the classical [`RolloutModel`](@ref) is used.
 
-By default, a classical PUCT-based MCTS player is created. For an `MCTSPlayer`
-constructor with Gumbel Alpha Zero inspired presets, see
-[`MCTSPlayerGumbel`](@ref). If a player `player` is passed, the `MCTSPlayer`
-shares this player's model.
+By default, a conventional PUCT-based MCTS player is created. For an
+`MCTSPlayer` constructor with Gumbel Alpha Zero inspired presets, see
+[`MCTSPlayerGumbel`](@ref).
+
 
 ## Arguments
 - `power = 100`: The number of model queries the player can make per move.
@@ -316,33 +323,21 @@ shares this player's model.
 - `selector = PUCT()`: The action selector during the MCTS run at non-root \
 nodes.
 - `rootselector = selector`: The action selector at root nodes.
-- `temperature`: Convenience option that replaces `policy` by \
-`Anneal(policy, temperature)` if provided.
 - `name = nothing`: The name of the player. If `nothing`, a random name is \
 generated.
 """
 function MCTSPlayer( model :: AbstractModel{G}
                    ; power = 100
-                   , temperature = nothing
                    , policy = VisitCount()
                    , selector = PUCT()
                    , rootselector = selector
-                   , name = nothing 
                    , draw_bias = 0f0
+                   , name = nothing 
                    ) where {G <: AbstractGame}
 
   if isnothing(name)
     id = createid(model, policy, selector, rootselector)
     name = "mcts$(power)-$id"
-  end
-
-  if !isnothing(temperature)
-    # Prevent annealing already annealed policies
-    if policy isa Anneal
-      policy = Anneal(policy.policy, temperature)
-    else
-      policy = Anneal(policy, temperature)
-    end
   end
 
   MCTSPlayer{G}(
@@ -368,29 +363,20 @@ function MCTSPlayer( player :: IntuitionPlayer{G}
 end
 
 function MCTSPlayer( player :: MCTSPlayer
-                   ; temperature = nothing
-                   , power = player.power
+                   ; power = player.power
                    , policy = player.policy
                    , selector = player.selector
                    , rootselector = player.rootselector
                    , draw_bias = player.draw_bias
                    , name = nothing )
 
-  if !isnothing(temperature)
-    if policy isa Anneal
-      policy = Anneal(policy.policy, temperature)
-    else
-      policy = Anneal(policy, temperature)
-    end
-  end
-  
   MCTSPlayer(
     playingmodel(player);
     power,
-    temperature,
     policy,
     selector,
     rootselector,
+    draw_bias,
     name,
   )
 end
@@ -408,7 +394,6 @@ with [`MCTSPlayer`](@ref).
 """
 function MCTSPlayerGumbel( args...
                          ; power = 100
-                         , temperature = nothing
                          , nactions = 16
                          , selector = VisitPropTo()
                          , policy = ImprovedPolicy()
@@ -417,9 +402,8 @@ function MCTSPlayerGumbel( args...
   MCTSPlayer(
     args...;
     power,
-    temperature,
     policy,
-    selector = VisitPropTo(),
+    selector,
     rootselector = SequentialHalving(nactions),
     draw_bias,
     name,
@@ -469,20 +453,20 @@ function Model.apply(p :: MCTSPlayer{G}, game :: G) where {G <: AbstractGame}
 end
 
 """
-    decideturn(mcts_player, game; cap_power = false, max_actions)
+    decideturn(mcts_player, game [; cap_power, max_actions, temperature])
 
 Let an [`MCTSPlayer`](@ref) `mcts_player` decide an action chain for `game`.
 
 If the chain consists of several moves, the player reuses the MCTS expansions
 of the previous decision. Passing `cap_power = true` causes the player to always
-use a total power of `mcts_player.power`, even when previous expansions are
-available.
+use a total power (i.e., previous + new expansions) of `mcts_player.power`.
 """
 function decideturn( p :: MCTSPlayer{G}
                    , rootgame :: G
                    ; cap_power = false
                    , max_actions = typemax(Int)
                    , exclude = Set{G}()
+                   , temperature = 1f0
                    ) where {G <: AbstractGame}
 
   actions = ActionIndex[]
@@ -525,6 +509,7 @@ function decideturn( p :: MCTSPlayer{G}
     end
 
     pol = getpolicy(p.policy, root)
+    pol = anneal(pol, Float32(temperature))
 
     # get the index of the next action
     index = sample(pol)
@@ -566,7 +551,6 @@ function switchmodel( p :: MCTSPlayer{G}
 end
 
 Model.adapt(backend, p :: MCTSPlayer) = switchmodel(p, adapt(backend, p.model))
-
 
 Base.copy(p :: MCTSPlayer) = switchmodel(p, copy(p.model))
 
@@ -611,7 +595,7 @@ function think(p :: HumanPlayer, game :: AbstractGame)
 
   # Draw the game
   println()
-  draw(game)
+  visualize(game)
   println()
 
   # Take the user input and return the one-hot policy
@@ -654,9 +638,25 @@ function Model.gametype(p1 :: AbstractPlayer, p2 :: AbstractPlayer, players...)
   gt
 end
 
+"""
+    annealf([n1 => t1, n2 => t2, ...])
+
+Create an anneal function that returns temperatures `t1` or `t2` or ... when the move count `n` satisfies `n <= n1` or `n <= n2` or ...
+"""
+annealf(f :: Function) = f
+
+function annealf(pairs)
+  @assert all(p -> isa(p, Pair), pairs) """
+  Argument to annealf must be a list of pairs.
+  """
+  n -> begin
+    index = findlast(p -> p[1] <= n, pairs)
+    isnothing(index) ? 1f0 : pairs[index][2]
+  end
+end
 
 """
-    pvp(player1, player2 [; instance, callback, draw_after])
+    pvp(player1, player2 [; instance, callback, draw_after, anneal])
 
 Conduct a match between `player1` and `player2` and return the outcome from the
 perspective of the starting player `player1`.
@@ -667,13 +667,18 @@ Game.instance(G)` is passed by default. The call `callback(current_game)` is
 issued after each turn. If the game has not ended after `draw_after` moves, a
 draw is declared.
 
+A function `anneal`, maping the move counter to a temperature, can be used to dynamically sharpen the policies returned by (`Player.think`)[@ref] of the players.
+
 See also [`pvpgames`](@ref).
 """
 function pvp( p1 :: AbstractPlayer
             , p2 :: AbstractPlayer
             ; instance = gametype(p1, p2)
             , callback = (_) -> nothing
-            , draw_after = typemax(Int) )
+            , draw_after = typemax(Int)
+            , anneal = _ -> 1f0 )
+
+  anneal = annealf(anneal)
 
   if instance isa Type{<: AbstractGame}
     G = instance
@@ -686,7 +691,8 @@ function pvp( p1 :: AbstractPlayer
   while !isover(game)
     p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    for action in decideturn(p, game; max_actions)
+    temperature = Float32(anneal(moves))
+    for action in decideturn(p, game; max_actions, temperature)
       move!(game, action)
       callback(game)
       moves += 1
@@ -699,8 +705,10 @@ function pvp( p1 :: AbstractPlayer
   status(game)
 end
 
+# TODO: make this pvpmatch, and establish a Jtac.Game.Match{G} type!
+# TODO: branch arguments should be handled via branchf similar to anneal and annealf
 """
-    pvpgames(player1, player2 [; instance, callback, draw_after])
+    pvpgames(player1, player2 [; instance, callback, draw_after, anneal])
 
 Like [`pvp`](@ref), but the vector of game states is returned.
 """
@@ -708,7 +716,10 @@ function pvpgames( p1 :: AbstractPlayer
                  , p2 :: AbstractPlayer
                  ; instance = gametype(p1, p2)
                  , callback = (_) -> nothing
-                 , draw_after = typemax(Int) )
+                 , draw_after = typemax(Int)
+                 , anneal = _ -> 1f0 )
+
+  anneal = annealf(anneal)
 
   if instance isa Type{<: AbstractGame}
     G = instance
@@ -722,7 +733,8 @@ function pvpgames( p1 :: AbstractPlayer
   while !isover(game) && moves < draw_after
     p = mover(game) == 1 ? p1 : p2
     max_actions = draw_after - moves
-    for action in decideturn(p, game; max_actions)
+    temperature = Float32(anneal(moves))
+    for action in decideturn(p, game; max_actions, temperature)
       move!(game, action)
       callback(game)
       push!(games, copy(game))

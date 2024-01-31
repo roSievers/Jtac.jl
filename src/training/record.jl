@@ -82,7 +82,7 @@ dataset = Training.record(player, 20, instance = G, branch = Game.branch(prob = 
 G = Game.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 player = Player.MCTSPlayer(model, power = 50)
-anneal = n -> n <= 4 ? 1.0 : 0.0
+anneal = [0 => 1.0, 4 => 0.0]
 dataset = Training.record(player, 10; augment = false, anneal)
 ```
 """
@@ -97,13 +97,15 @@ function record( p :: Union{P, Channel{P}}
                , kwargs...
                ) where {G, P <: AbstractPlayer{G}}
 
+  # Bring the argument anneal in function form
+  anneal = annealf(anneal)
+
   # Function that plays a single match, starting at state `game` with `moves`
   # moves. It returns a `trace`, which is a named tuple of game states, model
   # policies, and the game outcome
   play = (game, moves) -> begin
 
     game = copy(game)
-    
     games = G[]
     policies = Vector{Float32}[]
 
