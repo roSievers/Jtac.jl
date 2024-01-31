@@ -616,7 +616,7 @@ Training.learn!(
   Training.record(
     player,
     64,
-    branch = Game.branch(prob = 0.2)
+    branch = (prob = 0.2, steps = 1:3)
   )
 
 end 

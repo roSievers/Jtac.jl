@@ -48,11 +48,13 @@ Further methods may be specialized to improve performance or functionality.
   efficiently (see [`Model.CachingModel`](@ref)).
 - `Base.isequal(a :: G, b :: G)`: Check if the game states `a` and `b` can be \
   considered to be functionally equivalent. Necessary for loop detection.
-- `moves(game :: G)`: Count the number of moves that have been applied to \
+- `movecount(game :: G)`: Count the number of moves that have been applied to \
   `game`.
 - `moverlabel(game :: G)`: String representation of the mover (-1 or 1).
 - `movelabel(game :: G, action)`: String representation of `action` at `game`.
 - `turnlabel(game :: G, actions)`: String representation of an action chain.
+- `turncount(game :: G)`: Count the number of turns.
+- `halfturncount(game :: G)`: Count the number of completed halfturns.
 """
 abstract type AbstractGame end
 
@@ -248,7 +250,7 @@ randomaction(game :: AbstractGame) = rand(legalactions(game))
 Modify `game` by taking a single random action (if the game is not finished).
 
 See also [`move!`](@ref), [`randommove`](@ref), [`randomaction`](@ref),
-[`randomturn!`](@ref), and [`randommatch!`](@ref).
+[`randomturn!`](@ref), and [`rollout!`](@ref).
 """
 function randommove!(game :: AbstractGame)
   isover(game) ? game : move!(game, randomaction(game))
@@ -289,7 +291,7 @@ randommove(game :: AbstractGame, args...) = randommove!(copy(game), args...)
 Modify `game` by taking random actions until the active player changes. Returns
 `game`.
 
-See also [`randomaction`](@ref), and [`randommatch!`](@ref).
+See also [`randomaction`](@ref), and [`rollout!`](@ref).
 """
 function randomturn!(game :: AbstractGame)
   active = mover(game)
@@ -307,14 +309,14 @@ Non-mutating version of [`randomturn!`](@ref).
 randommove(game :: AbstractGame) = randommove!(copy(game))
 
 """
-    randommatch!(game)
+    rollout!(game)
 
 Play a match with random actions that starts at state `game`. Modifies `game`.
 
-See [`randommatch`](@ref) for a non-mutating version. See also
+See [`rollout`](@ref) for a non-mutating version. See also
 [`randommove!`](@ref) and [`randomturn!`](@ref).
 """
-function randommatch!(game :: AbstractGame, callback :: Function = _ -> nothing)
+function rollout!(game :: AbstractGame, callback :: Function = _ -> nothing)
   while !isover(game)
     randommove!(game)
     callback(game)
@@ -323,15 +325,15 @@ function randommatch!(game :: AbstractGame, callback :: Function = _ -> nothing)
 end
 
 """
-    randommatch(game)
+    rollout(game)
 
 Return the final game of a random match started at initial state `game`.
 
-See [`randommatch!`](@ref) for a mutating version. See also
+See [`rollout!`](@ref) for a mutating version. See also
 [`randommove!`](@ref) and [`randomturn!`](@ref).
 """
-function randommatch(game :: AbstractGame, callback :: Function = _ -> nothing)
-  randommatch!(copy(game), callback)
+function rollout(game :: AbstractGame, callback :: Function = _ -> nothing)
+  rollout!(copy(game), callback)
 end
 
 """
@@ -386,41 +388,6 @@ Return a randomized instance of game type `G`.
 See also [`instance`](@ref).
 """
 randominstance(G :: Type{<: AbstractGame}) = randommove!(G(), 1:5)
-
-"""
-    branch(game; steps = 1)
-
-Randomly branch `game` by applying `steps` random actions. Returns a branched
-copy of `game`.
-"""
-function branch(game; steps = 1)
-  randommove!(copy(game), steps)
-end
-
-"""
-    branch(; prob, steps = 1)
-
-Return a branching function that branches `game` via `steps` random steps with
-a probability of `prob`. If the game is not branched, the branching function
-returns `nothing`. Otherwise, the branched game is returned.
-"""
-function branch(; prob, steps = 1)
-  game -> begin
-    if rand() < prob
-      randommove!(copy(game), steps)
-    else
-      nothing
-    end
-  end
-end
-
-"""
-   moves(game)
-
-Return the number of actions that have been applied to `game`. Returns `0` if
-not implemented for a specific game type.
-"""
-moves(:: AbstractGame) = 0
 
 """
     moverlabel(game)
@@ -505,3 +472,35 @@ function movegames(game, actions)
   end
   games
 end
+
+"""
+   movecount(game)
+
+Return the number of actions that have been applied to `game`. Returns `0` if
+not implemented for a specific game type.
+"""
+movecount(:: AbstractGame) = 0
+
+"""
+    turncount(game)
+
+Return the number of turns of `game`. Here, one turn is a sequence of moves that
+switch the mover from 1 to -1 and back to 1.
+
+If not implemented for a specific game type, this function always returns 0.
+
+See also [`movecount`](@ref) and [`halfturncount`](@ref).
+"""
+turncount(game :: AbstractGame) = 0
+
+"""
+    halfturncount(game)
+
+Return the number of halfturns of `game`. Here, one halfturn is a sequence of
+moves that switches the mover from 1 to -1 or -1 to 1.
+
+If not implemented for a specific game type, this function always returns 0.
+
+See also [`movecount`](@ref) and [`turncount`](@ref).
+"""
+halfturncount(game :: AbstractGame) = 0

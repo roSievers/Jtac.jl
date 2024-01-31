@@ -52,7 +52,7 @@ function Base.show(io :: IO, ::MIME"text/plain", a :: GameAnalysis)
   @printf io " Δ-best   %+.2f\n" (best - a.value)
   @printf io " Δ-worst  %+.2f\n" (worst - a.value)
   @printf io " actions   %d\n" length(a.actions)
-  @printf io " kendall   %.2f\n" kendall(a)
+  @printf io " kendall  %5.2f\n" kendall(a)
   @printf io " proposal  "
 
   for (action, impact) in goodmoves(a)
@@ -450,40 +450,11 @@ end
 
 printcomment(args...) = printcomment(stdout, args...)
 
-
 """
-Structure that holds basic information about a match (game states, actions,
-and turns).
+    analyzeturn(player, match, index)
+
+Let `player` analyze the move `index` in `match`.
 """
-struct Match{G <: AbstractGame}
-  games :: Vector{G}
-  actions :: Vector{ActionIndex}
-  turns :: Vector{Tuple{Int, Int}}
-end
-
-function Match(games :: Vector{<: AbstractGame})
-  actions = Game.deriveactions(games)
-  mover = Game.mover(games[1])
-  turn_start = 1
-  turns = Tuple{Int, Int}[]
-  for (index, game) in enumerate(games)
-    if Game.isover(game) || Game.mover(game) != mover
-      turn_end = index - 1
-      push!(turns, (turn_start, turn_end))
-      turn_start = index
-      mover = Game.mover(game)
-    end
-  end
-  Match(games, actions, turns)
-end
-
-function Base.show(io :: IO, ::MIME"text/plain", m :: Match{G}) where {G <: AbstractGame}
-  n = length(m.actions)
-  l = length(m.turns)
-  s = Game.status(m.games[end])
-  print(io, "Match{$G}($s) with $n moves and $l turns")
-end
-
 function analyzemove(player, m :: Match, index :: Integer)
   @assert 1 <= index <= length(m.actions) """
   Move with index $index does not exist in this match.
@@ -491,13 +462,19 @@ function analyzemove(player, m :: Match, index :: Integer)
   analyzemove(player, m.games[index], m.actions[index])
 end
 
-function analyzeturn(player, m :: Match, index)
-  @assert 1 <= index <= length(m.turns) """
-  Turn with index $index does not exist in this match.
-  """
-  turn = m.turns[index]
-  actions = m.actions[turn[1]:turn[2]]
-  analyzeturn(player, m.games[turn[1]], actions)
+"""
+    analyzeturn(player, match, index, mover)
+
+Let `player` analyze the turn `index` of mover `mover` in `match`.
+"""
+function analyzeturn(player, m :: Match, index, mover)
+  game, actions = Game.getturn(m, index, mover)
+  analyzeturn(player, game, actions)
+end
+
+function analyzehalfturn(player, m :: Match, index)
+  game, actions = Game.gethalfturn(m, index)
+  analyzeturn(player, game, actions)
 end
 
 struct MatchAnalysis{G <: AbstractGame}
@@ -507,7 +484,7 @@ end
 
 function analyze(player, m :: Match)
   as = asyncmap(1:length(m.turns)) do index
-    analyzeturn(player, m, index)
+    analyzehalfturn(player, m, index)
   end
   MatchAnalysis(m, as)
 end
@@ -529,7 +506,8 @@ function reportturns(io :: IO, a :: MatchAnalysis{G}) where {G <: AbstractGame}
   crayon = crayon"white bg:black"
   println(io, crayon, str, inv(crayon))
   for (index, ta) in enumerate(a.turn_analyses)
-    reportturn(io, ta, index, labellength)
+    turncount = div(index, 2) + index % 2
+    reportturn(io, ta, turncount, labellength)
     if index < length(a.turn_analyses)
       println(io)
     end

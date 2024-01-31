@@ -45,6 +45,39 @@ stopmatch(n :: Int) = k -> (k > n && stopmatch())
 
 
 """
+    branchfunction((prob, steps))
+    branchfunction((; prob, steps))
+
+Create a branching function with the arguments `prob` (branching probability)
+and `steps` (number of branching steps).
+"""
+branchfunction(f :: Function) = f
+branchfunction(prob :: Real) = branchfunction((prob, 1))
+branchfunction(prob :: Tuple{<: Real}) = branchfunction(prob[1])
+
+function branchfunction(arg :: Tuple{<: Real, Any})
+  game -> begin
+    if rand() < arg[1]
+      randommove(game, arg[2])
+    end
+  end
+end
+
+function branchfunction(arg)
+  @assert haskey(arg, :prob) "Branch function constructor expected key :prob"
+  prob = get(arg, :prob)
+  if haskey(arg, :steps)
+    steps = get(arg, :steps)
+  else
+    steps = 1
+  end
+  branchfunction((prob, steps))
+end
+
+
+
+
+"""
     record(player, n = 1; <keyword arguments>)
 
 Generate a [`DataSet`](@ref) by letting `player` play against itself `n` times.
@@ -55,8 +88,10 @@ be wrapped in a `Channel{AbstractPlayer}`.
 - `instance`: Initial game state provider. Defaults to `() -> Game.instance(G)` \
 where `G` is the game type of `player`.
 - `branch`: Function applied to each game state after a first selfplay. It can \
-return `nothing` or a branched game state, which is then used as roots \
-for new matches (without recursive branching). See also [`Game.branch`](@ref).
+  return `nothing` or a branched game state, which is then used as roots for \
+  new matches (without recursive branching). For convenience, one can also pass \
+  a value `prob` (branching probability), a tuple `(prob, steps)` (number of \
+  random steps per branching), or a named tuple `(; prob, steps)`.
 - `merge = true`: Whether to return one merged dataset or `n` separate ones.
 - `augment`: Whether to apply data augmentation to the generated dataset.
 - `targets`: Named tuple of [`AbstractTarget`](@ref)s for which labels are \
@@ -75,21 +110,20 @@ obtained via [`Player.think`](@ref) is annealed before sampling the next move.
 # Record 20 self play matches of an classical MCTS player with power 250
 G = Game.TicTacToe
 player = Player.MCTSPlayer(power = 250)
-dataset = Training.record(player, 20, instance = G, branch = Game.branch(prob = 0.25))
+dataset = Training.record(player, 20, instance = G, branch = 0.25)
 
 # Record 10 self play matches of MCTS player with shallow predictor network and
 # power 50. After move 4, always use the action with maximal policy weight.
 G = Game.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 player = Player.MCTSPlayer(model, power = 50)
-anneal = [0 => 1.0, 4 => 0.0]
-dataset = Training.record(player, 10; augment = false, anneal)
+dataset = Training.record(player, 10; augment = false, anneal = (4 => 0.0))
 ```
 """
 function record( p :: Union{P, Channel{P}}
                , n :: Int = 1
                ; targets = nothing
-               , anneal :: Function = n -> 1.0
+               , anneal = n -> 1.0
                , merge :: Bool = true
                , callback_move :: Function = _ -> nothing
                , ntasks = Player.ntasks(fetch(p))
@@ -98,7 +132,7 @@ function record( p :: Union{P, Channel{P}}
                ) where {G, P <: AbstractPlayer{G}}
 
   # Bring the argument anneal in proper anneal function form
-  anneal = Player.annealf(anneal)
+  anneal = Player.annealfunction(anneal)
 
   # Function that plays a single match, starting at state `game` with `moves`
   # moves. It returns a `trace`, which is a named tuple of game states, model
@@ -187,8 +221,11 @@ function recordbranching( G :: Type{<: AbstractGame}
                         , augment = Game.isaugmentable(G)
                         , callback_match = () -> nothing
                         , instance = () -> Game.instance(G)
-                        , branch = Game.branch(prob = 0, steps = 1)
+                        , branch = 0.
                         , progress = true )
+
+  # Construct the branching function
+  branch = branchfunction(branch)
 
   if progress
     step, finish = Util.stepper("# recording...", n)
@@ -201,7 +238,7 @@ function recordbranching( G :: Type{<: AbstractGame}
 
     # Play the game once without branching. Then, create branchpoints and play
     # them as well.
-    moves = Game.moves(root)
+    moves = Game.movecount(root)
     trace = play(root, moves)
     traces = [trace]
     for (i, game) in enumerate(trace.games[1:end-1])

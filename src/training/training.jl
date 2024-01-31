@@ -380,7 +380,7 @@ Training.train!(player, epochs = 5, matches = 100)
 """
 function train!( player :: MCTSPlayer{G}
                ; instance = () -> Game.instance(G)
-               , branch = Game.branch(prob = 0., steps = 1)
+               , branch = 0f0
                , augment = true
                , kwargs... ) where {G}
 

@@ -130,13 +130,18 @@ module Game
          augment,
          randommove!,
          randomturn!,
-         randommatch!, 
-         randommatch, 
+         rollout,
+         rollout!,
          array,
-         branch,
          visualize,
          moverlabel,
          movelabel
+
+  include("game/match.jl")
+
+  export Match
+
+  export randommatch
 
   include("game/mnkgame.jl")
   include("game/metatac.jl")

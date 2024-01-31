@@ -638,13 +638,15 @@ function Model.gametype(p1 :: AbstractPlayer, p2 :: AbstractPlayer, players...)
   gt
 end
 
-"""
-    annealf(temperature)
-    annealf([t0, n1 => t1, n2 => t2, ..., nk => tk])
-    annealf([n1 => t1, n2 => t2, ..., nk => tk])
 
-Create an anneal function. If a float value `temperature` is provided, the constant function `_ -> temperature` is returned. In the other cases,
-the anneal function is equivalent to:
+"""
+    annealfunction(temperature)
+    annealfunction([t0, n1 => t1, n2 => t2, ..., nk => tk])
+    annealfunction([n1 => t1, n2 => t2, ..., nk => tk])
+
+Create an anneal function. If a float value `temperature` is provided, the
+constant function `_ -> temperature` is returned. In the other cases, the anneal
+function is equivalent to:
 ```
 n -> if n < n1
   t0
@@ -659,10 +661,10 @@ end
 ```
 If `t0` is not provided explicitly, it is set to zero.
 """
-annealf(f :: Function) = x -> Float32(f(x))
-annealf(temp :: Real) = _ -> Float32(temp)
+annealfunction(f :: Function) = x -> Float32(f(x))
+annealfunction(temp :: Real) = _ -> Float32(temp)
 
-function annealf(pairs)
+function annealfunction(pairs)
   if pairs[1] isa Real
     t0 = Float32(pairs[1])
     pairs = pairs[2:end]
@@ -670,7 +672,7 @@ function annealf(pairs)
     t0 = 1f0
   end
   @assert all(p -> isa(p, Pair), pairs) """
-  Anneal function creation (annealf) expected a list of pairs.
+  Anneal function creation expected a list of pairs.
   """
   pairs = sort(pairs, by=first)
   n -> begin
@@ -702,7 +704,7 @@ function pvp( p1 :: AbstractPlayer
             , draw_after = typemax(Int)
             , anneal = _ -> 1f0 )
 
-  anneal = annealf(anneal)
+  anneal = annealfunction(anneal)
 
   if instance isa Type{<: AbstractGame}
     G = instance
@@ -730,7 +732,6 @@ function pvp( p1 :: AbstractPlayer
 end
 
 # TODO: make this pvpmatch, and establish a Jtac.Game.Match{G} type!
-# TODO: branch arguments should be handled via branchf similar to anneal and annealf
 """
     pvpgames(player1, player2 [; instance, callback, draw_after, anneal])
 
@@ -743,7 +744,7 @@ function pvpgames( p1 :: AbstractPlayer
                  , draw_after = typemax(Int)
                  , anneal = _ -> 1f0 )
 
-  anneal = annealf(anneal)
+  anneal = annealfunction(anneal)
 
   if instance isa Type{<: AbstractGame}
     G = instance
