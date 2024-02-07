@@ -451,7 +451,7 @@ end
 printcomment(args...) = printcomment(stdout, args...)
 
 """
-    analyzeturn(player, match, index)
+    analyzemove(player, match, index)
 
 Let `player` analyze the move `index` in `match`.
 """
