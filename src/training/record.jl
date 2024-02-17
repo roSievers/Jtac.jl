@@ -389,3 +389,40 @@ function record( p :: Union{P, Channel{P}}
   end
 end
 
+
+"""
+    record(player, match; kwargs...)
+    record(player, games; kwargs...)
+
+Let `player` evaluate `match` / `games` to create a dataset with value / policy
+targets.
+"""
+function record( player :: AbstractPlayer{G}
+               , games :: Vector{G}
+               ; progress = true
+               , ntasks = Model.ntasks(player)
+               , threads = false ) where {G <: AbstractGame}
+
+  n = length(games)
+  ds = DataSet(G)
+  resize!(ds.games, n)
+  resize!(ds.target_labels[1].data, n)
+  resize!(ds.target_labels[2].data, n)
+
+  with_BLAS_threads(1) do
+    Util.pforeach(1:length(games); ntasks, threads) do index
+      game = games[index]
+      value, policy = Model.apply(player, game)
+      ds.games[index] = copy(game)
+      ds.target_labels[1].data[index] = Float32[value]
+      ds.target_labels[2].data[index] = policy
+    end
+  end
+
+  @assert isconsistent(ds)
+  ds
+end
+
+function record(p :: AbstractPlayer{G}, match :: Match{G}; kwargs...) where {G}
+  record(p, match.games)
+end
