@@ -58,17 +58,16 @@ branchfunction(prob :: Tuple{<: Real}) = branchfunction(prob[1])
 function branchfunction(arg :: Tuple{<: Real, Any})
   game -> begin
     if rand() < arg[1]
-      randommove(game, arg[2])
+      Game.randommove(game, arg[2])
     end
   end
 end
 
 function branchfunction(arg)
-  @assert haskey(arg, :prob) "Branch function constructor expected key :prob"
-  prob = get(arg, :prob)
-  if haskey(arg, :steps)
-    steps = get(arg, :steps)
-  else
+  prob = get(arg, :prob, nothing)
+  steps = get(arg, :steps, nothing)
+  @assert !isnothing(prob) "Branch function constructor expected key :prob"
+  if isnothing(steps)
     steps = 1
   end
   branchfunction((prob, steps))
