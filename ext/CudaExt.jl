@@ -22,6 +22,7 @@ function __init__()
   register!(Backend, DefaultBackend{CuArray{Float32}}(), :cuda, :cu, :cuda32, :cu32)
   register!(Backend, DefaultBackend{CuArray{Float16}}(), :cuda16, :cu16)
   register!(Backend, DefaultBackend{CuArray{Float64}}(), :cuda64, :cu64)
+  Model._defaultconfig[:backend] = :cuda
 end
 
 # import PrecompileTools: @compile_workload

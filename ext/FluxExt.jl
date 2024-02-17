@@ -301,6 +301,7 @@ function __init__()
   register!(Backend, FluxBackend{Array{Float32}}(), :flux, :flux32)
   register!(Backend, FluxBackend{Array{Float16}}(), :flux16)
   register!(Backend, FluxBackend{Array{Float64}}(), :flux64)
+  Model._defaultconfig[:backend] = :flux
 end
 
 end

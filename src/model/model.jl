@@ -125,6 +125,13 @@ See also [`basemodel`](@ref), [`childmodel`](@ref), [`trainingmodel`](@ref).
 """
 playingmodel(m :: AbstractModel) = m
 
+const _defaultconfig = Dict{Symbol, Any}(
+  :backend => :default,
+  :async => 256,
+  :cache => false,
+  :assist => false,
+)
+
 """
     configure(; backend, async, cache, assist)
     configure(model; backend, async, cache, assist)
@@ -143,31 +150,27 @@ batchsize of the async model.
 `assist`. If `model` is an [`AssistedModel`](@ref) and the option `assist` is \
 not specified, then `assist = model.assistant`.
 """
-function configure( model
-                  ; backend = nothing
-                  , async = nothing
-                  , cache = nothing
-                  , assist = nothing )
-
+function configure(model; kwargs...)
+  options = (; _defaultconfig..., kwargs...)
     
   base = basemodel(model)
   if model isa AssistedModel && isnothing(assist)
     assist = model.assistant
   end
 
-  if !isnothing(backend)
-    base = adapt(backend, base)
+  if !isnothing(options.backend)
+    base = adapt(options.backend, base)
   end
-  if !isnothing(async) && !(async == false)
-    batchsize = (async == true) ? 64 : async
+  if !isnothing(options.async) && !(options.async == false)
+    batchsize = (options.async == true) ? 64 : options.async
     base = AsyncModel(base; batchsize)
   end
-  if !isnothing(cache) && !(cache == false)
-    cachesize = (cache == true) ? 100_000 : cache
+  if !isnothing(options.cache) && !(options.cache == false)
+    cachesize = (options.cache == true) ? 100_000 : options.cache
     base = CachingModel(base; cachesize)
   end
-  if !isnothing(assist) && !(assist == false)
-    base = AssistedModel(base, assist)
+  if !isnothing(options.assist) && !(options.assist == false)
+    base = AssistedModel(base, options.assist)
   end
   
   base
