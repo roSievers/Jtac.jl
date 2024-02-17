@@ -416,13 +416,19 @@ function moverank(ma :: MoveAnalysis)
 end
 
 function printcomment(io :: IO, impact, impact_alt)
-  # The marker ! means that the player is surprised by the good action
-  if impact > 0.8 printstyled(io, "!!! ")
-  elseif impact > 0.4 printstyled(io, "!! ")
-  elseif impact > 0.1 printstyled(io, "! ")
+  # The marker ! means that the player is surprised by the best turn/move
+  # Normally we would expect that the white player can only reduce the value
+  # of the game with their moves, and the black player can only increase it.
+  # That is how game theory in these trees works. If we violate this principle,
+  # the player is surprised. This points at a weakness.
+  if impact_alt > 0.8 printstyled(io, "!!! ")
+  elseif impact_alt > 0.4 printstyled(io, "!! ")
+  elseif impact_alt > 0.1 printstyled(io, "! ")
   end
 
-  # The marker ? means that the player is surprised by the bad action
+  # The marker ? means that the player rates the played turn/move as a bad move.
+  # yellow: the move improves the value of the game, but not as much as the best
+  # red: the move reduces the value of the game more than the best move
   color = impact > 0 ? (:yellow) : (:red)
   delta = impact_alt - impact
 
