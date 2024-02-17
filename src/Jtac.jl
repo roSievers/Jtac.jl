@@ -434,7 +434,37 @@ module Analysis
   using ..Player
 
   include("analysis.jl")
+
+  export analyzegame,
+         analyzemove,
+         analyzemoves,
+         analyzeturn,
+         analyzematch
+
 end # module Analysis
+
+module Common
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Target
+  using ..Model
+  using ..Player
+  using ..Training
+  using ..Analysis
+
+  export AbstractGame
+  export status, isover, legalactions, mover, move!, randominstance
+
+  export AbstractModel
+  export configure, apply
+
+  export AbstractPlayer, IntuitionPlayer, MCTSPlayer, MCTSPlayerGumbel
+  export think, decide, decideturn, rank, rankmodels, compete
+
+  export record, learn!, loss, losscomponents
+  export analyzegame, analyzemove, analyzemoves, analyzeturn, analyzematch
+end
 
 using .Util, .Model, .Training
 
