@@ -21,22 +21,22 @@ def get_name(state, prefix):
   state["count"] += 1
   return name
 
-def convert_param(state, d, prefix = "generic", flat = False, flip = None):
+def add_param(state, d, prefix = "generic", flat = False, flip = None):
 
-    if flat: dims = [product(d['dims'])]
-    else: dims = list(reversed(d['dims']))
+    if flat: dims = [product(d['size'])]
+    else: dims = list(reversed(d['size']))
 
     # Since ONNX does not take the word 'convolution'
     # seriously (and uses cross-correlation instead),
     # we have to manually flip some axes :/
     if flip: 
-        data = d['bytes']
+        data = d['data']
         data = np.frombuffer(data, dtype = np.float32)
         data = data.reshape(dims)
         data = np.flip(data, axis=flip)
         vals = data.tobytes()
     else:
-        vals = d['bytes']
+        vals = d['data']
 
     name = get_name(state, prefix)
     tensor = ox.make_tensor(
@@ -50,25 +50,24 @@ def convert_param(state, d, prefix = "generic", flat = False, flip = None):
     return name
 
 # TODO: should add several other activation functions
-def convert_activation(state, d, input_name):
-    fun = d['name']
-    if fun == 'id':
+def add_activation_layer(state, f, input_name):
+    if f in ['id', 'identity']:
         return input_name
 
-    elif fun == 'relu':
+    elif f == 'relu':
         name = get_name(state, 'relu')
         op_name = 'Relu'
 
-    elif fun == 'tanh':
+    elif f == 'tanh':
         name = get_name(state, 'tanh')
         op_name = 'Tanh'
 
-    elif fun == 'softmax':
+    elif f == 'softmax':
         name = get_name(state, 'softmax')
         op_name = 'Softmax'
 
     else:
-        assert(False)
+        raise ValueError("Expected valid activation layer name, got", f)
 
     node = ox.make_node(
             op_name,
@@ -79,29 +78,10 @@ def convert_activation(state, d, input_name):
     return name
 
 
-# PRIMITIVE LAYERS
+## Primitive layers
 
-def convert_conv(state, d, input_name):
-    assert(d['type']['name'] == 'conv')
-    w = convert_param(state, d['w'], prefix = 'w', flip = [2,3])
-    b = convert_param(state, d['b'], prefix = 'b', flat = True)
-    strides = list(reversed(d['s']))
-    pads = list(reversed(d['p']))
-    pads.extend(pads)
-    name = get_name(state, "conv")
-    node = ox.make_node(
-            'Conv',
-            pads = pads,
-            strides = strides,
-            inputs = [input_name, w, b],
-            outputs = [name])
-
-    state["nodes"].append(node)
-    out_name = convert_activation(state, d['a'], name)
-    return out_name
-
-def convert_dense(state, d, input_name):
-    assert(d['type']['name'] == 'dense')
+def add_dense_layer(state, d, input_name):
+    assert(d['type']['name'] == 'Dense')
 
     flat_name = get_name(state, 'flat')
     node = ox.make_node(
@@ -111,24 +91,47 @@ def convert_dense(state, d, input_name):
 
     state["nodes"].append(node)
 
-    w = convert_param(state, d['w'], prefix = 'w')
-    b = convert_param(state, d['b'], prefix = 'b', flat = True)
-    name = get_name(state, "dense")
+    w = add_param(state, d['value']['w'], prefix = 'w')
+    b = add_param(state, d['value']['b'], prefix = 'b', flat = True)
+
+    name = get_name(state, 'dense')
     node = ox.make_node(
             'Gemm',
             inputs = [flat_name, w, b],
             outputs = [name])
 
     state["nodes"].append(node)
-    out_name = convert_activation(state, d['a'], name)
+    out_name = add_activation_layer(state, d['value']['f'], name)
     return out_name
 
-def convert_batchnorm(state, d, input_name):
-    assert(d['type']['name'] == 'batchnorm')
+def add_conv_layer(state, d, input_name):
+    assert(d['type']['name'] == 'Conv')
 
-    scale, bias = convert_bn_scale_bias(state, d['params'])
-    mean = convert_param(state, d['moments']['mean'], prefix = 'bnmean', flat = True)
-    var = convert_param(state, d['moments']['var'], prefix = 'bnvar', flat = True)
+    w = add_param(state, d['value']['w'], prefix = 'w', flip = [2,3])
+    b = add_param(state, d['value']['b'], prefix = 'b', flat = True)
+
+    strides = list(reversed(d['value']['s']))
+    pads = list(reversed(d['value']['p']))
+    pads.extend(pads)
+    name = get_name(state, 'conv')
+    node = ox.make_node(
+            'Conv',
+            pads = pads,
+            strides = strides,
+            inputs = [input_name, w, b],
+            outputs = [name])
+
+    state["nodes"].append(node)
+    out_name = add_activation_layer(state, d['value']['f'], name)
+    return out_name
+
+def add_batchnorm_layer(state, d, input_name):
+    assert(d['type']['name'] == 'Batchnorm')
+
+    bias = add_param(state, d['value']['bias'], prefix = 'bnbias', flat = True)
+    scale = add_param(state, d['value']['scale'], prefix = 'bnscale', flat = True)
+    mean = add_param(state, d['value']['mean'], prefix = 'bnmean', flat = True)
+    var = add_param(state, d['value']['var'], prefix = 'bnvar', flat = True)
 
     name = get_name(state, "batchnorm")
     node = ox.make_node(
@@ -137,53 +140,21 @@ def convert_batchnorm(state, d, input_name):
             outputs = [name])
 
     state["nodes"].append(node)
-    out_name = convert_activation(state, d['a'], name)
+    out_name = add_activation_layer(state, d['value']['f'], name)
     return out_name
 
 
-def convert_bn_scale_bias(state, d):
-    assert(not d['param'])
+## Compound layers
 
-    scale_name = get_name(state, "bnscale")
-    bias_name = get_name(state, "bnbias")
-
-    assert(len(d['dims']) == 1)
-    assert(d['dims'][0] % 2 == 0)
-    length = d['dims'][0] // 2
-
-    scale_tensor = ox.make_tensor(
-            name = scale_name,
-            data_type = FLOAT,
-            dims = [length],
-            vals = d['bytes'][0:4*length],
-            raw = True)
-
-    bias_tensor = ox.make_tensor(
-            name = bias_name,
-            data_type = FLOAT,
-            dims = [length],
-            vals = d['bytes'][4*length:],
-            raw = True)
-
-    state["tensors"].append(scale_tensor)
-    state["tensors"].append(bias_tensor)
-
-    return scale_name, bias_name
-
-# COMPOUND LAYERS
-
-def convert_chain(state, d, input_name):
-    assert(d['type']['name'] == 'chain')
-    for l in d['layers']:
-      input_name = convert_layer(state, l, input_name)
+def add_chain(state, d, input_name):
+    assert(d['type']['name'] == 'Chain')
+    for l in d['value']['layers']:
+      input_name = add_layer(state, l, input_name)
     return input_name
 
-def convert_residual(state, d, input_name):
-    assert(d['type']['name'] == 'residual')
-    chain_name = input_name
-    for l in d['chain']['layers']:
-      chain_name = convert_layer(state, l, chain_name)
-
+def add_residual(state, d, input_name):
+    assert(d['type']['name'] == 'Residual')
+    chain_name = add_chain(state, d['value']['chain'], input_name)
     name = get_name(state, "residual")
     node = ox.make_node(
             "Add",
@@ -192,28 +163,29 @@ def convert_residual(state, d, input_name):
 
     state["nodes"].append(node)
 
-    out_name = convert_activation(state, d['a'], name)
+    out_name = add_activation_layer(state, d['value']['f'], name)
     return out_name
 
-def convert_layer(state, d, input_name):
-    typ = d['type']['name']
-    if typ == 'conv': return convert_conv(state, d, input_name)
-    elif typ == 'dense': return convert_dense(state, d, input_name)
-    elif typ == 'batchnorm': return convert_batchnorm(state, d, input_name)
-    elif typ == 'chain': return convert_chain(state, d, input_name)
-    elif typ == 'residual': return convert_residual(state, d, input_name)
-    else: assert(False)
+def add_layer(state, d, input_name):
+    type = d['type']['name']
+    if type == 'Conv': return add_conv_layer(state, d, input_name)
+    elif type == 'Dense': return add_dense_layer(state, d, input_name)
+    elif type == 'Batchnorm': return add_batchnorm_layer(state, d, input_name)
+    elif type == 'Chain': return add_chain(state, d, input_name)
+    elif type == 'Residual': return add_residual(state, d, input_name)
+    else: raise ValueError("Expected Jtac layer, got", type)
 
 
-# MODEL
+## Full model
 
-def convert_model(state, d):
-    trunk = convert_layer(state, d['trunk'], 'INPUT')
-    vhead = convert_layer(state, d['heads'][0], trunk)
-    phead = convert_layer(state, d['heads'][1], trunk)
+def add_model(state, d):
+    assert(d['type']['name'] == 'NeuralModel')
+    trunk = add_layer(state, d['value']['trunk'], 'INPUT')
+    vhead = add_layer(state, d['value']['target_heads'][0], trunk)
+    phead = add_layer(state, d['value']['target_heads'][1], trunk)
 
-    value = convert_activation(state, {'name' : 'tanh'}, vhead)
-    policy = convert_activation(state, {'name' : 'softmax'}, phead)
+    value = add_activation_layer(state, 'tanh', vhead)
+    policy = add_activation_layer(state, 'softmax', phead)
 
     node = ox.make_node(
             'Concat',
@@ -225,13 +197,13 @@ def convert_model(state, d):
 
 
 def get_game_shapes(d):
-    if d['name'] == 'm_n_k_game':
+    if d['name'] == 'MNKGame':
         inshape = [1, *list(reversed(d['params'][0:2]))]
         outshape = [product(inshape) + 1]
-    elif d['name'] == 'meta_tac':
+    elif d['name'] == 'MetaTac':
         inshape = [1, 9, 9]
         outshape = [9*9 + 1]
-    elif d['name'] == 'paco_sako':
+    elif d['name'] == 'PacoSako':
         inshape = [30, 8, 8]
         outshape = [132 + 1]
 
@@ -243,8 +215,8 @@ def convert_onnx(file):
     with open(file, "rb") as mp:
         model = msgpack.unpack(mp)
 
-    assert(model['type']['name'] == 'neural_model')
-    convert_model(state, model)
+    assert(model['type']['name'] == 'NeuralModel')
+    add_model(state, model)
 
     game = model['type']['params'][0]
     inshape, outshape = get_game_shapes(game)
@@ -288,7 +260,7 @@ if __name__ == "__main__":
     print('onnx model saved:', out)
 
 # Testing the model
-#import onnxruntime as rt
-#sess = rt.InferenceSession("ludwig.onnx")
-#data = (...)
-#res = sess.run(["OUTPUT"], {"INPUT":data})
+import onnxruntime as rt
+sess = rt.InferenceSession("hedwig-0.8.onnx")
+data = np.float32(np.random.rand(1, 30, 8, 8))
+res = sess.run(["OUTPUT"], {"INPUT": data})
