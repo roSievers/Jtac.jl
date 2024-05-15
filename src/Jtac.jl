@@ -343,6 +343,7 @@ module Player
   export AbstractPlayer,
          RandomPlayer,
          MCTSPlayer, 
+         MCTSPlayerGumbel,
          IntuitionPlayer,
          HumanPlayer
 

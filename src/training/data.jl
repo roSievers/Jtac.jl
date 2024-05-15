@@ -214,6 +214,45 @@ function Random.rand(rng, d :: DataSet, n :: Int)
   d[indices]
 end
 
+"""
+    diversity(dataset :: DataSet)
+
+Print out information about the diversity of data set `dataset`
+"""
+function diversity(d :: DataSet{G}) where {G}
+  dict = Dict{G, Any}()
+  for index in eachindex(d.games)
+    game = d.games[index]
+    targets = [x.data[index] for x in d.target_labels]
+    if game in keys(dict)
+      entry = dict[game]
+      dict[game] = (;
+        count = entry.count + 1,
+        targets = push!(entry.targets, targets),
+      )
+    else
+      dict[game] = (;
+        count = 1,
+        targets = [targets],
+      )
+    end
+  end
+
+  @printf "states total: %d\n" length(d)
+  @printf "states distinct: %d\n" length(dict)
+  counts = map(x -> x.count, values(dict))
+  freqs = map(c -> count(counts .== c), 1:maximum(counts))
+  print("count: ")
+  for count in maximum(counts):-1:1
+    freqs[count] > 0 && @printf "%5d" count
+  end
+  print("\nstates:")
+  for count in maximum(counts):-1:1
+    freqs[count] > 0 && @printf "%5d" freqs[count]
+  end
+  println()
+end
+
 
 """
 Structure that stores tensorized [`DataSet`](@ref)s.

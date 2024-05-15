@@ -108,11 +108,7 @@ end
 """
     move(game, player [; temperature])
 
-Create a new game state by letting `player` take one action in `game` with a
-given `temperature`.
-
-See also [`move`](@ref), [`turn!`](@ref), [`decide`](@ref), and
-[`decideturn`](@ref).
+Non-modifying version of [`move!`](@ref).
 """
 move(args...; kwargs...) = Game.move(args...; kwargs...)
 
@@ -134,6 +130,15 @@ function turn!(game :: AbstractGame, p :: AbstractPlayer; kwargs...)
     move!(game, action)
   end
   game
+end
+
+"""
+    turn(game, player [; temperature])
+
+Non-modifying version of [`turn!`](@ref).
+"""
+function turn(game :: AbstractGame, args...; kwargs...)
+  turn!(copy(game), args...; kwargs...)
 end
 
 """
