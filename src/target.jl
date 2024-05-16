@@ -189,3 +189,26 @@ Base.length(t :: DummyTarget) = length(t.data)
 
 label(t :: DummyTarget{G}, :: LabelContext{G}) where {G} = collect(t.data)
 
+
+"""
+Target that returns the player policy of the next move as label.
+"""
+struct NextPolicyTarget{G} <: AbstractTarget{G} end
+
+function Base.length(:: NextPolicyTarget{G}) where {G <: AbstractGame}
+  policylength(G)
+end
+
+function label(:: NextPolicyTarget{G}, ctx :: LabelContext{G}) where {G}
+  n = length(ctx.player_policies)
+  if ctx.index >= n
+    l = policylength(G)
+    ones(Float32, l) ./ l
+  else
+    ctx.player_policies[ctx.index + 1]
+  end
+end
+
+defaultactivation(:: NextPolicyTarget) = :softmax
+defaultlossfunction(:: NextPolicyTarget) = :crossentropy
+

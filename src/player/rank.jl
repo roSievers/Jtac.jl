@@ -200,8 +200,8 @@ end
 Produce a ranking that compares a list of `models` by conducting `n` matches.
 
 For each model (with index `i`) and `power` value in `powers`, the following players are produced:
-* `IntuitionPlayer(model; name = "int-\$i")` for `power = 0`,
-* `MCTSPlayer(model; power, draw_bias, name = mcts\$power-\$i)` for `power > 0`.
+* `IntuitionPlayer(model; name = "int-\$i")` for `power <= 1`,
+* `MCTSPlayer(model; power, draw_bias, name = mcts\$power-\$i)` for `power > 1`.
 
 Additional players that should be included in the ranking can be specified via
 `opponents`. See `[rank](@ref)` and `[compete](@ref)` for the remaining keyword arguments.
@@ -209,16 +209,20 @@ Additional players that should be included in the ranking can be specified via
 """
 function rankmodels( models
                    , n :: Int = 100
-                   ; powers = [0]
+                   ; powers = [1]
                    , draw_bias = 0.0
                    , opponents = []
+                   , gumbel = false
                    , kwargs... )
   powers = powers |> unique |> sort
   players = mapreduce(vcat, enumerate(models)) do (i, model)
     map(powers) do power
-      if power == 0
+      if power <= 1
         name = "int-$i"
         IntuitionPlayer(model; name)
+      elseif gumbel
+        name = "mcts$power-$i"
+        MCTSPlayerGumbel(model; power, draw_bias, name)
       else
         name = "mcts$power-$i"
         MCTSPlayer(model; power, draw_bias, name)

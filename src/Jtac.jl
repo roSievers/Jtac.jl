@@ -454,7 +454,7 @@ module Common
   using ..Training
   using ..Analysis
 
-  export AbstractGame
+  export AbstractGame, TicTacToe, MetaTac
   export status, isover, legalactions, mover, move!, randominstance
 
   export AbstractModel

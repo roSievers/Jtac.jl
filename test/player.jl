@@ -13,7 +13,7 @@
       @test p isa Vector{Float32}
       @test length(p) == Game.policylength(G)
       @test Player.decide(player, G()) isa Game.ActionIndex
-      @test Player.decidechain(player, G()) isa Vector{Game.ActionIndex}
+      @test Player.decideturn(player, G()) isa Vector{Game.ActionIndex}
       @test Player.move!(G(), player) isa G
       @test Player.turn!(G(), player) isa G
       @test Player.ntasks(player) == Model.ntasks(player) == 1
