@@ -450,9 +450,9 @@ function printlossvalues( model
   losses = map(x -> @sprintf("%8.3f", x), values(lc))
   lossstr = join(losses, " ")
   if isnothing(generation)
-    str = @sprintf("  %8d %s %8.3f %8d\n", epoch, lossstr, sum(lc), length(data))
+    str = @sprintf("   %8d %s %8.3f %8d\n", epoch, lossstr, sum(lc), length(data))
   else
-    str = @sprintf("  %5d %8d %s %8.3f %8d\n", generation, epoch, lossstr, sum(lc), length(data))
+    str = @sprintf("   %5d %8d %s %8.3f %8d\n", generation, epoch, lossstr, sum(lc), length(data))
   end
   printstyled(str; color)
 end

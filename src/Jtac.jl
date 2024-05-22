@@ -130,6 +130,7 @@ module Game
          augment,
          randommove!,
          randomturn!,
+         randominstance,
          rollout,
          rollout!,
          array,
@@ -352,6 +353,7 @@ module Player
          think,
          decide,
          turn!,
+         decideturn,
          compete,
          switchmodel
 
@@ -359,7 +361,7 @@ module Player
   include("player/rank.jl")
 
   export Ranking
-  export rank
+  export rank, rankmodels
 
 end
 
@@ -403,6 +405,7 @@ module Training
   export LossFunction, LossContext
 
   export loss,
+         losscomponents,
          setup,
          step!,
          learn!
@@ -440,7 +443,7 @@ module Analysis
          analyzemove,
          analyzemoves,
          analyzeturn,
-         analyzematch
+         analyze
 
 end # module Analysis
 
@@ -463,8 +466,10 @@ module Common
   export AbstractPlayer, IntuitionPlayer, MCTSPlayer, MCTSPlayerGumbel
   export think, decide, decideturn, rank, rankmodels, compete
 
+  export AbstractTarget, LabelContext
+
   export record, learn!, loss, losscomponents
-  export analyzegame, analyzemove, analyzemoves, analyzeturn, analyzematch
+  export analyzegame, analyzemove, analyzemoves, analyzeturn, analyze
 end
 
 using .Util, .Model, .Training
