@@ -7,10 +7,8 @@
 end
 
 @testset "TicTacToe" begin
-  game = Game.TicTacToe()
-  @test size(Game.TicTacToe) == size(game) == size(Game.array(game)) == (3, 3, 1)
-  @test size(Game.array([game, game])) == (3, 3, 1, 2)
-  @test Game.policylength(Game.TicTacToe) == Game.policylength(game) == 9
+  game = ToyGames.TicTacToe()
+  @test Game.policylength(ToyGames.TicTacToe) == Game.policylength(game) == 9
   @test Game.mover(game) == 1
   @test_throws BoundsError Game.move!(game, -1)
 
@@ -35,10 +33,8 @@ end
 end
 
 @testset "MetaTac" begin
-  game = Game.MetaTac()
-  @test size(Game.MetaTac) == size(game) == size(Game.array(game)) == (9, 9, 3)
-  @test size(Game.array([game, game])) == (9, 9, 3, 2)
-  @test Game.policylength(Game.MetaTac) == Game.policylength(game) == 81
+  game = ToyGames.MetaTac()
+  @test Game.policylength(ToyGames.MetaTac) == Game.policylength(game) == 81
   @test Game.mover(game) == 1
   @test_throws BoundsError Game.move!(game, -1)
 

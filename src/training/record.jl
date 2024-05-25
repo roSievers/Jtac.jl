@@ -107,13 +107,13 @@ obtained via [`Player.think`](@ref) is annealed before sampling the next move.
 # Examples
 ```julia
 # Record 20 self play matches of an classical MCTS player with power 250
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 player = Player.MCTSPlayer(power = 250)
 dataset = Training.record(player, 20, instance = G, branch = 0.25)
 
 # Record 10 self play matches of MCTS player with shallow predictor network and
 # power 50. After move 4, always use the action with maximal policy weight.
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 player = Player.MCTSPlayer(model, power = 50)
 dataset = Training.record(player, 10; augment = false, anneal = (4 => 0.0))

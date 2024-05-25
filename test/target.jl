@@ -1,5 +1,5 @@
 
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 
 vt = Target.DefaultValueTarget(G)
 pt = Target.DefaultPolicyTarget(G)

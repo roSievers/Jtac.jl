@@ -35,7 +35,9 @@ export Pack,
        Model,
        Player,
        Target,
-       Training
+       Training,
+       Analysis,
+       ToyGames
 
 
 """
@@ -98,11 +100,6 @@ Jtac game module.
 
 Defines the interface that any game type `G <: Game.AbstractGame` must implement
 to be supported by Jtac.
-
-Also provides reference implementations of the game Tic-Tac-Toe
-([`Game.TicTacToe`](@ref)), its generalization to general grids
-([`Game.MNKGame`](@ref)), as well as the more complex variant meta Tic-Tac-Toe
-([`Game.MetaTac`](@ref)).
 """
 module Game
   using Random, Statistics, LinearAlgebra
@@ -144,21 +141,7 @@ module Game
 
   export randommatch
 
-  include("game/mnkgame.jl")
-  include("game/metatac.jl")
-  # include("game/nim.jl")
-  # include("game/nim2.jl")
-  # include("game/morris.jl")
-
-  export TicTacToe,
-         MNKGame,
-         MetaTac,
-         Nim,
-         Nim2,
-         Morris
-
 end
-
 
 """
 Jtac target module.
@@ -289,6 +272,9 @@ module Model
          CachingModel,
          AssistedModel
 
+  export Tensorizor,
+         DefaultTensorizor
+
   """
   Predefined neural model architectures.
 
@@ -412,19 +398,13 @@ module Training
 
 end # module Training
 
-module Bench
-  using Statistics, Printf
 
-  using ..Jtac
-  using ..Game
-  using ..Target
-  using ..Model
-  using ..Player
-  using ..Training
+"""
+Jtac Analysis module.
 
-  include("util/bench.jl")
-end # module Bench
-
+Contains convenience function to analyze a game state and let a player make
+suggestions regarding strong / weak moves.
+"""
 module Analysis
 
   using Printf
@@ -447,6 +427,53 @@ module Analysis
 
 end # module Analysis
 
+"""
+Jtac benchmark module.
+
+Contains code for benchmarking models and players.
+"""
+module Bench
+  using Statistics, Printf
+
+  using ..Jtac
+  using ..Game
+  using ..Target
+  using ..Model
+  using ..Player
+  using ..Training
+
+  include("util/bench.jl")
+end # module Bench
+
+
+"""
+Jtac toy games module.
+
+Contains implementations for some simple games that can be used as testbeds.
+Currently implements TicTacToe and MetaTac, a much more interesting variant
+of TicTacToe.
+"""
+module ToyGames
+  using ..Jtac
+  using ..Util
+  using ..Game
+  using ..Model
+
+  include("game/mnkgame.jl")
+  include("game/metatac.jl")
+  # include("game/nim.jl")
+  # include("game/nim2.jl")
+  # include("game/morris.jl")
+
+  export TicTacToe,
+         MNKGame,
+         MetaTac
+end
+
+
+"""
+Convenience module that exports common Jtac symbols.
+"""
 module Common
   using ..Jtac
   using ..Util
@@ -456,8 +483,9 @@ module Common
   using ..Player
   using ..Training
   using ..Analysis
+  using ..ToyGames
 
-  export AbstractGame, TicTacToe, MetaTac
+  export AbstractGame
   export status, isover, legalactions, mover, move!, randominstance
 
   export AbstractModel
@@ -470,9 +498,14 @@ module Common
 
   export record, learn!, loss, losscomponents
   export analyzegame, analyzemove, analyzemoves, analyzeturn, analyze
+
+  export TicTacToe, MNKGame, MetaTac
 end
 
-using .Util, .Model, .Training
+
+# Register default named values
+
+using .Util, .Model, .Training, .Common
 
 register!(Activation, identity, :id, :identity)
 register!(Activation, NNlib.relu, :relu)
@@ -492,15 +525,16 @@ register!(LossFunction, (x, y) -> sum(abs, x .- y), :sumabs)
 register!(LossFunction, (x, y) -> sum(abs2, x .- y), :sumabs2)
 register!(LossFunction, (x, y) -> -sum(y .* log.(x .+ 1f-7)), :crossentropy)
 
-include("precompile.jl")
+
+# Precompilation
 
 import PrecompileTools: @compile_workload
 
+include("precompile.jl")
+
 @compile_workload begin
-  precompilecontent(Game.TicTacToe)
-  precompilecontent(Game.MetaTac)
-  precompilecontent(Game.TicTacToe, configure = Model.configure(async = true))
-  precompilecontent(Game.MetaTac, configure = Model.configure(async = true))
+  precompilecontent(TicTacToe, configure = Model.configure(async = true))
+  precompilecontent(MetaTac, configure = Model.configure(async = true))
 end
 
 end # module Jtac

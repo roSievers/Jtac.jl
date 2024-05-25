@@ -258,10 +258,10 @@ end
 Structure that stores tensorized [`DataSet`](@ref)s.
 
 Used during the training process of [`NeuralModel`](@ref)s. Data sets are first
-converted to data caches, then split into batches (see [`DataBatches`](@ref))
-for gradient descent steps.
+converted to data caches via tensorizors (see [`Tensorizor`](@ref)), then split
+into batches (see [`DataBatches`](@ref)) for gradient descent steps.
 """
-struct DataCache{G <: AbstractGame, T}
+struct DataCache{T, R <: Tensorizor}
   data :: T
   targets :: Vector{AbstractTarget}
   target_names :: Vector{Symbol}
@@ -269,33 +269,18 @@ struct DataCache{G <: AbstractGame, T}
 end
 
 """
-    DataCache{G}(T, data, labels)
+    DataCache(T, ds :: DataSet, t :: Tensorizor)
 
-Create a [`DataCache`](@ref) for games of type `G` with array type `T`, game
-data `data`, and label data `labels`.
+Use the tensorizor `t` to convert `dataset` to a [`DataCache`](@ref) with array
+type `T`.
 """
-function DataCache{G}(T, data, targets, names, labels) where {G}
-  @assert length(labels) == length(targets) == length(labels) """
-  Inconsistent target data.
-  """
-  data = convert(T, data)
-  labels = map(labels) do label
+function DataCache(T, ds :: DataSet{G}, t :: R) where {G, R <: Tensorizor{G}}
+  data = t(T, ds.games)
+  labels = map(ds.target_labels) do label
+    label = hcat(label...)
     convert(T, label)
   end
-  DataCache{G, T}(data, targets, names, labels)
-end
-
-"""
-    DataCache(T, dataset)
-
-Convert a data set `dataset` to a [`DataCache`](@ref) with array type `T`.
-"""
-function DataCache(T, ds :: DataSet{G}) where {G <: AbstractGame}
-  data = Game.array(ds.games)
-  labels = map(ds.target_labels) do label
-    hcat(label...)
-  end
-  DataCache{G}(T, data, ds.targets, ds.target_names, labels)
+  DataCache{T, R}(data, ds.targets, ds.target_names, labels)
 end
 
 Base.length(c :: DataCache) = size(c.data)[end]
@@ -308,11 +293,11 @@ end
 Target.targets(c :: DataCache) = (; zip(c.target_names, c.targets)...)
 
 """
-Wrapper of a [`DataSet`](@ref) that splits the data set into
-[`DataCache`](@ref)s of a given batchsize. Can be iterated over.
+Iterator for a [`DataSet`](@ref) that splits the data set into [`DataCache`]
+(@ref)s of a given batchsize.
 """
-struct DataBatches{G <: AbstractGame, T}
-  dataset :: DataSet{G}
+struct DataBatches{T, R <: Tensorizor}
+  dataset :: DataSet
   batchsize :: Int
   shuffle :: Bool
   partial :: Bool
@@ -322,28 +307,33 @@ end
 State object that keeps track of interna during iterations over
 [`DataBatches`](@ref).
 """
-struct DataBatchesState{G <: AbstractGame, T}
+struct DataBatchesState{T, R <: Tensorizor}
   indices :: Vector{Int}
   startindex :: Int
-  prev_cache :: Union{Nothing, DataCache{G, T}}
+  prev_cache :: Union{Nothing, DataCache{T, R}}
 end
 
 """
-    DataBatches(T, dataset, batchsize; shuffle = false, partial = true)
+    DataBatches(T, ds :: DataSet, t :: Tensorizor; kwargs...)
 
-Create a batch iterator over `dataset`, yielding [`DataCache{G, T}`](@ref)
-objects of length `batchsize` on iteration, where `G` is the game type of
-`dataset`. If `shuffle = true`, each iteration draws data in random order.
-If `partial = true`, the final batch may be smaller than `batchsize`.
+Create a batch iterator over `ds` that yields [`DataCache`](@ref) objects on
+iteration. Mapping of game states to arrays is handled by the tensorizor `t` and
+subsequent conversion to the array type `T`.
+
+## Keyword arguments
+- `batchsize = 64`: Batchsize of the data caches.
+- `shuffle = true`: If true, each iteration draws data in random order.
+- `partial = true`: If true, the final batch may be smaller than `batchsize`.
 """
 function DataBatches( T
                     , d :: DataSet{G}
-                    , batchsize
-                    ; shuffle = false
+                    , :: R = DefaultTensorizor{G}(),
+                    ; batchsize = 64
+                    , shuffle = false
                     , partial = true
-                    ) where {G <: AbstractGame}
+                    ) where {G <: AbstractGame, R <: Tensorizor{G}}
 
-  DataBatches{G, T}(d, batchsize, shuffle, partial)
+  DataBatches{T, R}(d, batchsize, shuffle, partial)
 end
 
 function Base.length(b :: DataBatches)
@@ -351,15 +341,15 @@ function Base.length(b :: DataBatches)
   b.partial ? ceil(Int, n) : floor(Int, n)
 end
 
-function Base.iterate( b :: DataBatches{G, T}
+function Base.iterate( b :: DataBatches{T, R}
                      , state = nothing
-                     ) where {G <: AbstractGame, T}
+                     ) where {T, R <: Tensorizor}
 
   len = length(b.dataset)
 
   if isnothing(state)
     indices = b.shuffle ? randperm(len) : 1:len
-    state = DataBatchesState{G, T}(indices, 1, nothing)
+    state = DataBatchesState{T, R}(indices, 1, nothing)
   else
     Model.releasememory!(state.prev_cache)
   end
@@ -375,7 +365,7 @@ function Base.iterate( b :: DataBatches{G, T}
   if !stopiter
     I = state.indices[startindex:stopindex]
     subset = b.dataset[I]
-    cache = DataCache(T, subset)
+    cache = DataCache(T, subset, R())
     cache, DataBatchesState(state.indices, stopindex + 1, cache)
   end
 end

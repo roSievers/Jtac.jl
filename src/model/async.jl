@@ -154,11 +154,11 @@ function notifyerror(conds, msg)
   end
 end
 
-function worker( model :: NeuralModel{G, B}
+function worker( model :: NeuralModel{G, B, R}
                , ch
                , max_batchsize
                , cdynamic
-               , profile ) where {G, B}
+               , profile ) where {G, B, R}
 
   @debug "Worker of AsyncModel started"
 
@@ -167,9 +167,9 @@ function worker( model :: NeuralModel{G, B}
   aligndevice!(model)
 
   # Prepare buffer to make game array creation more efficient
-  buf = Game.arraybuffer(G, max_batchsize)
+  tensorizor = R()
+  buf = buffer(tensorizor, max_batchsize)
   buf = convert(arraytype(B()), buf)
-
 
   expectmore = games -> begin
     if fetch(cdynamic)
@@ -202,7 +202,7 @@ function worker( model :: NeuralModel{G, B}
         # the buffer such that no temp copies are created. Alternatively, work
         # with views?
         v, p = try
-          Game.array!(buf, games)
+          tensorizor(buf, games)
           vp = model(buf[:, :, :, 1:batchsize])
           vp = convert.(Array{Float32}, vp)
           vp

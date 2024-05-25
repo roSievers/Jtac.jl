@@ -156,7 +156,7 @@ memory requirements.
 
 # Examples
 ```julia
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 dataset = Player.record(Player.MCTSPlayer(), 10, instance = G) 
 model = Model.NeuralModel(G, Model.@chain G Dense(50, "relu"))
 
@@ -372,7 +372,7 @@ expected value of game states, and other optional prediction targets.
 # Examples
 ```julia
 # Train a neural network model to learn TicTacToe by playing against itself
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 model = Model.NeuralModel(G, Model.@chain G Conv(64, "relu") Dense(32, "relu"))
 player = Player.MCTSPlayer(model, power = 50, temperature = 0.75, exploration = 2.)
 Training.train!(player, epochs = 5, matches = 100)
@@ -424,7 +424,7 @@ arguments can be used to adapt the contests.
 # Examples
 ```julia
 
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 opponents = [Player.MCTSPlayer(power = 50), Player.MCTSPlayer(power = 500)]
 
 model = Model.NeuralModel(G, Model.@chain G Conv(100, "relu", padding = 1) Dense(32, "relu"))

@@ -129,7 +129,7 @@ const _defaultconfig = Dict{Symbol, Any}(
   :backend => :default,
   :async => 256,
   :cache => false,
-  :assist => false,
+  :assist => nothing,
 )
 
 """
@@ -147,15 +147,15 @@ The second method returns the configured model.
 batchsize of the async model.
 - `cache`: Wrap `model` in [`CachingModel`](@ref) if `cache > 0`.
 - `assist`: Wrap `model` in [`AssistedModel`](@ref) with assistant model \
-`assist`. If `model` is an [`AssistedModel`](@ref) and the option `assist` is \
-not specified, then `assist = model.assistant`.
+  `assist`. If `model` is an [`AssistedModel`](@ref) and the option `assist` \
+  is not specified, then `assist = model.assistant`.
 """
 function configure(model; kwargs...)
   options = (; _defaultconfig..., kwargs...)
     
   base = basemodel(model)
-  if model isa AssistedModel && isnothing(assist)
-    assist = model.assistant
+  if model isa AssistedModel && isnothing(options.assist)
+    options = (; options..., assist = model.assistant)
   end
 
   if !isnothing(options.backend)

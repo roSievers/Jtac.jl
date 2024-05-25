@@ -1,11 +1,11 @@
   @testset "Player" begin
-    G = Game.TicTacToe
+    G = ToyGames.TicTacToe
     model = Model.RolloutModel(G)
     for player in [
       Player.RandomPlayer(G),
-      Player.IntuitionPlayer(model, temperature = 0.25),
-      Player.MCTSPlayer(model, temperature = 0.25),
-      Player.MCTSPlayerGumbel(model, temperature = 0.25),
+      Player.IntuitionPlayer(model),
+      Player.MCTSPlayer(model, power = 10),
+      Player.MCTSPlayerGumbel(model, power = 10),
     ]
       @test Player.name(player) isa String
 
@@ -26,7 +26,7 @@
   end
 
   @testset "Ranking" begin
-    G = Game.TicTacToe
+    G = ToyGames.TicTacToe
     model = Model.RolloutModel(G)
     players = [Player.MCTSPlayer(model; power) for power in [10, 100, 500]]
     rk = Player.rank(players, 50)

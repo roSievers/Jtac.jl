@@ -126,6 +126,11 @@ struct LossContext
 end
 
 """
+Alias for a union of [`DataSet`](@ref) and [`DataCache`](@ref).
+"""
+const DataSetOrCache{G, T, R} = Union{DataSet{G}, DataCache{T, R}}
+
+"""
     LossContext(model, [dataset/cache; losses, reg, targets, weights])
 
 Construct a `LossContext` object.
@@ -144,13 +149,17 @@ the named tuple `weights`. Each weight defaults to `1f0`.
 
 See also [`losscomponents`](@ref) and [`loss`](@ref).
 """
-function LossContext( model :: NeuralModel{G, B}
-                    , dataset :: Union{DataSet{G}, DataCache{G, T}} = DataSet(model)
+function LossContext( model :: NeuralModel{G, B, R}
+                    , dataset :: DataSetOrCache{G, T, R} = DataSet(model)
                     ; losses = (;)
                     , reg = (;)
                     , targets = nothing           
                     , weights = (;)
-                    ) where {G, F, T <: AbstractArray{F}, B <: Backend{T}}
+                    ) where { G,
+                              F,
+                              T <: AbstractArray{F},
+                              B <: Backend{T},
+                              R <: Tensorizor{G} }
 
   # convert arguments to named tuples
   reg = (; reg...)
@@ -225,10 +234,13 @@ reduce memory requirements.
 
 See also [`loss`](@ref) and [`LossContext`](@ref).
 """
-function losscomponents( model :: NeuralModel{G, B}
-                       , cache :: DataCache{G, T}
+function losscomponents( model :: NeuralModel{G, B, R}
+                       , cache :: DataCache{T, R}
                        , ctx :: LossContext
-                       ) where {G, T <: AbstractArray, B <: Backend{T}}
+                       ) where { G,
+                                 T <: AbstractArray,
+                                 B <: Backend{T},
+                                 R <: Tensorizor{G} }
 
   labels = getlabels(cache, ctx.target_names)
   outputs = model(cache.data; targets = ctx.target_names) 
@@ -247,15 +259,19 @@ function losscomponents(model, cache :: DataCache; kwargs...)
   losscomponents(model, cache, ctx)
 end
 
-function losscomponents( model :: NeuralModel{G, B}
+function losscomponents( model :: NeuralModel{G, B, R}
                        , dataset :: DataSet{G}
                        , ctx :: LossContext
                        ; batchsize :: Integer = 1024
-                       ) where {G, T <: AbstractArray, B <: Backend{T}}
+                       ) where { G,
+                                 T <: AbstractArray,
+                                 B <: Backend{T},
+                                 R <: Tensorizor{G} }
 
   lossfs = ctx.target_lossfunctions
   weights = ctx.target_weights
-  tlosses = sum(DataBatches(T, dataset, batchsize)) do cache
+  batches = DataBatches(T, dataset, R(); batchsize)
+  tlosses = sum(batches) do cache
     labels = getlabels(cache, ctx.target_names)
     outputs = model(cache.data; targets = ctx.target_names)
     map((l, x, y, w) -> w * l(x, y), lossfs, outputs, labels, weights)
@@ -317,14 +333,17 @@ function loss( model :: NeuralModel{G, B}
   loss(model, cache, ctx)
 end
 
-function loss( model :: NeuralModel{G, B}
+function loss( model :: NeuralModel{G, B, R}
              , dataset :: DataSet{G}
              ; batchsize = 1024
              , kwargs...
-             ) where {G, T <: AbstractArray, B <: Backend{T}}
+             ) where { G,
+                       T <: AbstractArray,
+                       B <: Backend{T},
+                       R <: Tensorizor{G} }
 
   ctx = LossContext(model, dataset; kwargs...)
-  tloss = sum(DataBatches(T, dataset, batchsize)) do cache
+  tloss = sum(DataBatches(T, dataset, R(); batchsize)) do cache
     loss(model, cache, excluderegularizations(ctx)) * length(cache)
   end
 
@@ -495,7 +514,7 @@ loss context is provided, it is derived from additional keyword arguments (see
 import Flux # to trigger Flux.jl support
 
 # Generate training data
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 player = Player.MCTSPlayer(G, power = 500)
 ds = Training.record(player, 100)
 
@@ -511,7 +530,7 @@ ds = Training.record(player, 100)
 Training.learn!(model, ds; epochs = 10, batchsize = 64, opt = Flux.Adam(1e-2))
 ```
 """
-function learn!( model :: NeuralModel{G, B}
+function learn!( model :: NeuralModel{G, B, R}
                , ds :: DataSet{G}
                , ctx :: LossContext
                ; opt = defaultoptimizer(B())
@@ -526,7 +545,10 @@ function learn!( model :: NeuralModel{G, B}
                , progress = true
                , verbose = true
                , generation = nothing
-               ) where {G, T <: AbstractArray, B <: Backend{T}}
+               ) where { G,
+                         T <: AbstractArray,
+                         B <: Backend{T},
+                         R <: Tensorizor{G} }
 
   @assert length(ds) > 0 "Training dataset is empty"
 
@@ -549,7 +571,8 @@ function learn!( model :: NeuralModel{G, B}
       step, finish = Util.stepper("# learning...", steps)
     end
 
-    for cache in DataBatches(T, ds, batchsize; shuffle, partial)
+    batches = DataBatches(T, ds, R(); batchsize, shuffle, partial)
+    for cache in batches
       step!(model, cache, ctx, opt_setup)
       callback_batch(totalsteps += 1)
       if progress
@@ -601,7 +624,7 @@ paradigm.
 ```julia
 using Flux, Jtac
 
-G = Game.TicTacToe
+G = ToyGames.TicTacToe
 model = Model.Zoo.ZeroConv(G, blocks = 2, filters = 32)
 player = Player.MCTSPlayerGumbel(model, power = 32, nactions = 8)
 opt = Flux.Adam(1e-3)

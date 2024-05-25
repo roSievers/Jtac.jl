@@ -9,7 +9,7 @@ Game.Status
 ## Basic interface
 ```@docs
 Game.status
-Game.activeplayer
+Game.mover
 Game.legalactions
 Game.isactionlegal
 Game.isover
@@ -28,17 +28,9 @@ Game.randommove!
 Game.randommove
 Game.randomturn!
 Game.randomturn
-Game.randommatch!
-Game.randommatch
+Game.rollout!
+Game.rollout
 Game.randominstance
-Game.branch
-```
-
-## Tensor representation
-```@docs
-Game.array
-Game.array!
-Game.arraybuffer
 ```
 
 ## Augmentation
@@ -49,7 +41,14 @@ Game.augment
 
 ## Implementations
 ```@docs
-Game.MNKGame
-Game.TicTacToe
-Game.MetaTac
+ToyGames.MNKGame
+ToyGames.TicTacToe
+ToyGames.MetaTac
+```
+
+## Matches
+```@docs
+Game.Match
+Game.randommatch!
+Game.randommatch
 ```

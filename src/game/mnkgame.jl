@@ -41,10 +41,10 @@ end
 Base.hash(game :: MNKGame) = Base.hash(game.board)
 Base.isequal(a :: MNKGame, b :: MNKGame) = (a == b)
 
-mover(game :: MNKGame) :: Int = game.active_player
+Game.mover(game :: MNKGame) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
-function legalactions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N}
+function Game.legalactions(game :: MNKGame{M, N}) where {M, N}
   if isover(game)
     ActionIndex[]
   else
@@ -64,14 +64,14 @@ function legalactions(game :: MNKGame{M, N}) :: Vector{ActionIndex} where {M, N}
 end
 
 # A action is legal, if the board position is still empty
-function isactionlegal( game :: MNKGame{M, N}
-                      , index :: ActionIndex ) :: Bool where {M, N}
+function Game.isactionlegal( game :: MNKGame{M, N}
+                           , index :: ActionIndex ) where {M, N}
   game.board[index] == 0 && !isover(game)
 end
 
-function move!( game :: MNKGame{M, N, K}
-              , index :: ActionIndex
-              ) :: MNKGame{M, N, K} where {M, N, K}
+function Game.move!( game :: MNKGame{M, N, K}
+                   , index :: ActionIndex
+                   ) where {M, N, K}
 
   @assert isactionlegal(game, index) "Action $index is not allowed."
   # Update the board state
@@ -130,26 +130,16 @@ function tic_tac_mnk_status( game :: MNKGame{M, N, K}
 
 end
 
-status(game :: MNKGame) :: Status = game.status
+Game.status(game :: MNKGame) :: Status = game.status
 
-function policylength(:: Type{<:MNKGame{M, N}}) :: Int where {M, N}
+function Game.policylength(:: Type{<:MNKGame{M, N}}) where {M, N}
   M * N
 end
 
-# Size of the data representation of the game
-function Base.size(:: Type{<:MNKGame{M, N}}) :: Tuple{Int, Int, Int} where {M, N}
-  (M, N, 1)
-end
-
-# Data representation of the game as layered 2d image
-function array(game :: MNKGame{M, N}) :: Array{Float32, 3} where {M, N}
-  reshape(game.active_player .* game.board, (M, N, 1))
-end
-
-isaugmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
+Game.isaugmentable(:: Type{MNKGame{M, N, K}}) where {M, N, K} = true
 
 # Augment single games
-function augment(game :: MNKGame{M, N, K}) where {M, N, K}
+function Game.augment(game :: MNKGame{M, N, K}) where {M, N, K}
 
   if M == N
     boards = applygroup(DihedralGroup(), reshape(game.board, (M, N))) 
@@ -174,9 +164,9 @@ function augment(game :: MNKGame{M, N, K}) where {M, N, K}
 end
 
 # Augment game/label pairs
-function augment( game :: MNKGame{M, N, K}
-                , policy :: Vector{Float32}
-                ) where {M, N, K}
+function Game.augment( game :: MNKGame{M, N, K}
+                     , policy :: Vector{Float32}
+                     ) where {M, N, K}
   if M == N
 
     matpol = reshape(policy, (M, N))
@@ -194,7 +184,7 @@ function augment( game :: MNKGame{M, N, K}
   augment(game), policies
 end
 
-function visualize(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
+function Game.visualize(io :: IO, game :: MNKGame{M, N}) where {M, N}
   board = reshape(game.board, (M,N))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
 
@@ -212,7 +202,7 @@ function visualize(io :: IO, game :: MNKGame{M, N}) :: Nothing where {M, N}
   end
 end
 
-visualize(game :: MNKGame) = visualize(stdout, game)
+Game.visualize(game :: MNKGame) = visualize(stdout, game)
 
 function Base.show(io :: IO, game :: MNKGame{M, N, K}) where {M, N, K}
   moves = count(!isequal(0), game.board)
@@ -237,5 +227,16 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MNKGame{M, N, K}) wher
 end
 
 
+# Tensorization support to feed MNKGames to NeuralModels
 
+function Base.size(:: DefaultTensorizor{<: MNKGame{M, N}}) where {M, N}
+  (M, N, 1)
+end
+
+function (:: DefaultTensorizor{<: MNKGame{M, N}})(T, buf, games) where {M, N}
+  for (index, game) in enumerate(games)
+    array = reshape(game.active_player .* game.board, (M, N, 1))
+    buf[:,:,:,index] .= convert(T, array)
+  end
+end
 

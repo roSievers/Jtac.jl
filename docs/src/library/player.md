@@ -10,7 +10,7 @@ Player.AbstractPlayer
 Player.think
 Player.apply
 Player.decide
-Player.decidechain
+Player.decideturn
 Player.move!
 Player.turn!
 Player.name

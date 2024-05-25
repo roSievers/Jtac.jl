@@ -15,7 +15,7 @@ end
 
 MetaTac() = MetaTac(zeros(Int, 81), 1, 0, Game.undecided, [Game.undecided for i=1:9])
 
-isaugmentable(:: Type{MetaTac}) = true
+Game.isaugmentable(:: Type{MetaTac}) = true
 
 function Base.copy(s :: MetaTac) :: MetaTac
   MetaTac(
@@ -43,10 +43,10 @@ end
 Base.isequal(a :: MetaTac, b :: MetaTac) = (a == b)
 
 
-mover(game :: MetaTac) :: Int = game.active_player
+Game.mover(game :: MetaTac) :: Int = game.active_player
 
 # Returns a list of the Indices of all legal actions
-function legalactions(game :: MetaTac) :: Vector{ActionIndex}
+function Game.legalactions(game :: MetaTac) :: Vector{ActionIndex}
   ActionIndex[ index for index in 1:81 if isactionlegal(game, index) ]
 end
 
@@ -54,7 +54,7 @@ end
 #   - The game is still active
 #   - The region is available
 #   - The board position is still empty
-function isactionlegal(game :: MetaTac, index :: ActionIndex) :: Bool
+function Game.isactionlegal(game :: MetaTac, index :: ActionIndex) :: Bool
   game.board[index] == 0 &&
   is_region_allowed(game, region(index)) &&
   !isover(game)
@@ -86,7 +86,7 @@ function region_view(game, r)
   reshape(game.board, (9, 9))[row:row + 2, col:col + 2]
 end
 
-function move!(game :: MetaTac, index :: ActionIndex) :: MetaTac
+function Game.move!(game :: MetaTac, index :: ActionIndex) :: MetaTac
   @assert isactionlegal(game, index) "Action $index is not allowed."
   # Update the board state
   game.board[index] = game.active_player
@@ -105,7 +105,7 @@ function move!(game :: MetaTac, index :: ActionIndex) :: MetaTac
   game
 end
 
-status(game :: MetaTac) :: Status = game.status_cache
+Game.status(game :: MetaTac) :: Status = game.status_cache
 
 # Returns ( false, * ) => Game is not over yet
 # Returns ( true, {-1, 0, 1} ) => Game is over and we return the winner
@@ -154,22 +154,9 @@ function tic_tac_toc_status(board :: Matrix{Int}) :: Status
   end
 end
 
-policylength(:: Type{MetaTac}) :: Int = 81
+Game.policylength(:: Type{MetaTac}) :: Int = 81
 
-# Size of the data representation of the game
-Base.size(:: Type{MetaTac}) :: Tuple{Int, Int, Int} = (9, 9, 3)
-
-# Data representation of the game as layered 2d image
-function array(game :: MetaTac) :: Array{Float32, 3}
-  data = zeros(Float32, 81, 3)
-  board = game.active_player .* game.board
-  data[board .== 1, 1] .= 1
-  data[board .== -1, 2] .= 1
-  data[legalactions(game), 3] .= 1
-  reshape(data, (9, 9, 3))
-end
-
-function augment(game :: MetaTac)
+function Game.augment(game :: MetaTac)
 
   boards = applygroup(DihedralGroup(), reshape(game.board, (9,9))) 
   caches = applygroup(DihedralGroup(), reshape(game.region_status_cache, (3,3)))
@@ -188,7 +175,7 @@ function augment(game :: MetaTac)
 
 end
 
-function augment(game :: MetaTac, label :: Vector{Float32})
+function Game.augment(game :: MetaTac, label :: Vector{Float32})
 
   matpol = reshape(label, (9, 9))
   matpols = applygroup(DihedralGroup(), matpol)
@@ -197,7 +184,7 @@ function augment(game :: MetaTac, label :: Vector{Float32})
   augment(game), labels
 end
 
-function visualize(io :: IO, game :: MetaTac) :: Nothing
+function Game.visualize(io :: IO, game :: MetaTac) :: Nothing
 
   board = reshape(game.board, (9,9))
   symbols = Dict(1 => "X", -1 => "O", 0 => "⋅")
@@ -239,3 +226,21 @@ function Base.show(io :: IO, :: MIME"text/plain", game :: MetaTac)
   end
   visualize(io, game)
 end
+
+# Tensorization support to feed MNKGames to NeuralModels
+
+Base.size(:: DefaultTensorizor{MetaTac}) = (9, 9, 3)
+
+# Data representation of the game as layered 2d image
+function (:: DefaultTensorizor{MetaTac})(T, buf, games)
+  for (index, game) in enumerate(games)
+    data = zeros(Float32, 81, 3)
+    board = game.active_player .* game.board
+    data[board .== 1, 1] .= 1
+    data[board .== -1, 2] .= 1
+    data[legalactions(game), 3] .= 1
+    data = reshape(data, (9, 9, 3))
+    buf[:,:,:,index] .= convert(T, data)
+  end
+end
+

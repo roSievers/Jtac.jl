@@ -8,7 +8,7 @@
 end
 
 @testset "DataSet" begin
-  G = Game.TicTacToe
+  G = ToyGames.TicTacToe
   model = Model.RolloutModel(G)
   player = Player.MCTSPlayer(Model.RolloutModel(G), power = 100)
   ds0 = Training.DataSet(G, Target.targetnames(player), Target.targets(player))
@@ -33,12 +33,12 @@ end
 end
 
 @testset "DataBatches" begin
-  G = Game.TicTacToe
+  G = ToyGames.TicTacToe
   player = Player.MCTSPlayer(Model.RolloutModel(G), power = 100)
   ds = Training.record(player, 10, targets = (dummy = Target.DummyTarget(G),))
-
+  t = Model.DefaultTensorizor{G}()
   for T in [Array{Float32}, Array{Float64}]
-    for cache in Training.DataBatches(T, ds, 50, partial = false)
+    for cache in Training.DataBatches(T, ds, t, batchsize = 50, partial = false)
       @test cache isa Training.DataCache
       @test length(cache) == 50
       @test cache.data isa T
@@ -48,10 +48,10 @@ end
 end
 
 @testset "Loss" begin
-  G = Game.TicTacToe
+  G = ToyGames.TicTacToe
   reg = (l1 = Training.L1Reg(), l2 = Training.L2Reg())
   targets = (dummy = Target.DummyTarget(G), )
-  model = Model.Zoo.ZeroConv(G; filters = 8, blocks = 2, targets)
+  model = Model.Zoo.ZeroConv(G; filters = 8, blocks = 2, targets, async = false)
   player = Player.MCTSPlayer(model, power = 50)
   ds = Training.record(player, 1)
 

@@ -807,7 +807,7 @@ given.
 # Both of them are compatible with the game TicTacToe
 
 Model.Chain([ Model.Conv(1, 32, :relu), Model.Dense(32, 50) ])
-Model.@chain Game.TicTacToe Conv(32, :relu) Dense(50)
+Model.@chain ToyGames.TicTacToe Conv(32, :relu) Dense(50)
 ```
 """
 macro chain(ex, layers...)

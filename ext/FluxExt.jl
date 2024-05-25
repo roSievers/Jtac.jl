@@ -28,7 +28,6 @@ function Base.show(io :: IO, :: FluxBackend{T}) where {T}
   print(io, "FluxBackend{$T}()")
 end
 
-
 #
 # TODO: There is a flux bug in Flux.outputsize(trunk, size(data))
 # on the gpu - help fix this!

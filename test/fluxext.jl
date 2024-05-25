@@ -1,5 +1,5 @@
 
-import Jtac.Model: DefaultBackend
+import Jtac.Model: DefaultBackend, DefaultTensorizor
 
 @testset "Dense" begin
   for backend in [:flux16, :flux, :flux64]
@@ -138,10 +138,11 @@ end
 end
 
 @testset "Model" begin
+  tensorizor = DefaultTensorizor{G}()
   for backend in [:flux16, :flux, :flux64]
     T = Model.arraytype(Model.getbackend(backend))
-    G = Game.TicTacToe
-    model = Model.Zoo.ZeroRes(G, filters = 8, blocks = 3)
+    G = ToyGames.TicTacToe
+    model = Model.Zoo.ZeroRes(G, filters = 8, blocks = 3, async = false)
     for l in [model.trunk]
       l = Model.adapt(DefaultBackend{T}(), l)
       lflux = Model.adapt(backend, l)
@@ -151,7 +152,7 @@ end
       @test Model.getbackend(l2) isa DefaultBackend{T}
 
       games = [Game.randominstance(G) for _ in 1:10]
-      data = convert(T, Game.array(games))
+      data = tensorizor(T, games)
 
       r1 = l(data)
       r2 = l2(data)

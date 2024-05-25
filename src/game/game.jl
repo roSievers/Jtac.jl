@@ -66,12 +66,6 @@ function Base.copy(game :: AbstractGame)
   error("Base.copy not implemented for games of type $(typeof(game))") 
 end
 
-function Base.size(G :: Type{<: AbstractGame})
-  error("Base.size not implemented for games of type $G")
-end
-
-Base.size(:: G) where {G <: AbstractGame} = size(G)
-
 """
     Base.hash(game)
 
@@ -173,57 +167,6 @@ otherwise.
 """
 isaugmentable(g :: AbstractGame) = isaugmentable(typeof(g))
 isaugmentable(:: Type{<: AbstractGame}) = false
-
-"""
-    array(game)
-    array(games)
-
-Data representation of `game` as three-dimensional `Array{Float32}`. If a vector
-`games` is passed, a four-dimensional array is returned.
-
-See also [`array!`](@ref) and [`arraybuffer`](@ref).
-"""
-array(:: AbstractGame) = error("not implemented")
-
-function array(games :: Vector{G}) where G <: AbstractGame
-  @assert !isempty(games) "Cannot produce representation of empty game vector"
-  buf = arraybuffer(G, length(games))
-  for i in 1:length(games)
-    buf[:,:,:,i] .= array(games[i])
-  end
-  buf
-end
-
-"""
-    array!(buffer, games)
-
-Fill the array `buffer` with the array representation of `games`. Amounts to
-`buffer[:,:,:,1:length(games)] .= array(games)`, but can be implemented more
-efficiently.
-
-The buffer array must satisfy `size(buffer)[1:3] .== size(games[1])` as well
-as `size(buffer, 4) >= length(games)`. To create suitably sized buffers, see
-[`arraybuffer`](@ref).
-"""
-function array!(buf, games :: Vector{<: AbstractGame})
-  @assert !isempty(games) "Cannot produce representation of empty game vector"
-  @assert size(buf)[1:3] == size(games[1])
-  @assert size(buf, 4) >= length(games)
-  repr = array(games)
-  repr = convert(typeof(buf), repr)
-  buf[:, :, :, 1:length(games)] .= repr
-  nothing
-end
-
-"""
-    arraybuffer(G, batchsize)
-
-Create an uninitialized `Float32` array that can hold the array representation
-of up to `batchsize` games of type `G`.
-"""
-function arraybuffer(G :: Type{<: AbstractGame}, batchsize)
-  zeros(Float32, size(G)..., batchsize)
-end
 
 """
     policylength(G)

@@ -1,5 +1,96 @@
 
 """
+Tensorizors are singleton types that define how a game state is converted to its
+array representation. This is needed for models that operate on tensorized
+versions of the game state, like [`NeuralModel`](@ref).
+
+Games that have a canonical array representation only need to specialize
+the behavior of [`DefaultTensorizor`](@ref). To support multiple array
+representations for a single game type, a custom singleton subtype of
+[`Tensorizer`](@ref) must be defined.
+"""
+abstract type Tensorizor{G <: AbstractGame} end
+
+@pack {T <: Tensorizor} in TypedFormat{MapFormat}
+
+Base.size(:: Tensorizor) = error("Not implemented")
+
+"""
+    buffer([T], t :: Tensorizor, batchsize)
+
+Returns a zero-initialized array of type `T` that can hold `batchsize` game
+states in the representation of `t`.
+"""
+function buffer(T :: Type{<: AbstractArray}, t :: Tensorizor, batchsize)
+  buf = zeros(Float32, size(t)..., batchsize)
+  convert(T, buf)
+end
+
+buffer(t :: Tensorizor, batchsize) = buffer(Array{Float32}, t, batchsize)
+
+"""
+    (t :: Tensorizor)([T,] game)
+    (t :: Tensorizor)([T,] games)
+    (t :: Tensorizor)(buffer, games)
+
+Use `t` to create an array representation of `game` or `games` with array type `T`.
+If a suitable buffer is passed, the representation is written into `buffer`.
+
+See [`Model.buffer`](@ref) for the creation of buffers with the correct size.
+"""
+function (t :: Tensorizor)(buf, games)
+  @assert !isempty(games) """
+  Cannot produce array representation of empty game vector.
+  """
+  @assert size(buf)[1:3] == size(t) """
+  Buffer size is incompatible with tensorizor $t.
+  """
+  @assert size(buf, 4) >= length(games) """
+  Buffer size too small to store $(length(games)) game states.
+  """
+  T = arraytype(buf)
+  t(T, buf, games)
+end
+
+function (t :: Tensorizor)(T :: Type{<: AbstractArray}, games :: Vector)
+  buf = buffer(T, t, length(games))
+  t(buf, games)
+  buf
+end
+
+function (t :: Tensorizor)(T :: Type{<: AbstractArray}, game :: AbstractGame)
+  dropdims(t(T, [game]), dims = 4)
+end
+
+(t :: Tensorizor)(game) = t(Array{Float32}, game)
+
+"""
+    (t :: Tensorizor)(T, buffer, games)
+
+This method for tensorizors has to be provided by game implementations.
+"""
+function (t :: Tensorizor{G})(T, buf, games) where {G}
+  error("This tensorizor does not support games of type $G")
+end
+
+
+
+"""
+Default tensorizor that is used if no explicit tensorizer is specified.
+
+For a game type implementation `G <: AbstractGame` to work with
+[`NeuralModel`](@ref), it should at least define
+
+    Base.size(:: DefaultTensorizor{G})
+
+and
+
+    (:: DefaultTensorizor{G})(game :: G)
+"""
+struct DefaultTensorizor{G} <: Tensorizor{G} end
+
+
+"""
    createhead(head, insize, nout) 
 
 Check if the neural layer `head` is compatible with the input size `insize` and
@@ -17,7 +108,9 @@ end
 
 # TODO: Due to weird Documenter.jl behavior, types with constructors of the same
 # name should not get their own docstring
-struct NeuralModel{G <: AbstractGame, B <: Backend} <: AbstractModel{G}
+struct NeuralModel{ G <: AbstractGame,
+                    B <: Backend,
+                    R <: Tensorizor{G} } <: AbstractModel{G}
   trunk :: Layer{B}
   targets :: Vector{AbstractTarget{G}}
   target_names :: Vector{Symbol}
@@ -31,31 +124,34 @@ trained or only used for inference.
 
 ---
 
-    NeuralModel(G, trunk; [targets, heads, activations, backend, kwargs...])
+    NeuralModel(G, trunk; kwargs...)
 
 Create a `NeuralModel` for games of type `G` with neural network trunk layer
 `trunk`.
 
-### Arguments
+## Arguments
 * `targets`: Named tuple of [`AbstractTarget`] that the network should support.
-* `heads`: Named tuple of neural layer heads for the specified `targets`.
+* `heads`: Named tuple of neural layer heads for the specified `targets`. \
+  Heads that are not specified default to single dense layers.
 * `activations`: Named tuple of activations for the specified `targets`. Falls
   back to the activations returned by [`Target.defaultactivation`](@ref).
 * `backend`: The backend of the neural layers. Derived from `trunk` by default.
-* `kwargs`: Additional keyword arguments are passed to [`Model.configure`](@ref).
-
-Heads that are not specified default to single dense layers. Activations that
-are not specified default to `:identity`.
+* `tensorizor`: The tensorizor used to convert games into their array representation. \
+  Defaults to [`DefaultTensorizor`](@ref).
+* Additional keyword arguments are passed to [`Model.configure`](@ref).
 """
 function NeuralModel( :: Type{G}
                     , trunk :: Layer{B}
                     ; targets = (;)
                     , heads = (;)
                     , activations = (;)
+                    , tensorizor = DefaultTensorizor{G}()
                     , kwargs...
                     ) where {G, B <: DefaultBackend{Array{Float32}}}
 
-  @assert isvalidinputsize(trunk, size(G)) "Trunk incompatible with gametype $G"
+  @assert isvalidinputsize(trunk, size(tensorizor)) """
+  Trunk incompatible with gametype $G
+  """
 
   targets = (;
     value = DefaultValueTarget(G),
@@ -82,14 +178,15 @@ function NeuralModel( :: Type{G}
     Not all head names correspond to targets.
   """
 
-  insize = outputsize(trunk, size(G))
+  insize = outputsize(trunk, size(tensorizor))
   heads = map(keys(targets)) do name
     target = getproperty(targets, name)
     head = get(heads, name, nothing)
     createhead(head, insize, length(target))
   end
 
-  model = NeuralModel{G, B}(
+  R = typeof(tensorizor)
+  model = NeuralModel{G, B, R}(
     trunk,
     AbstractTarget{G}[values(targets)...],
     Symbol[keys(targets)...],
@@ -115,8 +212,12 @@ function (model :: NeuralModel{G, B})( data :: T
                                      ; targets = targetnames(model)
                                      , activate = true
                                      ) where {G, T, B <: Backend{T}}
-  @assert isvalidinput(model.trunk, data)
-  @assert issubset(targets, targetnames(model))
+  @assert isvalidinput(model.trunk, data) """
+  Game array data is not compatible with the model trunk.
+  """
+  @assert issubset(targets, targetnames(model)) """
+  Some of the specified targets are not supported.
+  """
 
   batchsize = size(data)[end]
   trunkout = model.trunk(data)
@@ -139,11 +240,11 @@ function (model :: NeuralModel{G, B})( data :: T
   out
 end
 
-function (model :: NeuralModel{G, B})( games :: Vector{G}
-                                     ; kwargs...
-                                     ) where {G, T, B <: Backend{T}} 
-  data = Game.array(games)
-  data = convert(T, data)
+function (model :: NeuralModel{G, B, R})( games :: Vector{G}
+                                        ; kwargs...
+                                        ) where {G, T, B <: Backend{T}, R} 
+  tensorizor = R()
+  data = tensorizor(T, games)
   out = model(data; kwargs...)
   releasememory!(data)
   out
@@ -162,7 +263,7 @@ function Model.apply( model :: NeuralModel{G, B}
                     , game :: G
                     ; targets = targetnames(model)
                     , activate = true
-                    ) where {G, T, B <: Backend{T}}
+                    ) where {G, B <: Backend}
 
   outputs = model([game]; targets, activate)
   outputs = map(outputs) do output
@@ -172,6 +273,13 @@ function Model.apply( model :: NeuralModel{G, B}
   (; zip(targets, outputs)...)
 end
 
+"""
+    tensorizor(model :: NeuralModel)
+
+Return the tensorizor utilized by `model`.
+"""
+tensorizor(:: NeuralModel{G, B, R}) where {G, B, R} = R()
+
 
 """
     addtarget!(model, name, target; [head, activation])
@@ -180,16 +288,16 @@ Add the target `target` to the neural model `model` under name `name`.
 If no explicit `head` is provided, a shallow dense head is used. If no
 `activation` is provided, it is set to `:identity`.
 """
-function addtarget!( model :: NeuralModel{G, B}
+function addtarget!( model :: NeuralModel{G, B, R}
                    , name :: Symbol
                    , target :: AbstractTarget{G}
                    ; head :: Union{Nothing, Layer} = nothing
                    , activation = Target.defaultactivation(target)
-                   ) where {G, B}
+                   ) where {G, B, R}
 
   @assert !(name in model.target_names) "Target with name :$name already exists"
 
-  insz = outputsize(model.trunk, size(G))
+  insz = outputsize(model.trunk, size(R()))
   head = createhead(head, insz, length(target))
   head = adapt(B(), head)
   activation = resolve(Activation, activation)
@@ -206,10 +314,11 @@ end
 
 Switch the backend of a neural model `model` to `backend`.
 """
-function adapt(backend :: B, model :: NeuralModel{G}) where {G, B <: Backend}
+function adapt(backend :: B , model :: NeuralModel{G}) where {G, B <: Backend}
+  R = typeof(tensorizor(model))
   trunk = adapt(backend, model.trunk)
   heads = adapt.(Ref(backend), model.target_heads)
-  NeuralModel{G, B}(
+  NeuralModel{G, B, R}(
     trunk,
     model.targets,
     model.target_names,

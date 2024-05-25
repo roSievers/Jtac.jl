@@ -164,7 +164,7 @@ end
 @testset "Model" begin
 
   @testset "Base" begin
-    G = Game.TicTacToe
+    G = ToyGames.TicTacToe
     for model in [Model.DummyModel(G), Model.RandomModel(G), Model.RolloutModel(G)]
       model = Model.DummyModel(G)
       @test Model.gametype(model) == G
@@ -193,11 +193,11 @@ end
   end
 
   @testset "NeuralModel" begin
-    G = Game.TicTacToe
+    G = ToyGames.TicTacToe
     for model in [
-      Model.Zoo.MLP(G, :relu, widths = [64, 32]),
-      Model.Zoo.ZeroConv(G, filters = 16),
-      Model.Zoo.ZeroRes(G, filters = 16),
+      Model.Zoo.MLP(G, :relu, widths = [64, 32], async = false),
+      Model.Zoo.ZeroConv(G, filters = 16, async = false),
+      Model.Zoo.ZeroRes(G, filters = 16, async = false),
     ]
       @test Model.gametype(model) == G
       @test Model.ntasks(model) == 1
@@ -226,7 +226,7 @@ end
 
       Base.Filesystem.mktemp() do path, io
         Model.save(path, model)
-        model_ = Model.load(path, format = :jtm)
+        model_ = Model.load(path, format = :jtm, async = false)
         @test all(model(games) .== model_(games))
       end
 
@@ -249,8 +249,8 @@ end
   end
 
   @testset "AsyncModel" begin
-    G = Game.TicTacToe
-    base = Model.Zoo.MLP(G, :relu, widths = [64, 32])
+    G = ToyGames.TicTacToe
+    base = Model.Zoo.MLP(G, :relu, widths = [64, 32], async = false)
     model = Model.AsyncModel(base)
     @test Model.gametype(model) == G
     @test Model.ntasks(model) > 1
@@ -285,8 +285,8 @@ end
   end
 
   @testset "CachingModel" begin
-    G = Game.TicTacToe
-    base = Model.Zoo.MLP(G, :relu, widths = [64, 32])
+    G = ToyGames.TicTacToe
+    base = Model.Zoo.MLP(G, :relu, widths = [64, 32], async = false)
     model = Model.CachingModel(base)
     @test Model.gametype(model) == G
     @test Model.ntasks(model) == 1
@@ -321,10 +321,10 @@ end
   end
 
   @testset "AssistedModel" begin
-    G = Game.TicTacToe
+    G = ToyGames.TicTacToe
     struct Dummy <: Model.AbstractModel{G} end
-    Model.assist(d :: Dummy, game) = (value = 0.42, )
-    base = Model.Zoo.MLP(G, :relu, widths = [64, 32])
+    Model.assist(:: Dummy, game) = (value = 0.42,)
+    base = Model.Zoo.MLP(G, :relu, widths = [64, 32], async = false)
     model = Model.AssistedModel(base, Dummy())
     @test Model.gametype(model) == G
     @test Model.ntasks(model) == 1
@@ -353,7 +353,7 @@ end
 
     Base.Filesystem.mktemp() do path, io
       Model.save(path, model)
-      model_ = Model.load(path, format = :jtm)
+      model_ = Model.load(path, format = :jtm, )
       @test Model.apply(model, game) == Model.apply(model_, game)
     end
   end
