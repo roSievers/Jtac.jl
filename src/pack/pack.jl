@@ -25,8 +25,10 @@ format(value) = format(typeof(value))
 Special format that acts as placeholder for `Pack.format(T)` in situations where
 the type `T` is not yet known.
 
-!!! Never define `Pack.format(T)` for your type `T` in terms of `DefaultFormat`.
-!!! This will lead to infinite recursion.
+!!! warning
+
+    Never define `Pack.format(T)` for a type `T` in terms of `DefaultFormat`.
+    This will lead to infinite recursion.
 """
 struct DefaultFormat <: Format end
 
@@ -578,7 +580,7 @@ function unpack(io :: IO, :: BinaryFormat) :: Vector{UInt8}
 end
 
 """
-Simple struct that implements [`BinaryFormat`](@ref).
+Simple wrapper that implements [`BinaryFormat`](@ref).
 """
 struct Bytes
   bytes :: Vector{UInt8}
@@ -840,7 +842,7 @@ keytype(:: Type{<: Dict{K, V}}, _) where {K, V} = K
 valuetype(:: Type{<: Dict{K, V}}, _) where {K, V} = V
 
 #
-# Auxiliary structfor valuetype injection
+# Auxiliary struct for valuetype injection
 #
 # Currently used for ArrayFormat
 #
@@ -1148,10 +1150,14 @@ function unpack(io :: IO, :: TypedFormat{F}) where {F <: Format}
   byte = read(io, UInt8)
   if byte == 0x82 # expect fixmap of length 2
     key = unpack(io, Symbol)
-    @assert key == :type "Expected map key :type when unpacking typed value"
+    @assert key == :type """
+    Expected map key :type when unpacking typed value. Got :$key.
+    """
     T = unpack(io, Type)
     key = unpack(io, Symbol)
-    @assert key == :value "Expected map key :value when unpacking typed value"
+    @assert key == :value """
+    Expected map key :value when unpacking typed value. Got :$key.
+    """
     unpack(io, T, F())
   else
     byteerror(byte, TypedFormat{F}())
