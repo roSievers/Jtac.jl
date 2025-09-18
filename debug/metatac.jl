@@ -1,30 +1,49 @@
 
-include("train.jl")
 
-stack = @stack MetaTac stack_input=true begin
-  Conv(1024, relu, stride = 3, padding = 0)
-  Dense(512, relu)
+using Jtac, cuDNN, Flux
+using JtacPacoSako
+
+import .Model: Zoo
+import .Game: MetaTac
+import .Player: IntuitionPlayer, MCTSPlayer, MCTSPlayerGumbel
+import .Training: learn!, record
+
+model = Zoo.ZeroConv(MetaTac, blocks = 8, filters = 128, backend = :cudaflux, async = 512)
+
+@show Training.L2Reg()(model.model)
+
+player = MCTSPlayerGumbel(model, power = 32, name = "gumbel")
+
+# players = [
+#   IntuitionPlayer(player, temperature = 0.25, name = "intu"),
+#   MCTSPlayer(player, temperature = 0.25),
+#   [MCTSPlayer(MetaTac, power = power, temperature = 0.25) for power in [64, 128, 256, 512, 1024]]...
+# ]
+# Player.rank(players, 1000, verbose = true, threads = true)
+
+# weights = (value = 1.0, policy = 1.0)
+
+opt = Flux.Momentum(5e-5)
+learn!(model, generations = 1, epochs = 5, opt = opt, batchsize = 512, weights = weights) do gen
+  record(player, 128, branch = Game.branch(prob = 0.5, steps = 1:10), threads = true)
 end
 
-model = NeuralModel(MetaTac, stack) |> to_gpu |> Async
-player = MCTSPlayer(model, power = 250)
+# opt = Flux.OptimiserChain(Flux.WeightDecay(2f-5), Flux.Momentum(2e-3))
+# learn!(model, generations = 25, epochs = 3, opt = opt, batchsize = 512, weights = weights) do gen
+#   record(player, 64, branch = Game.branch(prob = 0.5, steps = 1:10), threads = true, anneal = n -> n <= 10)
+# end
 
-mcts_opponents = [MCTSPlayer(power = p) for p in [10, 50, 100, 200, 500]]
-self_opponents = [MCTSPlayer(model, power = p, name = "current$p") for p in [10, 50]]
+opt = Flux.OptimiserChain(Flux.WeightDecay(2f-5), Flux.Momentum(1e-3))
+learn!(model, generations = 50, epochs = 5, opt = opt, batchsize = 512, weights = weights) do gen
+  record(player, 64, branch = Game.branch(prob = 0.5, steps = 1:10), threads = true, anneal = n -> n <= 10)
+end
 
-loss = Loss(policy = 0.5, reg = 1e-5)
+# opt = Flux.OptimiserChain(Flux.WeightDecay(2f-5), Flux.Momentum(5e-4))
+# learn!(model, generations = 25, epochs = 3, opt = opt, batchsize = 512, weights = weights) do gen
+#   record(player, 64, branch = Game.branch(prob = 0.5, steps = 1:10), threads = true, anneal = n -> n <= 10)
+# end
 
-with_contest( train_self!
-            , player
-            , loss = loss
-            , playings = 50
-            , batchsize = 100
-            , branching = 0.02
-            , iterations = 10
-            , epochs = 100
-            , augment = true
-            , opponents = [mcts_opponents; self_opponents]
-            , length = 1000
-            , interval = 5
-            )
-
+opt = Flux.OptimiserChain(Flux.WeightDecay(2f-5), Flux.Momentum(1e-4))
+learn!(model, generations = 100, epochs = 3, opt = opt, batchsize = 512, weights = weights) do gen
+  record(player, 64, branch = Game.branch(prob = 0.5, steps = 1:10), threads = true, anneal = n -> n <= 10)
+end
